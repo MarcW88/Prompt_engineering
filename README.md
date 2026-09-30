@@ -4,10 +4,9 @@ Prompt Lab transforme des signaux utilisateurs réels en prompts GEO, reconstrui
 
 ## Application Next.js
 
-L'interface destinée à Vercel se trouve dans `web/`.
+L'interface Next.js se trouve à la racine du dépôt afin que Vercel détecte un seul projet.
 
 ```bash
-cd web
 npm install
 npm run dev
 ```
@@ -20,7 +19,7 @@ npm run typecheck
 npm run build
 ```
 
-Pour Vercel, configurez `web` comme **Root Directory** et ajoutez les variables de `web/.env.example` dans les paramètres du projet.
+Pour Vercel, conservez la racine du dépôt comme **Root Directory** et ajoutez les variables de `.env.example` dans les paramètres du projet.
 
 ## Backend d'analyse Python
 
@@ -46,7 +45,7 @@ Exécuter les tests :
 
 ## Variables d'environnement
 
-Copiez `.env.example` pour le backend Python ou `web/.env.example` pour Next.js. Les secrets ne doivent jamais être commités.
+Copiez `.env.example` pour le développement local. Les secrets ne doivent jamais être commités.
 
 Les principaux secrets sont :
 

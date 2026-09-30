@@ -22,10 +22,12 @@ logs/
 *.swo
 
 # Frontend
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo
 web/node_modules/
 web/.next/
-web/.vercel/
-web/*.tsbuildinfo
 
 # Local datasets and media
 *.csv
