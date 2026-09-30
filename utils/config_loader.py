@@ -3,6 +3,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
+from models.seed import Seed, SeedType, deduplicate_seeds
+
 
 @dataclass
 class ClientConfig:
@@ -62,6 +64,7 @@ class Config:
     languages: List[str]
     themes: List[str]
     competitors: List[str]
+    seeds: List[Seed]
     sources: Dict[str, Any]
     scraping: ScrapingConfig
     filters: FiltersConfig
@@ -69,8 +72,12 @@ class Config:
     
     @property
     def all_keywords(self) -> List[str]:
-        """Retourne tous les mots-clés de recherche (marques + thèmes)"""
-        return self.brand_variants + self.themes
+        """Retourne tous les seeds actifs par priorité"""
+        return [seed.value for seed in self.seeds if seed.enabled]
+
+    def seeds_for(self, *seed_types: SeedType) -> List[Seed]:
+        accepted = set(seed_types)
+        return [seed for seed in self.seeds if seed.enabled and (not accepted or seed.seed_type in accepted)]
 
 
 def load_config(config_path: str) -> Config:
@@ -116,6 +123,16 @@ def load_config(config_path: str) -> Config:
         include_rejected=output_raw.get('include_rejected', True),
         fields=output_raw.get('fields', [])
     )
+
+    language = raw.get('languages', ['fr'])[0]
+    market = raw.get('markets', ['FR'])[0]
+    configured_seeds = [Seed.from_dict(seed, language, market) if isinstance(seed, dict) else Seed(str(seed), language=language, market=market) for seed in raw.get('seeds', [])]
+    legacy_seeds = [
+        *[Seed(value, SeedType.BRAND, 90, language, market) for value in raw.get('brand_variants', [])],
+        *[Seed(value, SeedType.THEME, 70, language, market) for value in raw.get('themes', [])],
+        *[Seed(value, SeedType.COMPETITOR, 60, language, market) for value in raw.get('competitors', [])],
+    ]
+    seeds = deduplicate_seeds([*configured_seeds, *legacy_seeds])
     
     return Config(
         client=client,
@@ -124,6 +141,7 @@ def load_config(config_path: str) -> Config:
         languages=raw.get('languages', ['fr']),
         themes=raw.get('themes', []),
         competitors=raw.get('competitors', []),
+        seeds=seeds,
         sources=raw.get('sources', {}),
         scraping=scraping,
         filters=filters,

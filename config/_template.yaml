@@ -26,6 +26,18 @@ themes:
 competitors:
   - "[À REMPLIR]"               # Concurrents principaux
 
+seeds:
+  - value: "[À REMPLIR]"
+    type: keyword
+    priority: 100
+    language: fr
+    market: FR
+  - value: "[À REMPLIR]"
+    type: problem
+    priority: 80
+    language: fr
+    market: FR
+
 # ============================================
 # SOURCES À SCRAPER
 # ============================================
@@ -51,11 +63,11 @@ sources:
   serp:
     enabled: true
     query_templates:
-      - "{theme} [MARQUE] avis"
-      - "{theme} [MARQUE] qualité"
-      - "meilleur {theme} [MARQUE]"
-      - "problème [MARQUE]"
-      - "[MARQUE] vs {competitor}"
+      - "{seed}"
+      - "{seed} avis"
+      - "meilleur {seed}"
+      - "{seed} {brand_variant}"
+      - "{seed} vs {competitor}"
 
   qa:
     enabled: false
@@ -82,6 +94,7 @@ scraping:
   serp:
     max_paa_depth: 3
     max_suggestions: 10
+    query_budget: 50
     
   delay_between_requests: 2
   max_retries: 3

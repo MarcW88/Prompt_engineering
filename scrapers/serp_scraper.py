@@ -8,6 +8,7 @@ from datetime import datetime
 from .base_scraper import BaseScraper
 from models.raw_item import RawItem, SourceType
 from utils.config_loader import Config
+from sources.query_planner import expand_serp_templates
 
 
 class SerpScraper(BaseScraper):
@@ -77,41 +78,24 @@ class SerpScraper(BaseScraper):
         queries = self._generate_queries(query_templates)
         self.logger.info(f"Generated {len(queries)} search queries")
         
-        for query in queries:
+        for planned in queries:
             try:
-                paa_items = self._scrape_paa_dataforseo(query)
-                items.extend(paa_items)
-                
-                suggestion_items = self._scrape_suggestions_dataforseo(query)
-                items.extend(suggestion_items)
+                query_items = [*self._scrape_paa_dataforseo(planned.query), *self._scrape_suggestions_dataforseo(planned.query)]
+                for item in query_items:
+                    item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
+                items.extend(query_items)
                 
             except Exception as e:
-                self.logger.error(f"Error scraping SERP for '{query}': {e}")
+                self.logger.error(f"Error scraping SERP for '{planned.query}': {e}")
                 self.errors_count += 1
         
         self.items_scraped = len(items)
         return items
     
-    def _generate_queries(self, templates: List[str]) -> List[str]:
-        """Génère les requêtes à partir des templates"""
-        queries = set()
-        
-        for template in templates:
-            for theme in self.config.themes[:5]:
-                query = template.replace("{theme}", theme)
-                
-                for brand in self.config.brand_variants[:3]:
-                    q = query.replace("{brand_variant}", brand)
-                    queries.add(q)
-                
-                for competitor in self.config.competitors[:3]:
-                    q = query.replace("{competitor}", competitor)
-                    queries.add(q)
-                
-                if "{brand_variant}" not in query and "{competitor}" not in query:
-                    queries.add(query)
-        
-        return list(queries)[:50]
+    def _generate_queries(self, templates: List[str]):
+        """Génère les requêtes à partir des seeds prioritaires et des templates"""
+        budget = int(self.config.scraping.serp.get("query_budget", 50))
+        return expand_serp_templates(self.config.seeds, templates, budget)
     
     def _scrape_paa_dataforseo(self, query: str) -> List[RawItem]:
         """Scrape les People Also Ask via DataForSEO"""

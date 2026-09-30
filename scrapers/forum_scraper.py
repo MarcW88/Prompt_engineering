@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from .base_scraper import BaseScraper
 from models.raw_item import RawItem, SourceType
 from utils.config_loader import Config
+from sources.query_planner import plan_queries
 
 
 class ForumScraper(BaseScraper):
@@ -104,15 +105,16 @@ class ForumScraper(BaseScraper):
         """Scrape un subreddit via l'API JSON publique de Reddit"""
         items = []
         
-        for brand in self.config.brand_variants[:5]:
+        planned_queries = plan_queries(self.config.seeds, "reddit", max_threads)
+        for planned in planned_queries:
             try:
                 url = f"https://www.reddit.com/r/{subreddit_name}/search.json"
                 params = {
-                    "q": brand,
+                    "q": planned.query,
                     "restrict_sr": "on",
                     "sort": "relevance",
                     "t": "year",
-                    "limit": min(max_threads // 5, 25)
+                    "limit": max(1, min(max_threads // max(len(planned_queries), 1), 25))
                 }
                 
                 time.sleep(self.config.scraping.delay_between_requests)
@@ -152,17 +154,19 @@ class ForumScraper(BaseScraper):
                                 "subreddit": subreddit_name,
                                 "score": post.get("score", 0),
                                 "num_comments": post.get("num_comments", 0),
-                                "search_term": brand,
+                                "search_term": planned.seed,
+                                "seed_type": planned.seed_type,
+                                "seed_priority": planned.priority,
                                 "is_question": self._is_question(title) or self._is_question(selftext)
                             },
                             client_slug=self.config.client.slug
                         )
                         items.append(item)
                 
-                self.logger.debug(f"r/{subreddit_name} search '{brand}': {len(posts)} posts found")
+                self.logger.debug(f"r/{subreddit_name} search '{planned.query}': {len(posts)} posts found")
                 
             except Exception as e:
-                self.logger.error(f"Error scraping r/{subreddit_name} for '{brand}': {e}")
+                self.logger.error(f"Error scraping r/{subreddit_name} for '{planned.query}': {e}")
         
         self.logger.info(f"Scraped {len(items)} posts from r/{subreddit_name}")
         return items
@@ -179,14 +183,12 @@ class ForumScraper(BaseScraper):
         domain = url.replace("https://", "").replace("http://", "").split("/")[0]
         max_threads = self.config.scraping.forum.get("max_threads", 50)
         
-        for brand in self.config.brand_variants[:3]:
-            query = f"site:{domain} {brand}"
-            search_items = self._google_search_scrape(query, name, max_threads // 5)
-            items.extend(search_items)
-        
-        for theme in self.config.themes[:5]:
-            query = f"site:{domain} {theme}"
-            search_items = self._google_search_scrape(query, name, max_threads // 10)
+        planned_queries = plan_queries(self.config.seeds, "forum", max_threads, domain)
+        per_query_limit = max(1, min(10, max_threads // max(len(planned_queries), 1)))
+        for planned in planned_queries:
+            search_items = self._google_search_scrape(planned.query, name, per_query_limit)
+            for item in search_items:
+                item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
             items.extend(search_items)
         
         return items

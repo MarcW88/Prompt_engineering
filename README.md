@@ -74,9 +74,21 @@ Les principaux secrets sont :
 - `DATAFORSEO_LOGIN` et `DATAFORSEO_PASSWORD` ;
 - `OPENAI_API_KEY` pour les étapes historiques de transformation et clustering.
 
+## Seeds et collecte
+
+Les mots-clés, thèmes, marques, concurrents, produits et problèmes sont normalisés en seeds avec une priorité, une langue et un marché. Reddit, les forums et les PAA utilisent le même planificateur de requêtes.
+
+Les jobs créés par Next.js sont traités par le worker Python :
+
+```bash
+./venv/bin/python collection_worker.py --config config/decathlon.yaml --once
+```
+
+Sans `--once`, le worker traite les jobs en attente jusqu'à ce que la file soit vide. En production, il doit tourner sur un service Python séparé de Vercel.
+
 ## Workflow
 
-1. Collecte depuis GSC, Reddit, forums, avis et SERP/PAA.
+1. Import des seeds et collecte depuis GSC, Reddit, forums, avis et SERP/PAA.
 2. Normalisation et regroupement des intentions.
 3. Construction de signatures de query fan-out.
 4. Reconstruction de prompts plausibles avec provenance explicite.

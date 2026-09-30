@@ -9,6 +9,7 @@ import {
 
 import type { PromptRecord, Provenance } from "@/lib/types";
 import { Logo } from "./logo";
+import { SeedModal } from "./seed-modal";
 
 const nav = [
   { label: "Vue d'ensemble", icon: BarChart3 },
@@ -37,6 +38,7 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [sidebar, setSidebar] = useState(false);
   const [modal, setModal] = useState(false);
+  const [seedModal, setSeedModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
@@ -151,7 +153,7 @@ export function Dashboard() {
               <div className="panel-head"><div><span className="eyebrow">SOURCES</span><h2>Qualité des signaux</h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
               {sources.map((source) => <div className="source-row" key={source.id}><span className="source-logo logo-G">{source.kind.slice(0, 1).toUpperCase()}</span><div><strong>{source.name}</strong><small>{source.kind.toUpperCase()}</small></div><div className="quality"><span><i style={{ width: source.enabled ? "100%" : "0%" }} /></span><b>{source.enabled ? "Active" : "Pause"}</b></div></div>)}
               {sources.length === 0 && <div className="source-empty">Aucune source connectée.</div>}
-              <button className="source-add"><Plus size={16} /> Ajouter une source</button>
+              <button className="source-add" onClick={() => setSeedModal(true)}><Plus size={16} /> Ajouter des mots-clés</button>
             </article>
           </section>
 
@@ -165,6 +167,7 @@ export function Dashboard() {
       </main>
       {sidebar && <button className="backdrop" onClick={() => setSidebar(false)} aria-label="Fermer le menu" />}
       {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={addPrompt} />}
+      {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
     </div>
   );
 }
