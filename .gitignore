@@ -38,6 +38,9 @@ web/.next/
 *.avif
 exports/
 
+# Supabase
+supabase/.temp/
+
 # OS
 .DS_Store
 Thumbs.db
