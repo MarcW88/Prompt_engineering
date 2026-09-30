@@ -32,7 +32,7 @@ class PromptReconstructor:
             ranked.append((score, example))
         ranked.sort(key=lambda item: item[0], reverse=True)
         candidates = [PromptCandidate(
-            text=example.prompt,
+            text=self._adapt_prompt(target.queries, example.prompt, language),
             provenance=PromptProvenance.REVERSE_ENGINEERED,
             source_reference=example.source_reference,
             confidence=round(score, 4),
@@ -48,6 +48,20 @@ class PromptReconstructor:
                 metadata={"method": "deterministic_fallback", "language": language},
             ))
         return candidates
+
+    @staticmethod
+    def _adapt_prompt(fan_outs: List[str], reference_prompt: str, language: str) -> str:
+        criteria = ", ".join(fan_outs[:5])
+        reference = reference_prompt.casefold()
+        if language == "fr":
+            if "compar" in reference:
+                return f"Compare les options qui répondent à ces besoins : {criteria}. Explique les différences et les compromis importants."
+            if "recommand" in reference or "conseil" in reference:
+                return f"Que me recommandes-tu pour répondre à ces besoins : {criteria} ? Justifie ta recommandation avec des critères concrets."
+            return f"Aide-moi à évaluer les solutions qui couvrent ces besoins : {criteria}. Donne les critères de décision essentiels."
+        if language == "nl":
+            return f"Vergelijk de oplossingen voor deze behoeften: {criteria}. Leg de belangrijkste verschillen en afwegingen uit."
+        return f"Compare the solutions for these needs: {criteria}. Explain the important differences and trade-offs."
 
     @staticmethod
     def _fallback_prompt(fan_outs: List[str], language: str) -> str:

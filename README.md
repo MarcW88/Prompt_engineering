@@ -98,6 +98,16 @@ prompts candidats × répétitions × moteurs
 
 Le worker traite les jobs `build_dataset` avec Bright Data par défaut. Utilisez `DATASET_PROVIDER=oxylabs` pour basculer sur Oxylabs lorsque le moteur demandé est pris en charge.
 
+## Pipeline de production
+
+Trois jobs raccordent maintenant le workflow de bout en bout :
+
+- `transform_signals` conserve les questions GSC/PAA observées et transforme les discussions en questions avec OpenAI ;
+- `cluster_questions` calcule les embeddings, forme les clusters et sauvegarde les relations question/cluster ;
+- `reverse_engineer` charge les exemples acceptés du dataset et reconstruit de nouveaux prompts pour les clusters GEO.
+
+Le bouton **Piloter le workflow** permet de lancer ces étapes et d'en consulter l'état. L'étape de préparation des questions enchaîne automatiquement le clustering après une transformation réussie.
+
 ## Workflow
 
 1. Import des seeds et collecte depuis GSC, Reddit, forums, avis et SERP/PAA.

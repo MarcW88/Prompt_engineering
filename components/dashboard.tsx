@@ -11,6 +11,7 @@ import type { PromptRecord, Provenance } from "@/lib/types";
 import { Logo } from "./logo";
 import { SeedModal } from "./seed-modal";
 import { DatasetBuilderModal } from "./dataset-builder-modal";
+import { PipelineModal } from "./pipeline-modal";
 
 const nav = [
   { label: "Vue d'ensemble", icon: BarChart3 },
@@ -41,6 +42,7 @@ export function Dashboard() {
   const [modal, setModal] = useState(false);
   const [seedModal, setSeedModal] = useState(false);
   const [datasetModal, setDatasetModal] = useState(false);
+  const [pipelineModal, setPipelineModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
@@ -135,7 +137,7 @@ export function Dashboard() {
           </section>
 
           <section className="workflow-section">
-            <div className="section-heading"><div><span className="eyebrow">MÉTHODE</span><h2>Un signal réel, une preuve mesurable</h2></div><button className="text-button">Voir le workflow <ArrowRight size={16} /></button></div>
+            <div className="section-heading"><div><span className="eyebrow">MÉTHODE</span><h2>Un signal réel, une preuve mesurable</h2></div><button className="text-button" onClick={() => setPipelineModal(true)}>Piloter le workflow <ArrowRight size={16} /></button></div>
             <div className="workflow-grid">
               {steps.map(({ n, title, text, label, icon: Icon }, index) => (
                 <article key={title}>
@@ -171,6 +173,7 @@ export function Dashboard() {
       {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={addPrompt} />}
       {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
+      {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} />}
     </div>
   );
 }

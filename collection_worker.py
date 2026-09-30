@@ -12,6 +12,8 @@ from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBu
 from analysis.dataset_quality import score_dataset_example
 from analysis.models import AnalysisRequest
 from analysis.providers import BrightDataProvider, OxylabsProvider
+from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
+from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
 from scrapers import ForumScraper, SerpScraper
 from utils.config_loader import load_config
@@ -41,13 +43,20 @@ class CollectionWorker:
         self.config_path = config_path
 
     def run_once(self) -> bool:
-        jobs = self.db.request("GET", "jobs", "select=*&kind=in.(collect_sources,build_dataset)&status=eq.pending&order=created_at.asc&limit=1")
+        jobs = self.db.request("GET", "jobs", "select=*&kind=in.(collect_sources,transform_signals,cluster_questions,build_dataset,reverse_engineer)&status=eq.pending&order=created_at.asc&limit=1")
         if not jobs:
             return False
         job = jobs[0]
         self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "running", "progress": 5}, "return=minimal")
         try:
-            result = self._build_dataset(job) if job["kind"] == "build_dataset" else self._collect(job)
+            handlers = {
+                "collect_sources": self._collect,
+                "transform_signals": self._transform_signals,
+                "cluster_questions": self._cluster_questions,
+                "build_dataset": self._build_dataset,
+                "reverse_engineer": self._reverse_engineer,
+            }
+            result = handlers[job["kind"]](job)
             self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "completed", "progress": 100, "output": result, "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         except Exception as error:
             self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "failed", "error": str(error), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
@@ -88,6 +97,59 @@ class CollectionWorker:
             saved = self.db.request("POST", "signals", "on_conflict=project_id,content_hash", batch, "resolution=ignore-duplicates,return=representation")
             imported += len(saved or [])
         return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds)}
+
+    def _transform_signals(self, job: Dict) -> Dict:
+        project_id = job["project_id"]
+        project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
+        signals = self.db.request("GET", "signals", f"select=*&project_id=eq.{project_id}&order=collected_at.asc")
+        existing = self.db.request("GET", "questions", f"select=signal_id&project_id=eq.{project_id}&signal_id=not.is.null")
+        processed_ids = {row["signal_id"] for row in existing}
+        pending = [signal for signal in signals if signal["id"] not in processed_ids]
+        processor = None
+
+        def transform(text, title, language):
+            nonlocal processor
+            processor = processor or OpenAIProcessor()
+            return processor.transform(text, title, language)
+
+        questions = signals_to_questions(pending, project.get("language", "fr"), transform)
+        rows = [{
+            "project_id": project_id, "signal_id": question.signal_id, "text": question.text,
+            "provenance": question.provenance, "language": question.language,
+            "confidence": question.confidence, "metadata": question.metadata,
+        } for question in questions]
+        saved = self.db.request("POST", "questions", "on_conflict=project_id,signal_id,text", rows, "resolution=ignore-duplicates,return=representation") if rows else []
+        if job.get("input", {}).get("chain_cluster"):
+            self.db.request("POST", "jobs", body=[{
+                "project_id": project_id, "kind": "cluster_questions", "status": "pending",
+                "depends_on": job["id"], "input": job["input"].get("cluster_config", {}),
+            }])
+        return {"signals": len(signals), "pending": len(pending), "questions": len(saved or [])}
+
+    def _cluster_questions(self, job: Dict) -> Dict:
+        project_id = job["project_id"]
+        rows = self.db.request("GET", "questions", f"select=*&project_id=eq.{project_id}&order=created_at.asc")
+        if not rows:
+            return {"questions": 0, "clusters": 0}
+        processor = OpenAIProcessor()
+        embeddings = processor.embeddings([row["text"] for row in rows])
+        input_config = job.get("input", {})
+        clusters = cluster_questions(rows, embeddings, float(input_config.get("similarity_threshold", 0.82)), int(input_config.get("min_cluster_size", 2)))
+        saved_count = 0
+        for cluster in clusters:
+            cluster_rows = self.db.request("POST", "clusters", "on_conflict=project_id,fingerprint", [{
+                "project_id": project_id, "label": cluster["label"],
+                "representative_question": cluster["representative_question"],
+                "question_count": cluster["question_count"], "source_count": cluster["source_count"],
+                "is_geo_relevant": cluster["is_geo_relevant"], "fingerprint": cluster["fingerprint"],
+            }], "resolution=merge-duplicates,return=representation")
+            cluster_id = cluster_rows[0]["id"]
+            self.db.request("DELETE", "cluster_questions", f"cluster_id=eq.{cluster_id}", prefer="return=minimal")
+            self.db.request("POST", "cluster_questions", body=[{
+                "cluster_id": cluster_id, "question_id": member["question_id"], "similarity": member["similarity"],
+            } for member in cluster["members"]])
+            saved_count += 1
+        return {"questions": len(rows), "clusters": saved_count, "geo_relevant": sum(cluster["is_geo_relevant"] for cluster in clusters)}
 
     def _build_dataset(self, job: Dict) -> Dict:
         dataset_id = job["input"]["dataset_id"]
@@ -176,6 +238,49 @@ class CollectionWorker:
         statistics = {"candidates": len(candidates), "accepted": accepted, "rejected": rejected, "executions": completed, "acceptance_rate": round(accepted / len(candidates), 4) if candidates else 0}
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         return statistics
+
+    def _reverse_engineer(self, job: Dict) -> Dict:
+        project_id = job["project_id"]
+        accepted = self.db.request("GET", "dataset_examples", "select=prompt_id&status=eq.accepted")
+        accepted_prompt_ids = {row["prompt_id"] for row in accepted}
+        prompts = self.db.request("GET", "prompts", f"select=id,text&project_id=eq.{project_id}")
+        prompts_by_id = {row["id"]: row for row in prompts if row["id"] in accepted_prompt_ids}
+        if not prompts_by_id:
+            return {"examples": 0, "reconstructed": 0}
+        observations = self.db.request("GET", "observations", f"select=id,prompt_id&prompt_id=in.({','.join(prompts_by_id)})")
+        observation_prompt = {row["id"]: row["prompt_id"] for row in observations}
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&observation_id=in.({','.join(observation_prompt)})") if observations else []
+        fan_outs_by_prompt = {}
+        for row in fan_out_rows:
+            prompt_id = observation_prompt.get(row["observation_id"])
+            if prompt_id:
+                fan_outs_by_prompt.setdefault(prompt_id, []).append(row["query"])
+        examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id) for prompt_id, fan_outs in fan_outs_by_prompt.items() if fan_outs]
+        if not examples:
+            return {"examples": 0, "reconstructed": 0}
+        reconstructor = PromptReconstructor(examples)
+        clusters = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true")
+        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text)")
+        questions_by_cluster = {}
+        for link in links:
+            if link.get("questions"):
+                questions_by_cluster.setdefault(link["cluster_id"], []).append(link["questions"]["text"])
+        project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
+        max_per_cluster = int(job.get("input", {}).get("max_candidates_per_cluster", 3))
+        candidates = []
+        for cluster in clusters:
+            target = [cluster["representative_question"], *questions_by_cluster.get(cluster["id"], [])]
+            for candidate in reconstructor.reconstruct(target, project.get("language", "fr"), max_per_cluster):
+                candidate.source_reference = cluster["id"]
+                candidate.metadata.update({"target_cluster_id": cluster["id"], "training_examples": len(examples)})
+                candidates.append(candidate)
+        rows = [{
+            "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
+            "provenance": "reverse_engineered", "confidence": candidate.confidence, "status": "draft",
+            "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
+        } for candidate in candidates]
+        saved = self.db.request("POST", "prompts", "on_conflict=project_id,text", rows, "resolution=ignore-duplicates,return=representation") if rows else []
+        return {"examples": len(examples), "clusters": len(clusters), "candidates": len(rows), "reconstructed": len(saved or [])}
 
 
 def main():
