@@ -1,0 +1,15 @@
+[
+  {
+    "answer": "Pour débuter le trail, privilégiez le confort et l'adhérence.",
+    "model": "fixture-model",
+    "web_search_triggered": true,
+    "query_fan_outs": [
+      {"query": "meilleures chaussures trail débutant"},
+      {"query": "amorti chaussures trail"},
+      {"query": "chaussures trail terrain humide"}
+    ],
+    "citations": [
+      {"url": "https://example.com/trail", "title": "Guide trail", "position": 1}
+    ]
+  }
+]

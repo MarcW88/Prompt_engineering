@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# Environment
+.env
+
+# Output
+output/
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Frontend
+web/node_modules/
+web/.next/
+web/.vercel/
+web/*.tsbuildinfo
+
+# Local datasets and media
+*.csv
+*.xlsx
+*.xls
+*.jpeg
+*.jpg
+*.avif
+exports/
+
+# OS
+.DS_Store
+Thumbs.db

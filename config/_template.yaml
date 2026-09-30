@@ -1,0 +1,128 @@
+# ============================================
+# TEMPLATE Configuration Client
+# ============================================
+# Copier ce fichier et renommer : {client_slug}.yaml
+# Remplir tous les champs marqués [À REMPLIR]
+
+client:
+  name: "[À REMPLIR]"           # Nom du client
+  slug: "[À REMPLIR]"           # Slug (minuscules, sans espaces)
+  website: "[À REMPLIR]"        # Site principal
+
+brand_variants:
+  - "[À REMPLIR]"               # Marque principale
+  # Ajouter sous-marques si applicable
+
+markets:
+  - FR                          # Marchés cibles
+
+languages:
+  - fr                          # Langues à scraper
+
+themes:
+  - "[À REMPLIR]"               # Thématiques principales
+  # Ajouter autant que nécessaire
+
+competitors:
+  - "[À REMPLIR]"               # Concurrents principaux
+
+# ============================================
+# SOURCES À SCRAPER
+# ============================================
+
+sources:
+  forums:
+    enabled: true
+    platforms:
+      - name: reddit
+        subreddits:
+          - "[À REMPLIR]"       # Subreddits pertinents
+        search_method: api
+        
+      # Ajouter forums spécialisés selon secteur
+
+  reviews:
+    enabled: true
+    platforms:
+      - name: trustpilot
+        url: "[À REMPLIR]"      # URL Trustpilot client
+        method: scrape
+
+  serp:
+    enabled: true
+    query_templates:
+      - "{theme} [MARQUE] avis"
+      - "{theme} [MARQUE] qualité"
+      - "meilleur {theme} [MARQUE]"
+      - "problème [MARQUE]"
+      - "[MARQUE] vs {competitor}"
+
+  qa:
+    enabled: false
+
+# ============================================
+# PARAMÈTRES SCRAPING
+# ============================================
+
+scraping:
+  max_results_per_source: 100
+  max_results_per_theme: 50
+  
+  forum:
+    max_threads: 50
+    max_replies_per_thread: 3
+    max_thread_depth: 2
+    
+  reviews:
+    max_rating: 3
+    include_all_ratings: false
+    min_text_length: 100
+    max_pages: 10
+    
+  serp:
+    max_paa_depth: 3
+    max_suggestions: 10
+    
+  delay_between_requests: 2
+  max_retries: 3
+  timeout: 30
+
+# ============================================
+# FILTRES QUALITÉ
+# ============================================
+
+filters:
+  min_text_length: 50
+  max_text_length: 5000
+  
+  spam_patterns:
+    - "cliquez ici"
+    - "visitez notre site"
+    - "code promo"
+    
+  required_keywords_mode: "any"
+  
+  accepted_languages:
+    - fr
+
+# ============================================
+# OUTPUT
+# ============================================
+
+output:
+  format: csv
+  include_rejected: true
+  
+  fields:
+    - id
+    - source_type
+    - platform
+    - theme
+    - brand_detected
+    - raw_text
+    - url
+    - title
+    - rating
+    - date
+    - is_question
+    - sentiment_hint

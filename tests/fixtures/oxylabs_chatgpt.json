@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "content": {
+        "answer": "Choisissez selon le terrain, l'amorti et votre expérience.",
+        "model": "fixture-model",
+        "search_queries": [
+          "chaussures trail pour débuter",
+          "choisir amorti chaussures trail",
+          "semelle trail sol humide"
+        ],
+        "sources": [
+          {"url": "https://example.com/trail", "title": "Guide trail"},
+          {"url": "https://shop.example.org/trail", "title": "Comparatif"}
+        ]
+      }
+    }
+  ]
+}

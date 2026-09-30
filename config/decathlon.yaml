@@ -1,0 +1,210 @@
+# ============================================
+# Configuration Client : Decathlon
+# ============================================
+# Ce fichier définit tous les paramètres pour le scraping
+# Modifier uniquement ce fichier pour changer de client
+
+client:
+  name: "Decathlon"
+  slug: "decathlon"
+  website: "decathlon.fr"
+
+# Toutes les variantes de la marque à rechercher
+brand_variants:
+  - decathlon
+  - quechua        # outdoor/camping
+  - kipsta         # sports collectifs
+  - domyos         # fitness
+  - btwin          # vélo
+  - kalenji        # running
+  - tribord        # sports nautiques
+  - simond         # escalade
+  - forclaz        # trek
+  - rockrider      # VTT
+  - van rysel      # vélo route
+  - aptonia        # nutrition sport
+  - nabaiji        # natation
+
+# Marchés cibles
+markets:
+  - FR
+  - BE
+
+# Langues à scraper
+languages:
+  - fr
+
+# Thématiques produits/services
+themes:
+  - running
+  - course à pied
+  - randonnée
+  - trek
+  - vélo
+  - cyclisme
+  - VTT
+  - fitness
+  - musculation
+  - camping
+  - natation
+  - sports collectifs
+  - football
+  - basketball
+  - tennis
+  - ski
+  - escalade
+
+# Concurrents (pour comparaisons)
+competitors:
+  - intersport
+  - go sport
+  - sport 2000
+  - alltricks
+  - i-run
+  - lepape
+
+# ============================================
+# SOURCES À SCRAPER
+# ============================================
+
+sources:
+  # --- FORUMS ---
+  forums:
+    enabled: true
+    platforms:
+      - name: reddit
+        subreddits:
+          - running
+          - cycling
+          - CampingGear
+          - Fitness
+          - france
+          - AskFrance
+        search_method: api  # api ou search
+        
+      - name: randonner-leger
+        url: "https://www.randonner-leger.org/forum/"
+        search_method: google_site
+        
+      - name: skipass
+        url: "https://www.skipass.com/forums/"
+        search_method: google_site
+        
+      - name: velotaf
+        url: "https://forum.velotaf.com/"
+        search_method: google_site
+        
+      - name: hardware-sports
+        url: "https://forum.hardware.fr/hfr/Discussions/Sports/"
+        search_method: google_site
+
+  # --- AVIS CLIENTS ---
+  reviews:
+    enabled: true
+    platforms:
+      - name: trustpilot
+        url: "https://fr.trustpilot.com/review/www.decathlon.fr"
+        method: scrape
+        
+      - name: google_reviews
+        place_ids:
+          - "ChIJ..."  # À remplir avec vrais IDs magasins
+        method: api  # Places API
+
+  # --- SERP / PAA ---
+  serp:
+    enabled: true
+    query_templates:
+      - "{theme} decathlon avis"
+      - "{theme} decathlon qualité"
+      - "meilleur {theme} decathlon"
+      - "{brand_variant} avis"
+      - "decathlon vs {competitor}"
+      - "problème {brand_variant}"
+      - "alternative decathlon {theme}"
+
+  # --- Q&A ---
+  qa:
+    enabled: false  # Optionnel
+    platforms:
+      - name: quora
+        topics:
+          - sport
+          - équipement sportif
+
+# ============================================
+# PARAMÈTRES SCRAPING
+# ============================================
+
+scraping:
+  # Limites générales
+  max_results_per_source: 100
+  max_results_per_theme: 50
+  
+  # Forums
+  forum:
+    max_threads: 50
+    max_replies_per_thread: 3
+    max_thread_depth: 2
+    
+  # Avis
+  reviews:
+    max_rating: 3          # Priorité avis négatifs
+    include_all_ratings: false
+    min_text_length: 100
+    max_pages: 10
+    
+  # SERP
+  serp:
+    max_paa_depth: 3
+    max_suggestions: 10
+    
+  # Rate limiting
+  delay_between_requests: 2  # secondes
+  max_retries: 3
+  timeout: 30
+
+# ============================================
+# FILTRES QUALITÉ
+# ============================================
+
+filters:
+  min_text_length: 50
+  max_text_length: 5000
+  
+  # Patterns spam à exclure
+  spam_patterns:
+    - "cliquez ici"
+    - "visitez notre site"
+    - "code promo"
+    - "lien affilié"
+    
+  # Mots-clés obligatoires (au moins 1)
+  required_keywords_mode: "any"  # any ou all
+  
+  # Langues acceptées
+  accepted_languages:
+    - fr
+
+# ============================================
+# OUTPUT
+# ============================================
+
+output:
+  format: csv  # csv ou json
+  include_rejected: true
+  
+  # Champs à exporter
+  fields:
+    - id
+    - source_type
+    - platform
+    - theme
+    - brand_detected
+    - raw_text
+    - url
+    - title
+    - rating
+    - date
+    - is_question
+    - sentiment_hint
