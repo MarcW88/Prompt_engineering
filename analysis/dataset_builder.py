@@ -21,6 +21,8 @@ class ClusterInput:
     representative_question: str
     questions: Sequence[str] = field(default_factory=list)
     language: str = "fr"
+    question_count: int = 0
+    source_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ class DatasetBuilder:
                     "stage": stage,
                     "specificity_level": specificity,
                     "language": cluster.language,
+                    "cluster_question_count": cluster.question_count or len(cluster.questions) + 1,
+                    "cluster_source_count": cluster.source_count,
                 },
             ))
             if len(candidates) >= config.candidates_per_cluster:

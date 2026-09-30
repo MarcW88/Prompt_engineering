@@ -88,7 +88,9 @@ Sans `--once`, le worker traite les jobs en attente jusqu'à ce que la file soit
 
 ## Dataset Builder
 
-Le Dataset Builder construit une matrice contrôlée depuis les clusters GEO : personas, étapes du parcours et niveaux de spécificité. Il crée les prompts candidats, planifie les répétitions par moteur, collecte les fan-outs et classe chaque exemple comme accepté ou rejeté selon son score de qualité.
+Le Dataset Builder construit une matrice contrôlée depuis les clusters GEO : personas, étapes du parcours et niveaux de spécificité. Il sépare le grand corpus candidat du petit échantillon réellement exécuté, applique un score pré-exécution, sélectionne un échantillon stratifié par cluster, puis collecte les fan-outs uniquement pour cet échantillon.
+
+La validation fonctionne en entonnoir : screening à 1 run, finalistes à 3 runs et Tier 1 à 5 runs. Un plafond budgétaire bloque tout lancement dont le coût estimé est trop élevé. Les exemples acceptés peuvent être exportés au format CSV Semactic.
 
 Le volume d'observations est calculé ainsi :
 

@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 
 from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBuilder
 from analysis.dataset_quality import score_dataset_example
-from analysis.models import AnalysisRequest
+from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
+from analysis.models import AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
@@ -43,7 +44,7 @@ class CollectionWorker:
         self.config_path = config_path
 
     def run_once(self) -> bool:
-        jobs = self.db.request("GET", "jobs", "select=*&kind=in.(collect_sources,transform_signals,cluster_questions,build_dataset,reverse_engineer)&status=eq.pending&order=created_at.asc&limit=1")
+        jobs = self.db.request("GET", "jobs", "select=*&kind=in.(collect_sources,transform_signals,cluster_questions,build_dataset,validate_dataset,reverse_engineer)&status=eq.pending&order=created_at.asc&limit=1")
         if not jobs:
             return False
         job = jobs[0]
@@ -54,6 +55,7 @@ class CollectionWorker:
                 "transform_signals": self._transform_signals,
                 "cluster_questions": self._cluster_questions,
                 "build_dataset": self._build_dataset,
+                "validate_dataset": self._validate_dataset,
                 "reverse_engineer": self._reverse_engineer,
             }
             result = handlers[job["kind"]](job)
@@ -166,78 +168,109 @@ class CollectionWorker:
         build_config = dataset.get("build_config", {})
         clusters = [ClusterInput(
             id=row["id"], label=row["label"], representative_question=row["representative_question"],
-            questions=questions_by_cluster.get(row["id"], []), language=language.get("language", "fr")
+            questions=questions_by_cluster.get(row["id"], []), language=language.get("language", "fr"),
+            question_count=row.get("question_count", 0), source_count=row.get("source_count", 0)
         ) for row in cluster_rows]
-        candidates = DatasetBuilder().build(clusters, DatasetBuildConfig(
+        candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
-        ))[:dataset["target_size"]]
+        ))[:dataset.get("candidate_pool_size", dataset["target_size"])])
+        selected = stratified_sample(candidates, int(dataset.get("execution_sample_size", len(candidates))), int(build_config.get("max_per_cluster", 5)))
+        selected_ids = {candidate.id for candidate in selected}
+        repetitions = int(dataset["repetitions"])
+        engines = dataset.get("engines", ["chatgpt"])
+        cost = estimate_cost(len(selected), repetitions, len(engines), float(dataset.get("cost_per_execution_eur", 0)))
+        if cost["estimated_cost_eur"] > float(dataset.get("max_budget_eur", 0)):
+            raise RuntimeError(f"Estimated cost {cost['estimated_cost_eur']:.2f} EUR exceeds budget")
         prompt_rows = self.db.request("POST", "prompts", body=[{
             "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
-            "provenance": candidate.provenance.value, "confidence": candidate.confidence, "status": "testing",
+            "provenance": candidate.provenance.value, "confidence": candidate.confidence,
+            "status": "testing" if candidate.id in selected_ids else "draft",
             "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
         } for candidate in candidates]) if candidates else []
         examples = self.db.request("POST", "dataset_examples", body=[{
             "dataset_id": dataset_id, "prompt_id": prompt["id"], "cluster_id": prompt["cluster_id"],
-            "status": "executing", "persona": candidate.metadata["persona"],
-            "journey_stage": candidate.metadata["stage"], "specificity_level": candidate.metadata["specificity_level"],
+            "status": "executing" if candidate.id in selected_ids else "candidate",
+            "persona": candidate.metadata["persona"], "journey_stage": candidate.metadata["stage"],
+            "specificity_level": candidate.metadata["specificity_level"],
             "expected_sub_intents": candidate.expected_fan_outs,
+            "pre_execution_score": candidate.confidence,
+            "selected_for_execution": candidate.id in selected_ids,
+            "selection_reason": "stratified_screening" if candidate.id in selected_ids else "candidate_pool",
+            "validation_tier": 3, "target_runs": repetitions,
         } for prompt, candidate in zip(prompt_rows, candidates)]) if prompt_rows else []
-        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing"}, "return=minimal")
+        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
         provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
-        repetitions = int(dataset["repetitions"])
-        engines = dataset.get("engines", ["chatgpt"])
         threshold = float(build_config.get("quality_threshold", 0.65))
-        accepted = 0
-        rejected = 0
+        accepted = rejected = completed = 0
         all_prompts = [candidate.text for candidate in candidates]
-        total = max(1, len(candidates) * repetitions * len(engines))
-        completed = 0
+        total = max(1, len(selected) * repetitions * len(engines))
         for candidate, prompt, example in zip(candidates, prompt_rows, examples):
+            if candidate.id not in selected_ids:
+                continue
             observations = []
             for engine in engines:
                 for _ in range(repetitions):
-                    observation = provider.execute(AnalysisRequest(
-                        prompt=candidate.text, engine=engine, country=language.get("country", "BE"),
-                        language=language.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"]}
-                    ))
+                    observation = provider.execute(AnalysisRequest(prompt=candidate.text, engine=engine, country=language.get("country", "BE"), language=language.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"]}))
                     observations.append(observation)
-                    observation_rows = self.db.request("POST", "observations", body=[{
-                        "prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine,
-                        "model": observation.model, "country": observation.country, "language": observation.language,
-                        "answer": observation.answer, "web_search_triggered": observation.web_search_triggered,
-                        "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat(),
-                    }])
+                    observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
                     observation_id = observation_rows[0]["id"]
                     if observation.fan_outs:
-                        self.db.request("POST", "fan_outs", body=[{
-                            "observation_id": observation_id, "position": index + 1, "query": query,
-                            "normalized_query": " ".join(query.casefold().split()),
-                        } for index, query in enumerate(observation.fan_outs)])
+                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split())} for index, query in enumerate(observation.fan_outs)])
                     if observation.citations:
-                        self.db.request("POST", "citations", body=[{
-                            "observation_id": observation_id, "position": citation.position or index + 1,
-                            "url": citation.url, "title": citation.title, "excerpt": citation.text,
-                        } for index, citation in enumerate(observation.citations)])
+                        self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
                     completed += 1
-                    progress = min(95, 10 + int(85 * completed / total))
-                    self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": progress}, "return=minimal")
+                    self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
             scores = score_dataset_example(candidate, observations, all_prompts)
             is_accepted = scores["quality_score"] >= threshold
             accepted += int(is_accepted)
             rejected += int(not is_accepted)
-            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {
-                "status": "accepted" if is_accepted else "rejected", **scores,
-                "rejection_reason": None if is_accepted else "quality_below_threshold",
-            }, "return=minimal")
-            self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {
-                "status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"],
-            }, "return=minimal")
-        statistics = {"candidates": len(candidates), "accepted": accepted, "rejected": rejected, "executions": completed, "acceptance_rate": round(accepted / len(candidates), 4) if candidates else 0}
+            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+            self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
+        statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "estimated_cost_eur": cost["estimated_cost_eur"], "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         return statistics
+
+    def _validate_dataset(self, job: Dict) -> Dict:
+        dataset_id = job["input"]["dataset_id"]
+        target_runs = int(job["input"].get("target_runs", 3))
+        limit = int(job["input"].get("limit", 100))
+        dataset = self.db.request("GET", "datasets", f"select=*&id=eq.{dataset_id}&limit=1")[0]
+        examples = self.db.request("GET", "dataset_examples", f"select=*&dataset_id=eq.{dataset_id}&status=eq.accepted&completed_runs=lt.{target_runs}&order=quality_score.desc&limit={limit}")
+        if not examples:
+            return {"selected": 0, "executions": 0, "target_runs": target_runs}
+        prompt_ids = [example["prompt_id"] for example in examples]
+        prompt_rows = self.db.request("GET", "prompts", f"select=*&id=in.({','.join(prompt_ids)})")
+        prompts = {prompt["id"]: prompt for prompt in prompt_rows}
+        project = self.db.request("GET", "projects", f"select=language,country&id=eq.{dataset['project_id']}&limit=1")[0]
+        engines = dataset.get("engines", ["chatgpt"])
+        additional_executions = sum(max(0, target_runs - int(example.get("completed_runs", 0))) * len(engines) for example in examples)
+        additional_cost = additional_executions * float(dataset.get("cost_per_execution_eur", 0))
+        projected_cost = float(dataset.get("estimated_cost_eur", 0)) + additional_cost
+        if projected_cost > float(dataset.get("max_budget_eur", 0)):
+            raise RuntimeError(f"Projected cost {projected_cost:.2f} EUR exceeds budget")
+        provider = OxylabsProvider() if os.getenv("DATASET_PROVIDER", "brightdata") == "oxylabs" else BrightDataProvider()
+        completed = 0
+        for example in examples:
+            prompt = prompts[example["prompt_id"]]
+            candidate = PromptCandidate(text=prompt["text"], provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
+            observations = []
+            remaining = max(0, target_runs - int(example.get("completed_runs", 0)))
+            for engine in engines:
+                for _ in range(remaining):
+                    observation = provider.execute(AnalysisRequest(prompt=prompt["text"], engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"], "validation_wave": target_runs}))
+                    observations.append(observation)
+                    observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
+                    observation_id = observation_rows[0]["id"]
+                    if observation.fan_outs:
+                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split())} for index, query in enumerate(observation.fan_outs)])
+                    completed += 1
+            scores = score_dataset_example(candidate, observations) if observations else {}
+            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
+        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"estimated_cost_eur": round(projected_cost, 2)}, "return=minimal")
+        return {"selected": len(examples), "executions": completed, "target_runs": target_runs, "additional_cost_eur": round(additional_cost, 2)}
 
     def _reverse_engineer(self, job: Dict) -> Dict:
         project_id = job["project_id"]
