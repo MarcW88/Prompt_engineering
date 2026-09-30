@@ -20,6 +20,7 @@ from scrapers import ForumScraper, ReviewScraper, SerpScraper
 from storage import RawStorage
 from filters import QualityFilter
 from export import Exporter
+from sources import parse_gsc_file
 
 
 def parse_args():
@@ -54,6 +55,8 @@ def parse_args():
         action="store_true",
         help="Clear existing data for this client before scraping"
     )
+    parser.add_argument("--gsc", help="Path to a Google Search Console CSV export")
+    parser.add_argument("--gsc-min-words", type=int, default=10, help="Minimum query word count for GSC")
     return parser.parse_args()
 
 
@@ -108,6 +111,15 @@ def main():
     
     total_items = 0
     all_stats = []
+
+    if args.gsc:
+        try:
+            gsc_items = parse_gsc_file(args.gsc, args.gsc_min_words, config.client.slug)
+            saved = storage.save(gsc_items)
+            total_items += saved
+            logger.info(f"GSC conversations: parsed {len(gsc_items)}, saved {saved}")
+        except Exception as e:
+            logger.error(f"Error importing GSC: {e}")
     
     for scraper in scrapers:
         if not scraper.is_enabled:

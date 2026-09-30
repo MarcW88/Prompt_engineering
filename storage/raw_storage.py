@@ -57,7 +57,7 @@ class RawStorage:
         with sqlite3.connect(self.db_path) as conn:
             for item in items:
                 try:
-                    if not self.exists(item.url, conn):
+                    if not self.exists_item(item, conn):
                         conn.execute("""
                             INSERT INTO raw_items 
                             (id, source_type, platform, brand, theme, raw_text, url, title, rating, date, metadata, scraped_at, client_slug)
@@ -88,6 +88,21 @@ class RawStorage:
         self.logger.info(f"Saved {saved}/{len(items)} items")
         return saved
     
+    def exists_item(self, item: RawItem, conn: Optional[sqlite3.Connection] = None) -> bool:
+        should_close = False
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
+            should_close = True
+        try:
+            cursor = conn.execute(
+                "SELECT 1 FROM raw_items WHERE client_slug = ? AND platform = ? AND raw_text = ? LIMIT 1",
+                (item.client_slug, item.platform, item.raw_text)
+            )
+            return cursor.fetchone() is not None
+        finally:
+            if should_close:
+                conn.close()
+
     def exists(self, url: str, conn: Optional[sqlite3.Connection] = None) -> bool:
         """Vérifie si une URL existe déjà"""
         if not url:

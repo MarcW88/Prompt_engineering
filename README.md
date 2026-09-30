@@ -21,6 +21,20 @@ npm run build
 
 Pour Vercel, conservez la racine du dépôt comme **Root Directory** et ajoutez les variables de `.env.example` dans les paramètres du projet.
 
+## Base de données Supabase
+
+Le schéma de production est versionné dans `supabase/migrations/202609300001_prompt_lab.sql`. Il contient les projets, sources, signaux, questions, clusters, prompts, observations, fan-outs, citations, validations et jobs.
+
+Variables serveur nécessaires :
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+```
+
+La clé secrète reste exclusivement utilisée dans les Route Handlers Next.js et ne doit jamais être exposée au navigateur.
+
 ## Backend d'analyse Python
 
 Le backend Python contient :
@@ -35,6 +49,12 @@ Initialiser la base locale :
 
 ```bash
 ./venv/bin/python analysis_cli.py init-db
+```
+
+Importer un export Google Search Console en conservant les requêtes conversationnelles :
+
+```bash
+./venv/bin/python main.py --config config/decathlon.yaml --gsc export-gsc.csv --gsc-min-words 10
 ```
 
 Exécuter les tests :

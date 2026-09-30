@@ -69,9 +69,9 @@ def filter_forums_to_transform(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_paa_questions(df: pd.DataFrame) -> pd.DataFrame:
-    """Récupère les questions PAA (SERP) à conserver telles quelles"""
-    existing = df[df['source_type'] == 'serp'].copy()
-    print(f"📊 {len(existing)} questions PAA conservées")
+    """Récupère les questions observées PAA et GSC à conserver telles quelles"""
+    existing = df[df['source_type'].isin(['serp', 'gsc_conversation'])].copy()
+    print(f"📊 {len(existing)} questions PAA/GSC conservées")
     return existing
 
 
