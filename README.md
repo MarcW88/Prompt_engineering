@@ -86,11 +86,25 @@ Les jobs créés par Next.js sont traités par le worker Python :
 
 Sans `--once`, le worker traite les jobs en attente jusqu'à ce que la file soit vide. En production, il doit tourner sur un service Python séparé de Vercel.
 
+## Dataset Builder
+
+Le Dataset Builder construit une matrice contrôlée depuis les clusters GEO : personas, étapes du parcours et niveaux de spécificité. Il crée les prompts candidats, planifie les répétitions par moteur, collecte les fan-outs et classe chaque exemple comme accepté ou rejeté selon son score de qualité.
+
+Le volume d'observations est calculé ainsi :
+
+```text
+prompts candidats × répétitions × moteurs
+```
+
+Le worker traite les jobs `build_dataset` avec Bright Data par défaut. Utilisez `DATASET_PROVIDER=oxylabs` pour basculer sur Oxylabs lorsque le moteur demandé est pris en charge.
+
 ## Workflow
 
 1. Import des seeds et collecte depuis GSC, Reddit, forums, avis et SERP/PAA.
 2. Normalisation et regroupement des intentions.
-3. Construction de signatures de query fan-out.
-4. Reconstruction de prompts plausibles avec provenance explicite.
-5. Réexécution via Bright Data ou Oxylabs.
-6. Mesure de la reproduction, des citations et de la stabilité.
+3. Construction d'une matrice de prompts contrôlée depuis les clusters.
+4. Exécution répétée via Bright Data ou Oxylabs.
+5. Collecte des fan-outs, citations et réponses.
+6. Scoring de couverture, reproduction, stabilité et redondance.
+7. Sélection du dataset accepté pour le reverse engineering.
+8. Reconstruction de nouveaux prompts depuis les signatures validées.
