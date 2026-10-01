@@ -27,6 +27,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
 
   const executions = useMemo(() => estimateDatasetExecutions({ executionSampleSize, repetitions, engines }), [executionSampleSize, repetitions, engines]);
   const estimatedCost = executions * costPerExecutionEur;
+  const highCost = estimatedCost >= 10;
   const waves = Math.ceil(executions / 5);
   const minMinutes = waves * 5;
   const maxMinutes = waves * 15;
@@ -72,6 +73,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
 
   async function submit() {
     if (!projectId) { setStatus("Créez d'abord un workspace Supabase."); return; }
+    if (highCost && !window.confirm(`Coût estimé : ${estimatedCost.toFixed(2)} €. Cette analyse dépasse 10 €. Confirmer le lancement ?`)) return;
     setLoading(true);
     setStatus("Création du corpus candidat…");
     try {
@@ -141,11 +143,12 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
           <small>Commencez par ChatGPT seul. Ajouter Perplexity ou Gemini multiplie les appels et la durée.</small>
         </fieldset>
 
-        <div className={`dataset-estimate ${realism.tone}`}>
+        <div className={`dataset-estimate ${highCost ? "warn" : realism.tone}`}>
           <div><strong>{executions.toLocaleString("fr-FR")}</strong><span>observations prévues</span></div>
           <p>{candidatePoolSize.toLocaleString("fr-FR")} candidats → {executionSampleSize.toLocaleString("fr-FR")} exécutés · coût estimé {estimatedCost.toFixed(2)} € / plafond {maxBudgetEur.toFixed(2)} €</p>
           <p>{realism.label} — {realism.text}</p>
           <p>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence Bright Data. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</p>
+          {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
         </div>
 
         {status && <p className="import-status">{status}</p>}

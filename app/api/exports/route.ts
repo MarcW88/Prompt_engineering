@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import writeExcelFile from "write-excel-file/node";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
 
 type Row = Record<string, unknown>;
@@ -13,9 +14,24 @@ function toCsv(rows: Row[], columns: string[]) {
   return [columns.join(","), ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(","))].join("\n");
 }
 
-function download(rows: Row[], columns: string[], stage: string, format: string) {
+async function download(rows: Row[], columns: string[], stage: string, format: string) {
   if (format === "json") {
     return NextResponse.json({ stage, count: rows.length, rows });
+  }
+  if (format === "xlsx") {
+    const data = [columns, ...rows.map((row) => columns.map((column) => {
+      const value = row[column];
+      if (value === null || value === undefined) return "";
+      if (typeof value === "object") return JSON.stringify(value);
+      return value as string | number | boolean | Date;
+    }))];
+    const buffer = await writeExcelFile(data).toBuffer();
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${stage}.xlsx"`,
+      },
+    });
   }
   return new NextResponse(toCsv(rows, columns), {
     headers: {
@@ -42,7 +58,8 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const projectId = params.get("projectId");
   const stage = params.get("stage") ?? "";
-  const format = params.get("format") === "json" ? "json" : "csv";
+  const requestedFormat = params.get("format") ?? "csv";
+  const format = ["csv", "json", "xlsx"].includes(requestedFormat) ? requestedFormat : "csv";
   if (!projectId) return NextResponse.json({ error: "projectId est requis." }, { status: 400 });
   if (!stages.has(stage)) return NextResponse.json({ error: "stage invalide." }, { status: 400 });
   if (!isSupabaseConfigured()) return NextResponse.json({ error: "Supabase n'est pas configuré." }, { status: 503 });

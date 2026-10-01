@@ -184,7 +184,7 @@ export function Dashboard() {
           </section>
 
           <section className="workflow-section">
-            <div className="section-heading"><div><span className="eyebrow">MÉTHODE</span><h2>Un signal réel, une preuve mesurable</h2></div><button className="text-button" onClick={() => setPipelineModal(true)}>Piloter le workflow <ArrowRight size={16} /></button></div>
+            <div className="section-heading"><div><span className="eyebrow">MÉTHODE</span><h2>Un signal réel, une preuve mesurable</h2></div></div>
             <div className="workflow-grid">
               {steps.map(({ n, title, text, label, icon: Icon }, index) => (
                 <article key={title}>

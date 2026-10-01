@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import { Download, FileSpreadsheet, X } from "lucide-react";
 
 const exports = [
-  { stage: "seeds", title: "Seeds", text: "Mots-clés, thèmes, marques, concurrents et priorités." },
-  { stage: "signals", title: "Signaux collectés", text: "Reddit, forums, SERP/PAA, Trustpilot et GSC." },
-  { stage: "questions", title: "Questions", text: "Questions observées ou transformées." },
-  { stage: "clusters", title: "Clusters", text: "Intentions regroupées et volumes associés." },
-  { stage: "dataset", title: "Dataset contrôlé", text: "Exemples, statuts, scores et décisions de revue." },
-  { stage: "observations", title: "Observations moteurs", text: "Réponses, moteurs, providers et métadonnées." },
-  { stage: "fanouts", title: "Query fan-outs", text: "Requêtes observées via OpenAI web search." },
-  { stage: "citations", title: "Citations", text: "URLs, titres et extraits cités par les moteurs." },
-  { stage: "validations", title: "Validations", text: "Scores de reproduction, stabilité et qualité." },
-  { stage: "prompts", title: "Prompts reconstruits", text: "Prompts observés, synthétiques et reconstruits." },
+  { step: "01", phase: "Après saisie des seeds", stage: "seeds", title: "Seeds", text: "Mots-clés, thèmes, marques, concurrents et priorités." },
+  { step: "02", phase: "Après collecte", stage: "signals", title: "Signaux bruts", text: "Reddit, forums, SERP/PAA, Trustpilot et GSC." },
+  { step: "03", phase: "Après transformation", stage: "questions", title: "Questions", text: "Questions observées ou transformées." },
+  { step: "04", phase: "Après clustering", stage: "clusters", title: "Clusters", text: "Intentions regroupées et volumes associés." },
+  { step: "05", phase: "Après Dataset Builder", stage: "dataset", title: "Dataset contrôlé", text: "Exemples, statuts, scores et décisions de revue." },
+  { step: "05", phase: "Après exécution", stage: "observations", title: "Réponses moteurs", text: "Réponses, moteurs, providers et métadonnées." },
+  { step: "05", phase: "Après exécution", stage: "fanouts", title: "Query fan-outs", text: "Requêtes observées via OpenAI web search." },
+  { step: "05", phase: "Après exécution", stage: "citations", title: "Citations", text: "URLs, titres et extraits cités par les moteurs." },
+  { step: "06", phase: "Après validation", stage: "validations", title: "Validations", text: "Scores de reproduction, stabilité et qualité." },
+  { step: "07", phase: "Après reverse engineering", stage: "prompts", title: "Prompts reconstruits", text: "Prompts observés, synthétiques et reconstruits." },
 ];
 
 interface DatasetOption { id: string; name: string; status: string }
@@ -44,12 +44,12 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
           <div><span className="eyebrow">EXPORTS</span><h2>Exporter chaque étape</h2></div>
           <button type="button" className="icon-button" onClick={onClose}><X size={19} /></button>
         </div>
-        <p className="export-intro">Chaque livrable peut être exporté en CSV ou JSON. Le CSV convient à Excel/Sheets ; le JSON conserve les données techniques.</p>
+        <p className="export-intro">Chaque ligne correspond au moment du workflow où l’export devient utile. CSV et XLSX s’ouvrent dans Excel/Sheets ; JSON conserve les données techniques.</p>
         <div className="export-grid">
           {exports.map((item) => (
             <article key={item.stage} className="export-item">
-              <div><FileSpreadsheet size={18} /><div><strong>{item.title}</strong><p>{item.text}</p></div></div>
-              <span><a className="secondary mini" href={url(item.stage)}>CSV</a><a className="secondary mini" href={url(item.stage, "json")}>JSON</a></span>
+              <div><FileSpreadsheet size={18} /><div><span className="export-step">Étape {item.step} · {item.phase}</span><strong>{item.title}</strong><p>{item.text}</p></div></div>
+              <span><a className="secondary mini" href={url(item.stage)}>CSV</a><a className="secondary mini" href={url(item.stage, "xlsx")}>Excel</a><a className="secondary mini" href={url(item.stage, "json")}>JSON</a></span>
             </article>
           ))}
         </div>
