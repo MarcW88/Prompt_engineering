@@ -26,6 +26,13 @@ from utils.config_loader import load_config
 load_dotenv()
 
 
+def clamp_collection_budget(value) -> int:
+    try:
+        return max(1, min(200, int(value)))
+    except (TypeError, ValueError):
+        return 10
+
+
 class SupabaseRest:
     def __init__(self):
         self.url = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
@@ -130,7 +137,13 @@ class CollectionWorker:
     def _collect(self, job: Dict) -> Dict:
         project_id = job["project_id"]
         config = load_config(self.config_path)
-        seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true&order=priority.desc")
+        input_config = job.get("input", {})
+        budget = clamp_collection_budget(input_config.get("query_budget", 10))
+        seed_ids = [str(seed_id) for seed_id in input_config.get("seed_ids", []) if seed_id]
+        seed_filter = f"&id=in.({','.join(seed_ids)})" if seed_ids else ""
+        seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true{seed_filter}&order=priority.desc")
+        config.scraping.serp["query_budget"] = budget
+        config.scraping.forum["max_threads"] = budget
         config.seeds = deduplicate_seeds(Seed(
             value=row["value"], seed_type=SeedType(row["seed_type"]), priority=row["priority"],
             language=row["language"], market=row["market"], enabled=row["enabled"]
@@ -160,7 +173,7 @@ class CollectionWorker:
             batch = rows[start:start + 200]
             saved = self.db.request("POST", "signals", "on_conflict=project_id,content_hash", batch, "resolution=ignore-duplicates,return=representation")
             imported += len(saved or [])
-        return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds)}
+        return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds), "query_budget": budget}
 
     def _transform_signals(self, job: Dict) -> Dict:
         project_id = job["project_id"]

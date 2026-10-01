@@ -1,6 +1,6 @@
 import unittest
 
-from collection_worker import CollectionWorker
+from collection_worker import CollectionWorker, clamp_collection_budget
 
 
 class FakeDb:
@@ -28,6 +28,12 @@ def worker(jobs):
 
 
 class WorkerRuntimeTests(unittest.TestCase):
+    def test_clamps_collection_budget(self):
+        self.assertEqual(clamp_collection_budget(3), 3)
+        self.assertEqual(clamp_collection_budget(0), 1)
+        self.assertEqual(clamp_collection_budget(999), 200)
+        self.assertEqual(clamp_collection_budget("invalid"), 10)
+
     def test_claims_explicit_job_atomically(self):
         instance = worker([])
         self.assertIsNone(instance.claim("job-1"))
