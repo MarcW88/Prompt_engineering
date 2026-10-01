@@ -12,7 +12,7 @@ const sourceLabels: Record<string, string> = {
   review: "Trustpilot & avis",
 };
 
-const defaultGscPattern = "\\b(comment|pourquoi|quel|quelle|quels|quelles|meilleur|meilleure|avis|problème|comparatif|choisir|alternative|vs)\\b";
+const defaultGscPattern = "^(?:\\S+\\s+){9,}\\S+$";
 
 function lines(value: string) {
   return value.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean);
