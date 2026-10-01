@@ -1,8 +1,11 @@
+import base64
+import os
 import re
 import time
 from typing import List, Optional
 from datetime import datetime
 from bs4 import BeautifulSoup
+import requests
 
 from .base_scraper import BaseScraper
 from models.raw_item import RawItem, SourceType
@@ -14,6 +17,16 @@ class ReviewScraper(BaseScraper):
     
     def __init__(self, config: Config):
         super().__init__(config)
+        self.api_cost_usd = 0.0
+        self.auth_header = self._init_dataforseo_auth()
+
+    def _init_dataforseo_auth(self) -> Optional[str]:
+        login = os.getenv("DATAFORSEO_LOGIN")
+        password = os.getenv("DATAFORSEO_PASSWORD")
+        if login and password:
+            auth = base64.b64encode(f"{login}:{password}".encode()).decode()
+            return f"Basic {auth}"
+        return None
     
     @property
     def source_type(self) -> str:
@@ -53,7 +66,86 @@ class ReviewScraper(BaseScraper):
         return items
     
     def _scrape_trustpilot(self, platform_config: dict) -> List[RawItem]:
-        """Scrape les avis Trustpilot"""
+        """Collecte les avis Trustpilot via DataForSEO, avec fallback HTML."""
+        if self.auth_header:
+            return self._scrape_trustpilot_dataforseo(platform_config)
+        return self._scrape_trustpilot_html(platform_config)
+
+    def _trustpilot_domain(self, platform_config: dict) -> str:
+        configured = platform_config.get("domain", "")
+        if configured:
+            return configured
+        match = re.search(r"/review/([^/?#]+)", platform_config.get("url", ""))
+        return match.group(1) if match else ""
+
+    def _response_cost(self, data: dict) -> float:
+        task_cost = sum(float(task.get("cost") or 0) for task in data.get("tasks", []))
+        return float(data.get("cost") or task_cost)
+
+    def _scrape_trustpilot_dataforseo(self, platform_config: dict) -> List[RawItem]:
+        domain = self._trustpilot_domain(platform_config)
+        if not domain:
+            self.logger.warning("No Trustpilot domain configured")
+            return []
+        max_pages = int(self.config.scraping.reviews.get("max_pages", 10))
+        depth = min(100, max(20, max_pages * 20))
+        headers = {"Authorization": self.auth_header, "Content-Type": "application/json"}
+        response = requests.post(
+            "https://api.dataforseo.com/v3/business_data/trustpilot/reviews/task_post",
+            headers=headers, json=[{"domain": domain, "depth": depth, "sort_by": "recency"}], timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        self.api_cost_usd += self._response_cost(data)
+        task = (data.get("tasks") or [{}])[0]
+        if task.get("status_code") not in {20000, 20100}:
+            self.logger.warning(f"DataForSEO Trustpilot task failed: {task.get('status_message')}")
+            return []
+        result = task.get("result") or []
+        task_id = task.get("id")
+        for _ in range(60):
+            if result:
+                break
+            if not task_id:
+                return []
+            time.sleep(5)
+            response = requests.get(f"https://api.dataforseo.com/v3/business_data/trustpilot/reviews/task_get/{task_id}", headers=headers, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            task = (data.get("tasks") or [{}])[0]
+            result = task.get("result") or []
+            if not result and task.get("status_code") not in {20100, 40602}:
+                self.logger.warning(f"DataForSEO Trustpilot task failed: {task.get('status_message')}")
+                return []
+        reviews = (result[0].get("items") if result else []) or []
+        max_rating = self.config.scraping.reviews.get("max_rating", 3)
+        min_length = self.config.scraping.reviews.get("min_text_length", 100)
+        include_all = self.config.scraping.reviews.get("include_all_ratings", False)
+        items = []
+        for review in reviews:
+            rating = int((review.get("rating") or {}).get("value") or 5)
+            title = review.get("title", "")
+            text = review.get("review_text", "")
+            raw_text = f"{title}\n\n{text}" if title else text
+            if (include_all or rating <= max_rating) and len(raw_text) >= min_length:
+                timestamp = review.get("timestamp")
+                date = None
+                if timestamp:
+                    try:
+                        date = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S %z")
+                    except ValueError:
+                        pass
+                items.append(RawItem(
+                    source_type=SourceType.REVIEW, platform="trustpilot", raw_text=raw_text,
+                    url=review.get("url", platform_config.get("url", "")), title=title,
+                    rating=rating, date=date, brand=self.config.client.name,
+                    metadata={"author": (review.get("user_profile") or {}).get("name", ""), "verified": review.get("verified"), "language": review.get("language"), "provider": "dataforseo"},
+                    client_slug=self.config.client.slug
+                ))
+        return items
+
+    def _scrape_trustpilot_html(self, platform_config: dict) -> List[RawItem]:
+        """Fallback HTML pour environnements sans credentials DataForSEO."""
         items = []
         base_url = platform_config.get("url", "")
         

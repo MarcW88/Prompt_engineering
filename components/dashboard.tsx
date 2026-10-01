@@ -25,7 +25,7 @@ const nav = [
 ];
 
 const steps = [
-  { n: "01", title: "Collecter", text: "Questions réelles depuis GSC, Reddit, forums et SERP.", value: "1 248", label: "signaux", icon: Database },
+  { n: "01", title: "Collecter", text: "Questions réelles depuis GSC, Reddit, forums, avis et SERP.", value: "1 248", label: "signaux", icon: Database },
   { n: "02", title: "Structurer", text: "Dédupliquer et regrouper les intentions par proximité.", value: "86", label: "clusters", icon: Layers3 },
   { n: "03", title: "Reconstruire", text: "Inverser les signatures de fan-out en prompts plausibles.", value: "487", label: "prompts", icon: Sparkles },
   { n: "04", title: "Valider", text: "Réexécuter et mesurer la stabilité des réponses.", value: "88%", label: "stabilité", icon: ShieldCheck },

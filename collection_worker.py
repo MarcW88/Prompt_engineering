@@ -21,7 +21,7 @@ from analysis.providers import BrightDataProvider, OpenAIWebSearchExtractor, Oxy
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
-from scrapers import ForumScraper, SerpScraper
+from scrapers import ForumScraper, ReviewScraper, SerpScraper
 from utils.config_loader import load_config
 
 
@@ -199,6 +199,7 @@ class CollectionWorker:
         seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true{seed_filter}&order=priority.desc")
         config.scraping.serp["query_budget"] = budget
         config.scraping.forum["max_threads"] = budget
+        config.scraping.reviews["max_pages"] = min(10, budget)
         config.seeds = deduplicate_seeds(Seed(
             value=row["value"], seed_type=SeedType(row["seed_type"]), priority=row["priority"],
             language=row["language"], market=row["market"], enabled=row["enabled"]
@@ -216,6 +217,8 @@ class CollectionWorker:
             scrapers.append(ForumScraper(config))
         if "serp" in requested:
             scrapers.append(SerpScraper(config))
+        if "review" in requested:
+            scrapers.append(ReviewScraper(config))
         items = [item for scraper in scrapers for item in scraper.run()]
         dataforseo_cost = sum(float(getattr(scraper, "api_cost_usd", 0)) for scraper in scrapers)
         if dataforseo_cost:
