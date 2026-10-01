@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, BookOpen, ChevronDown, CircleDollarSign, CircleHelp,
   Database, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
-  Search, Settings, ShieldCheck, Sparkles, Upload, X,
+  Search, Settings, ShieldCheck, Sparkles, X,
 } from "lucide-react";
 
 import type { PromptRecord, Provenance } from "@/lib/types";
@@ -14,6 +14,7 @@ import { DatasetBuilderModal } from "./dataset-builder-modal";
 import { PipelineModal } from "./pipeline-modal";
 import { ManualReviewModal } from "./manual-review-modal";
 import { CostsModal } from "./costs-modal";
+import { DocumentationModal } from "./documentation-modal";
 
 const nav = [
   { label: "Vue d'ensemble", icon: BarChart3 },
@@ -47,43 +48,60 @@ export function Dashboard() {
   const [pipelineModal, setPipelineModal] = useState(false);
   const [reviewModal, setReviewModal] = useState(false);
   const [costsModal, setCostsModal] = useState(false);
+  const [docsModal, setDocsModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
   const [configured, setConfigured] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("Workspace GEO");
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const filtered = useMemo(() => records.filter((item) => item.prompt.toLowerCase().includes(query.toLowerCase())), [query, records]);
 
+  async function loadDashboard(selectedProjectId?: string) {
+    const suffix = selectedProjectId ? `?projectId=${encodeURIComponent(selectedProjectId)}` : "";
+    const response = await fetch(`/api/dashboard${suffix}`);
+    if (!response.ok) throw new Error("Dashboard indisponible");
+    const data = await response.json();
+    setConfigured(Boolean(data.configured));
+    setProjectId(data.projectId ?? null);
+    setProjectName(data.projectName ?? "Workspace GEO");
+    setMetrics(data.metrics);
+    setSources(data.sources);
+    setRecords(data.prompts.map((item: { id: string; text: string; provenance: Provenance; confidence: number; status: PromptRecord["status"] }) => ({
+      id: item.id.slice(0, 8), prompt: item.text, provenance: item.provenance, confidence: Math.round(Number(item.confidence) * 100), status: item.status,
+      engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0,
+    })));
+  }
+
   useEffect(() => {
-    fetch("/api/dashboard").then(async (response) => {
-      if (!response.ok) throw new Error("Dashboard indisponible");
-      return response.json();
-    }).then((data) => {
-      setConfigured(Boolean(data.configured));
-      setProjectId(data.projectId ?? null);
-      setMetrics(data.metrics);
-      setSources(data.sources);
-      setRecords(data.prompts.map((item: { id: string; text: string; provenance: Provenance; confidence: number; status: PromptRecord["status"] }) => ({
-        id: item.id.slice(0, 8), prompt: item.text, provenance: item.provenance, confidence: Math.round(Number(item.confidence) * 100), status: item.status,
-        engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0,
-      })));
-    }).catch(() => {
-      setConfigured(false);
-      setRecords([]);
-    });
+    const timer = window.setTimeout(() => {
+      void loadDashboard().catch(() => {
+        setConfigured(false);
+        setRecords([]);
+      });
+    }, 0);
+    fetch("/api/projects").then((response) => response.ok ? response.json() : null).then((data) => {
+      setProjects(data?.projects?.map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })) ?? []);
+    }).catch(() => setProjects([]));
+    return () => window.clearTimeout(timer);
   }, []);
 
   const workflowValues = [metrics.questions, metrics.clusters, metrics.prompts, `${metrics.stability}%`];
 
   async function createWorkspace() {
-    const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Decathlon GEO", slug: "decathlon-geo", website: "decathlon.be", country: "BE", language: "fr" }) });
+    const suffix = Date.now().toString(36);
+    const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `Workspace GEO ${suffix.toUpperCase()}`, slug: `workspace-geo-${suffix}`, country: "FR", language: "fr" }) });
     if (response.ok) window.location.reload();
   }
 
-  function addPrompt(prompt: string) {
-    const next: PromptRecord = { id: `P-${String(records.length + 25).padStart(3, "0")}`, prompt, provenance: "observed", confidence: 100, status: "draft", engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0 };
-    setRecords([next, ...records]);
+  async function switchWorkspace(id: string) {
+    await loadDashboard(id).catch(() => setRecords([]));
+  }
+
+  function reloadAfterPromptTest() {
     setModal(false);
+    window.location.reload();
   }
 
   return (
@@ -94,8 +112,8 @@ export function Dashboard() {
           <button className="mobile-close" onClick={() => setSidebar(false)} aria-label="Fermer"><X size={18} /></button>
         </div>
         <div className="workspace">
-          <span className="workspace-avatar">D</span>
-          <div><small>Workspace</small><strong>Decathlon GEO</strong></div>
+          <span className="workspace-avatar">{projectName.slice(0, 1).toUpperCase()}</span>
+          <div><small>Workspace</small>{projects.length > 1 ? <select className="workspace-select" value={projectId ?? ""} onChange={(event) => void switchWorkspace(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select> : <strong>{projectName}</strong>}</div>
           <ChevronDown size={16} />
         </div>
         <nav>
@@ -106,7 +124,7 @@ export function Dashboard() {
             </button>
           ))}
           <p>ESPACE</p>
-          <button><BookOpen size={18} /><span>Documentation</span></button>
+          <button onClick={() => setDocsModal(true)}><BookOpen size={18} /><span>Documentation</span></button>
           <button><Settings size={18} /><span>Paramètres</span></button>
         </nav>
         <div className="provider-card">
@@ -121,14 +139,15 @@ export function Dashboard() {
         <header className="topbar">
           <button className="menu-button" onClick={() => setSidebar(true)} aria-label="Menu"><Menu size={20} /></button>
           <div className="global-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un prompt, un cluster…" /><kbd>⌘ K</kbd></div>
-          <button className="help"><CircleHelp size={17} /> Aide</button>
-          <button className="primary small" onClick={() => setModal(true)}><Plus size={17} /> Nouveau prompt</button>
+          <button className="help" onClick={() => setDocsModal(true)}><CircleHelp size={17} /> Aide</button>
+          <button className="secondary small" onClick={() => setModal(true)}><FlaskConical size={17} /> Tester un prompt</button>
+          <button className="primary small" onClick={() => setSeedModal(true)}><Plus size={17} /> Nouvelle collecte</button>
         </header>
 
         <div className="content">
           <section className="hero">
             <div><span className="eyebrow">GEO INTELLIGENCE WORKSPACE</span><h1>Bonjour Marc,</h1><p>Transformez les signaux réels en prompts fiables — puis vérifiez ce que les moteurs génératifs comprennent vraiment.</p></div>
-            <div className="hero-actions"><button className="secondary" onClick={() => setCostsModal(true)}><CircleDollarSign size={17} /> Coûts réels</button><button className="secondary" onClick={() => setReviewModal(true)}><ShieldCheck size={17} /> Revue manuelle</button><button className="secondary" onClick={() => setDatasetModal(true)}><Database size={17} /> Dataset Builder</button><button className="primary" onClick={() => setModal(true)}><Plus size={18} /> Lancer une analyse</button></div>
+            <div className="hero-actions"><button className="secondary" onClick={() => setCostsModal(true)}><CircleDollarSign size={17} /> Coûts réels</button><button className="secondary" onClick={() => setReviewModal(true)}><ShieldCheck size={17} /> Revue manuelle</button><button className="secondary" onClick={() => setDatasetModal(true)}><Database size={17} /> Dataset Builder</button><button className="primary" onClick={() => setSeedModal(true)}><Plus size={18} /> Nouvelle collecte</button></div>
           </section>
 
           {!configured && <div className="setup-banner"><Database size={17} /><div><strong>Base de données à connecter</strong><span>Ajoutez NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SECRET_KEY dans Vercel pour activer les données réelles.</span></div></div>}
@@ -174,12 +193,13 @@ export function Dashboard() {
         </div>
       </main>
       {sidebar && <button className="backdrop" onClick={() => setSidebar(false)} aria-label="Fermer le menu" />}
-      {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={addPrompt} />}
+      {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={reloadAfterPromptTest} />}
       {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
       {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} />}
       {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
       {costsModal && <CostsModal projectId={projectId} onClose={() => setCostsModal(false)} />}
+      {docsModal && <DocumentationModal onClose={() => setDocsModal(false)} />}
     </div>
   );
 }
@@ -190,23 +210,6 @@ function PromptModal({ projectId, onClose, onSubmit }: { projectId: string | nul
   const [engine, setEngine] = useState("chatgpt");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [importStatus, setImportStatus] = useState("");
-
-  async function importGsc(file: File) {
-    setImportStatus("Import en cours…");
-    const form = new FormData();
-    form.append("file", file);
-    form.append("minWords", "10");
-    if (projectId) form.append("projectId", projectId);
-    try {
-      const response = await fetch("/api/sources/gsc", { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Import impossible.");
-      setImportStatus(`${data.parsed} requêtes conversationnelles détectées${data.configured ? `, ${data.imported} importées` : " — connectez Supabase pour les sauvegarder"}.`);
-    } catch (reason) {
-      setImportStatus(reason instanceof Error ? reason.message : "Import impossible.");
-    }
-  }
 
   async function submit() {
     if (!prompt.trim()) return;
@@ -224,5 +227,5 @@ function PromptModal({ projectId, onClose, onSubmit }: { projectId: string | nul
     }
   }
 
-  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void submit(); }}><div className="modal-head"><div><span className="eyebrow">NOUVELLE OBSERVATION</span><h2>Analyser un prompt</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19} /></button></div><label>Prompt utilisateur<textarea autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ex. Quelles chaussures de trail choisir pour débuter ?" rows={4} /></label><div className="form-row"><label>Fournisseur<select value={provider} onChange={(e) => setProvider(e.target.value)}><option value="brightdata">Bright Data</option><option value="oxylabs">Oxylabs</option></select></label><label>Moteur<select value={engine} onChange={(e) => setEngine(e.target.value)}><option value="chatgpt">ChatGPT</option><option value="perplexity">Perplexity</option><option value="gemini">Gemini</option><option value="google_ai_mode">Google AI Mode</option></select></label></div>{error && <p className="form-error">{error}</p>}<label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{importStatus && <p className="import-status">{importStatus}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Annuler</button><button className="primary" disabled={!prompt.trim() || loading}><FlaskConical size={17} /> {loading ? "Analyse…" : "Lancer l'analyse"}</button></div></form></div>;
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void submit(); }}><div className="modal-head"><div><span className="eyebrow">TEST ISOLÉ</span><h2>Tester un prompt</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19} /></button></div><label>Prompt utilisateur<textarea autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ex. Quelles chaussures de trail choisir pour débuter ?" rows={4} /></label><div className="form-row"><label>Fournisseur<select value={provider} onChange={(e) => setProvider(e.target.value)}><option value="brightdata">Bright Data</option><option value="oxylabs">Oxylabs</option></select></label><label>Moteur<select value={engine} onChange={(e) => setEngine(e.target.value)}><option value="chatgpt">ChatGPT</option><option value="perplexity">Perplexity</option><option value="gemini">Gemini</option><option value="google_ai_mode">Google AI Mode</option></select></label></div>{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Annuler</button><button className="primary" disabled={!prompt.trim() || loading}><FlaskConical size={17} /> {loading ? "Analyse…" : "Lancer l'analyse"}</button></div></form></div>;
 }
