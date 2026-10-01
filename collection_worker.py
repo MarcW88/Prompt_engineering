@@ -15,7 +15,7 @@ from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBu
 from analysis.dataset_quality import score_dataset_example
 from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
 from analysis.models import AnalysisRequest, PromptCandidate, PromptProvenance
-from analysis.providers import BrightDataProvider, OxylabsProvider
+from analysis.providers import BrightDataProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
@@ -76,6 +76,23 @@ class CollectionWorker:
         self.config_path = config_path
         self.worker_id = worker_id or os.getenv("WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
         self.cloud_execution_id = cloud_execution_id or os.getenv("CLOUD_RUN_EXECUTION") or os.getenv("CLOUD_RUN_TASK_ID") or "local"
+        self.fanout_extractor = OpenAIWebSearchExtractor() if os.getenv("OPENAI_API_KEY") else None
+
+    def _execute_analysis(self, provider, request: AnalysisRequest):
+        observation = provider.execute(request)
+        observation.metadata["response_source"] = observation.provider
+        if not observation.fan_outs and self.fanout_extractor:
+            extracted = self.fanout_extractor.extract(request)
+            observation.fan_outs = extracted["queries"]
+            observation.metadata.update({
+                "fan_out_source": "openai_responses_web_search",
+                "fan_out_model": extracted["model"],
+                "fan_out_response_id": extracted["response_id"],
+                "fan_out_search_calls": extracted["search_calls"],
+            })
+        else:
+            observation.metadata["fan_out_source"] = observation.provider
+        return observation
 
     def claim(self, job_id: str = ""):
         function = "claim_job" if job_id else "claim_next_job"
@@ -258,12 +275,12 @@ class CollectionWorker:
             observations = []
             for engine in engines:
                 for _ in range(repetitions):
-                    observation = provider.execute(AnalysisRequest(prompt=candidate.text, engine=engine, country=language.get("country", "BE"), language=language.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"]}))
+                    observation = self._execute_analysis(provider, AnalysisRequest(prompt=candidate.text, engine=engine, country=language.get("country", "BE"), language=language.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"]}))
                     observations.append(observation)
                     observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
                     observation_id = observation_rows[0]["id"]
                     if observation.fan_outs:
-                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split())} for index, query in enumerate(observation.fan_outs)])
+                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
                     if observation.citations:
                         self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
                     completed += 1
@@ -305,12 +322,12 @@ class CollectionWorker:
             remaining = max(0, target_runs - int(example.get("completed_runs", 0)))
             for engine in engines:
                 for _ in range(remaining):
-                    observation = provider.execute(AnalysisRequest(prompt=prompt["text"], engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"], "validation_wave": target_runs}))
+                    observation = self._execute_analysis(provider, AnalysisRequest(prompt=prompt["text"], engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"], "validation_wave": target_runs}))
                     observations.append(observation)
                     observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
                     observation_id = observation_rows[0]["id"]
                     if observation.fan_outs:
-                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split())} for index, query in enumerate(observation.fan_outs)])
+                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
                     completed += 1
             scores = score_dataset_example(candidate, observations) if observations else {}
             self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")

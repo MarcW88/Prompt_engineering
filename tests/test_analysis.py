@@ -3,9 +3,11 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from analysis.models import AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers.brightdata import BrightDataProvider
+from analysis.providers.openai_web_search import OpenAIWebSearchExtractor
 from analysis.providers.oxylabs import OxylabsProvider
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from analysis.signatures import build_signature, signature_similarity
@@ -39,6 +41,22 @@ class ProviderParsingTests(unittest.TestCase):
         self.assertEqual(observation.fan_outs, ["chaussures trail débutant"])
         self.assertEqual(observation.citations[0].title, "Guide")
         self.assertTrue(observation.web_search_triggered)
+
+    @patch("analysis.providers.openai_web_search.requests.post")
+    def test_openai_web_search_extracts_queries(self, post):
+        response = Mock(ok=True)
+        response.json.return_value = {
+            "id": "resp_1",
+            "model": "gpt-test",
+            "output": [
+                {"type": "web_search_call", "action": {"type": "search", "queries": ["trail débutant", "chaussures trail"]}},
+                {"type": "web_search_call", "action": {"type": "search", "query": "trail débutant"}},
+            ],
+        }
+        post.return_value = response
+        result = OpenAIWebSearchExtractor(api_key="test").extract(self.request)
+        self.assertEqual(result["queries"], ["trail débutant", "chaussures trail"])
+        self.assertEqual(result["search_calls"], 2)
 
     def test_oxylabs_parser(self):
         raw = json.loads((FIXTURES / "oxylabs_chatgpt.json").read_text())
