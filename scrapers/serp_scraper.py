@@ -19,6 +19,7 @@ class SerpScraper(BaseScraper):
     def __init__(self, config: Config):
         super().__init__(config)
         self.seen_questions: Set[str] = set()
+        self.api_cost_usd = 0.0
         self.auth_header = self._init_auth()
     
     def _init_auth(self) -> Optional[str]:
@@ -47,7 +48,9 @@ class SerpScraper(BaseScraper):
             time.sleep(self.config.scraping.delay_between_requests)
             response = requests.post(url, json=payload, headers=headers, timeout=60)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            self.api_cost_usd += float(result.get("cost") or 0)
+            return result
         except Exception as e:
             self.logger.error(f"DataForSEO request error: {e}")
             return None

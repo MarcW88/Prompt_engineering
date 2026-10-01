@@ -53,4 +53,5 @@ class OpenAIWebSearchExtractor:
             "model": data.get("model", self.model),
             "response_id": data.get("id"),
             "search_calls": search_calls,
+            "usage": data.get("usage", {}),
         }

@@ -4,8 +4,10 @@ import hashlib
 import os
 import socket
 import threading
+import time
 import uuid
-from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 import requests
@@ -96,10 +98,54 @@ class CollectionWorker:
                 "fan_out_model": extracted["model"],
                 "fan_out_response_id": extracted["response_id"],
                 "fan_out_search_calls": extracted["search_calls"],
+                "fan_out_usage": extracted["usage"],
             })
         else:
             observation.metadata["fan_out_source"] = observation.provider
         return observation
+
+    def _record_cost(self, job: Dict, provider: str, category: str, amount=None, quantity=None, unit=None, cost_status="actual", external_reference=None, metadata=None, dataset_id=None):
+        reference = external_reference or f"{job['id']}:{provider}:{category}"
+        rows = self.db.request("POST", "analysis_costs", "on_conflict=provider,category,external_reference", [{
+            "project_id": job["project_id"], "job_id": job["id"], "dataset_id": dataset_id,
+            "provider": provider, "category": category, "amount": amount, "currency": "usd",
+            "quantity": quantity, "unit": unit, "cost_status": cost_status,
+            "external_reference": reference, "metadata": metadata or {},
+        }], "resolution=merge-duplicates,return=representation")
+        return rows[0] if rows else None
+
+    def _brightdata_account_cost(self):
+        api_key = os.getenv("BRIGHTDATA_API_KEY", "")
+        dataset_id = os.getenv("BRIGHTDATA_CHATGPT_DATASET_ID", "")
+        if not api_key or not dataset_id:
+            return None
+        today = datetime.now(timezone.utc).date()
+        response = requests.post("https://api.brightdata.com/costs/export/json", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"dimension": "web_apis", "filters": {}, "from": today.isoformat(), "to": (today + timedelta(days=1)).isoformat()}, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return float((data.get("total") or {}).get(dataset_id, 0))
+
+    def _persist_observation(self, prompt: Dict, observation):
+        observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
+        observation_id = observation_rows[0]["id"]
+        if observation.fan_outs:
+            self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
+        if observation.citations:
+            self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
+        return observation_id
+
+    def _run_candidate(self, provider, candidate, prompt, example, engines, repetitions, project):
+        observations = []
+        for engine in engines:
+            for _ in range(repetitions):
+                observations.append(self._execute_analysis(provider, AnalysisRequest(prompt=candidate.text, engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"example_id": example["id"]})))
+        return candidate, prompt, example, observations
+
+    def _job_cost_summary(self, job_id: str):
+        rows = self.db.request("GET", "analysis_costs", f"select=amount,cost_status&job_id=eq.{job_id}")
+        actual = sum(float(row.get("amount") or 0) for row in rows if row.get("cost_status") in {"actual", "account_delta"})
+        pending = any(row.get("cost_status") in {"usage_only", "pending_reconciliation", "unavailable"} for row in rows)
+        return round(actual, 6), "partial" if pending else "reconciled"
 
     def claim(self, job_id: str = ""):
         function = "claim_job" if job_id else "claim_next_job"
@@ -114,6 +160,7 @@ class CollectionWorker:
         if not job:
             return False
         heartbeat = JobHeartbeat(self.db, job["id"], self.worker_id)
+        started_monotonic = time.monotonic()
         heartbeat.start()
         try:
             handlers = {
@@ -125,8 +172,16 @@ class CollectionWorker:
                 "reverse_engineer": self._reverse_engineer,
             }
             result = handlers[job["kind"]](job)
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            runtime_seconds = round(time.monotonic() - started_monotonic, 3)
+            self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "cpu": 2, "memory_gib": 2})
+            actual_cost, cost_status = self._job_cost_summary(job["id"])
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result, "actual_cost_usd": actual_cost, "cost_status": cost_status, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         except Exception as error:
+            runtime_seconds = round(time.monotonic() - started_monotonic, 3)
+            try:
+                self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "failed": True, "cpu": 2, "memory_gib": 2})
+            except Exception:
+                pass
             can_retry = int(job.get("attempt_count", 1)) < int(job.get("max_attempts", 3))
             self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
             raise
@@ -162,6 +217,9 @@ class CollectionWorker:
         if "serp" in requested:
             scrapers.append(SerpScraper(config))
         items = [item for scraper in scrapers for item in scraper.run()]
+        dataforseo_cost = sum(float(getattr(scraper, "api_cost_usd", 0)) for scraper in scrapers)
+        if dataforseo_cost:
+            self._record_cost(job, "dataforseo", "serp_api", amount=dataforseo_cost, quantity=budget, unit="queries", cost_status="actual")
         rows = [{
             "project_id": project_id, "source_type": item.source_type.value, "platform": item.platform,
             "raw_text": item.raw_text, "title": item.title, "url": item.url, "theme": item.theme,
@@ -256,14 +314,18 @@ class CollectionWorker:
         cost = estimate_cost(len(selected), repetitions, len(engines), float(dataset.get("cost_per_execution_eur", 0)))
         if cost["estimated_cost_eur"] > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Estimated cost {cost['estimated_cost_eur']:.2f} EUR exceeds budget")
-        prompt_rows = self.db.request("POST", "prompts", "on_conflict=project_id,text", [{
+        prompt_payload = [{
             "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
             "provenance": candidate.provenance.value, "confidence": candidate.confidence,
             "status": "testing" if candidate.id in selected_ids else "draft",
             "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
-        } for candidate in candidates], "resolution=merge-duplicates,return=representation") if candidates else []
-        examples = self.db.request("POST", "dataset_examples", "on_conflict=dataset_id,prompt_id", [{
-            "dataset_id": dataset_id, "prompt_id": prompt["id"], "cluster_id": prompt["cluster_id"],
+        } for candidate in candidates]
+        if prompt_payload:
+            self.db.request("POST", "prompts", "on_conflict=project_id,text", prompt_payload, "resolution=ignore-duplicates,return=minimal")
+        prompt_rows = self.db.request("GET", "prompts", f"select=*&project_id=eq.{project_id}")
+        prompts_by_text = {prompt["text"]: prompt for prompt in prompt_rows}
+        example_payload = [{
+            "dataset_id": dataset_id, "prompt_id": prompts_by_text[candidate.text]["id"], "cluster_id": prompts_by_text[candidate.text]["cluster_id"],
             "status": "executing" if candidate.id in selected_ids else "candidate",
             "persona": candidate.metadata["persona"], "journey_stage": candidate.metadata["stage"],
             "specificity_level": candidate.metadata["specificity_level"],
@@ -272,38 +334,63 @@ class CollectionWorker:
             "selected_for_execution": candidate.id in selected_ids,
             "selection_reason": "stratified_screening" if candidate.id in selected_ids else "candidate_pool",
             "validation_tier": 3, "target_runs": repetitions,
-        } for prompt, candidate in zip(prompt_rows, candidates)], "resolution=merge-duplicates,return=representation") if prompt_rows else []
+        } for candidate in candidates if candidate.text in prompts_by_text]
+        if example_payload:
+            self.db.request("POST", "dataset_examples", "on_conflict=dataset_id,prompt_id", example_payload, "resolution=ignore-duplicates,return=minimal")
+        examples = self.db.request("GET", "dataset_examples", f"select=*&dataset_id=eq.{dataset_id}")
+        examples_by_prompt = {example["prompt_id"]: example for example in examples}
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
         provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
+        bright_cost_before = self._brightdata_account_cost() if provider_name == "brightdata" else None
         threshold = float(build_config.get("quality_threshold", 0.65))
-        accepted = rejected = completed = 0
-        all_prompts = [candidate.text for candidate in candidates]
-        total = max(1, len(selected) * repetitions * len(engines))
-        for candidate, prompt, example in zip(candidates, prompt_rows, examples):
-            if candidate.id not in selected_ids:
+        records = []
+        accepted = rejected = completed = openai_search_calls = 0
+        for candidate in selected:
+            prompt = prompts_by_text.get(candidate.text)
+            example = examples_by_prompt.get(prompt["id"]) if prompt else None
+            if not prompt or not example:
                 continue
-            observations = []
-            for engine in engines:
-                for _ in range(repetitions):
-                    observation = self._execute_analysis(provider, AnalysisRequest(prompt=candidate.text, engine=engine, country=language.get("country", "BE"), language=language.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"]}))
-                    observations.append(observation)
-                    observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
-                    observation_id = observation_rows[0]["id"]
-                    if observation.fan_outs:
-                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
-                    if observation.citations:
-                        self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
+            if int(example.get("completed_runs") or 0) >= repetitions:
+                accepted += int(example.get("status") == "accepted")
+                rejected += int(example.get("status") == "rejected")
+                continue
+            records.append((candidate, prompt, example))
+        openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        all_prompts = [candidate.text for candidate in candidates]
+        total = max(1, len(records) * repetitions * len(engines))
+        concurrency = max(1, min(10, int(os.getenv("ANALYSIS_CONCURRENCY", "5"))))
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(self._run_candidate, provider, candidate, prompt, example, engines, repetitions, language) for candidate, prompt, example in records]
+            for future in as_completed(futures):
+                candidate, prompt, example, observations = future.result()
+                for observation in observations:
+                    self._persist_observation(prompt, observation)
+                    usage = observation.metadata.get("fan_out_usage") or {}
+                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
+                    for key in openai_usage:
+                        openai_usage[key] += int(usage.get(key) or 0)
                     completed += 1
-                    self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
-            scores = score_dataset_example(candidate, observations, all_prompts)
-            is_accepted = scores["quality_score"] >= threshold
-            accepted += int(is_accepted)
-            rejected += int(not is_accepted)
-            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
-            self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
-        statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "estimated_cost_eur": cost["estimated_cost_eur"], "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
-        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+                scores = score_dataset_example(candidate, observations, all_prompts)
+                is_accepted = scores["quality_score"] >= threshold
+                accepted += int(is_accepted)
+                rejected += int(not is_accepted)
+                self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
+        if openai_search_calls:
+            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
+        bright_delta = None
+        if provider_name == "brightdata":
+            bright_cost_after = self._brightdata_account_cost()
+            if bright_cost_before is not None and bright_cost_after is not None and bright_cost_after > bright_cost_before:
+                bright_delta = round(bright_cost_after - bright_cost_before, 6)
+                self._record_cost(job, "brightdata", "web_scraper_api", amount=bright_delta, quantity=completed, unit="records", cost_status="account_delta", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+            else:
+                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+        statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
+        confirmed_cost = bright_delta or 0
+        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "actual_cost_usd": confirmed_cost, "cost_status": "partial" if openai_search_calls else "reconciled", "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         return statistics
 
     def _validate_dataset(self, job: Dict) -> Dict:
@@ -324,26 +411,45 @@ class CollectionWorker:
         projected_cost = float(dataset.get("estimated_cost_eur", 0)) + additional_cost
         if projected_cost > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Projected cost {projected_cost:.2f} EUR exceeds budget")
-        provider = OxylabsProvider() if os.getenv("DATASET_PROVIDER", "brightdata") == "oxylabs" else BrightDataProvider()
-        completed = 0
+        provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
+        provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
+        bright_cost_before = self._brightdata_account_cost() if provider_name == "brightdata" else None
+        completed = openai_search_calls = 0
+        openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        concurrency = max(1, min(10, int(os.getenv("ANALYSIS_CONCURRENCY", "5"))))
+        records = []
         for example in examples:
             prompt = prompts[example["prompt_id"]]
             candidate = PromptCandidate(text=prompt["text"], provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
-            observations = []
             remaining = max(0, target_runs - int(example.get("completed_runs", 0)))
-            for engine in engines:
-                for _ in range(remaining):
-                    observation = self._execute_analysis(provider, AnalysisRequest(prompt=prompt["text"], engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"dataset_id": dataset_id, "example_id": example["id"], "validation_wave": target_runs}))
-                    observations.append(observation)
-                    observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
-                    observation_id = observation_rows[0]["id"]
-                    if observation.fan_outs:
-                        self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
+            records.append((candidate, prompt, example, remaining))
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(self._run_candidate, provider, candidate, prompt, example, engines, remaining, project) for candidate, prompt, example, remaining in records]
+            for future in as_completed(futures):
+                candidate, prompt, example, observations = future.result()
+                for observation in observations:
+                    self._persist_observation(prompt, observation)
+                    usage = observation.metadata.get("fan_out_usage") or {}
+                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
+                    for key in openai_usage:
+                        openai_usage[key] += int(usage.get(key) or 0)
                     completed += 1
-            scores = score_dataset_example(candidate, observations) if observations else {}
-            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
-        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"estimated_cost_eur": round(projected_cost, 2)}, "return=minimal")
-        return {"selected": len(examples), "executions": completed, "target_runs": target_runs, "additional_cost_eur": round(additional_cost, 2)}
+                scores = score_dataset_example(candidate, observations) if observations else {}
+                self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / max(1, additional_executions)))}, "return=minimal")
+        if openai_search_calls:
+            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
+        bright_delta = None
+        if provider_name == "brightdata":
+            bright_cost_after = self._brightdata_account_cost()
+            if bright_cost_before is not None and bright_cost_after is not None and bright_cost_after > bright_cost_before:
+                bright_delta = round(bright_cost_after - bright_cost_before, 6)
+                self._record_cost(job, "brightdata", "web_scraper_api", amount=bright_delta, quantity=completed, unit="records", cost_status="account_delta", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+            else:
+                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+        confirmed_cost = float(dataset.get("actual_cost_usd", 0)) + (bright_delta or 0)
+        self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"estimated_cost_eur": round(projected_cost, 2), "actual_cost_usd": round(confirmed_cost, 6), "cost_status": "partial" if openai_search_calls else "reconciled"}, "return=minimal")
+        return {"selected": len(examples), "executions": completed, "concurrency": concurrency, "target_runs": target_runs, "additional_cost_eur": round(additional_cost, 2), "confirmed_brightdata_cost_usd": bright_delta}
 
     def _reverse_engineer(self, job: Dict) -> Dict:
         project_id = job["project_id"]

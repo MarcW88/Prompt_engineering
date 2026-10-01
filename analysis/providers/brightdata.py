@@ -48,12 +48,16 @@ class BrightDataProvider(AnalysisProvider):
         if not response.ok:
             raise ProviderError(f"Bright Data returned HTTP {response.status_code}: {response.text[:300]}")
         raw = response.json()
+        snapshot_id = None
         if response.status_code == 202 or isinstance(raw, dict) and raw.get("snapshot_id"):
             snapshot_id = raw.get("snapshot_id")
             if not snapshot_id:
                 raise ProviderError("Bright Data returned a pending response without snapshot_id")
             raw = self._wait_for_snapshot(snapshot_id)
-        return self.parse_response(request, raw)
+        observation = self.parse_response(request, raw)
+        if snapshot_id:
+            observation.metadata["brightdata_snapshot_id"] = snapshot_id
+        return observation
 
     def _wait_for_snapshot(self, snapshot_id: str):
         headers = {"Authorization": f"Bearer {self.api_key}"}

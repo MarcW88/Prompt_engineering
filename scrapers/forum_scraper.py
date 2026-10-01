@@ -34,6 +34,7 @@ class ForumScraper(BaseScraper):
     def __init__(self, config: Config):
         super().__init__(config)
         self.praw_client = None
+        self.api_cost_usd = 0.0
         self.auth_header = self._init_dataforseo_auth()
         self._init_reddit()
     
@@ -221,6 +222,7 @@ class ForumScraper(BaseScraper):
             response = requests.post(url, json=payload, headers=headers, timeout=60)
             response.raise_for_status()
             result = response.json()
+            self.api_cost_usd += float(result.get("cost") or 0)
             
             if result.get("status_code") != 20000:
                 self.logger.warning(f"DataForSEO search failed for '{query}'")
