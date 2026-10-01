@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, BookOpen, ChevronDown, CircleDollarSign, CircleHelp,
-  Database, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
+  Database, Download, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
   Search, Settings, ShieldCheck, Sparkles, X,
 } from "lucide-react";
 
@@ -15,6 +15,9 @@ import { PipelineModal } from "./pipeline-modal";
 import { ManualReviewModal } from "./manual-review-modal";
 import { CostsModal } from "./costs-modal";
 import { DocumentationModal } from "./documentation-modal";
+import { ExecutionCenterModal } from "./execution-center-modal";
+import { ExportsModal } from "./exports-modal";
+import { WorkspaceModal } from "./workspace-modal";
 
 const nav = [
   { label: "Vue d'ensemble", icon: BarChart3 },
@@ -49,6 +52,9 @@ export function Dashboard() {
   const [reviewModal, setReviewModal] = useState(false);
   const [costsModal, setCostsModal] = useState(false);
   const [docsModal, setDocsModal] = useState(false);
+  const [executionModal, setExecutionModal] = useState(false);
+  const [exportsModal, setExportsModal] = useState(false);
+  const [workspaceModal, setWorkspaceModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
@@ -89,14 +95,14 @@ export function Dashboard() {
 
   const workflowValues = [metrics.questions, metrics.clusters, metrics.prompts, `${metrics.stability}%`];
 
-  async function createWorkspace() {
-    const suffix = Date.now().toString(36);
-    const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `Workspace GEO ${suffix.toUpperCase()}`, slug: `workspace-geo-${suffix}`, country: "FR", language: "fr" }) });
-    if (response.ok) window.location.reload();
-  }
-
   async function switchWorkspace(id: string) {
     await loadDashboard(id).catch(() => setRecords([]));
+  }
+
+  async function workspaceCreated(project: { id: string; name: string }) {
+    setProjects((current) => [...current, project]);
+    setWorkspaceModal(false);
+    await switchWorkspace(project.id);
   }
 
   function reloadAfterPromptTest() {
@@ -114,7 +120,7 @@ export function Dashboard() {
         <div className="workspace">
           <span className="workspace-avatar">{projectName.slice(0, 1).toUpperCase()}</span>
           <div><small>Workspace</small>{projects.length > 1 ? <select className="workspace-select" value={projectId ?? ""} onChange={(event) => void switchWorkspace(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select> : <strong>{projectName}</strong>}</div>
-          <ChevronDown size={16} />
+          <button type="button" className="workspace-add" onClick={() => setWorkspaceModal(true)} aria-label="Créer un workspace"><Plus size={15} /></button>
         </div>
         <nav>
           <p>WORKFLOW</p>
@@ -140,6 +146,8 @@ export function Dashboard() {
           <button className="menu-button" onClick={() => setSidebar(true)} aria-label="Menu"><Menu size={20} /></button>
           <div className="global-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un prompt, un cluster…" /><kbd>⌘ K</kbd></div>
           <button className="help" onClick={() => setDocsModal(true)}><CircleHelp size={17} /> Aide</button>
+          <button className="secondary small" onClick={() => setExecutionModal(true)}><Activity size={16} /> Progression</button>
+          <button className="secondary small" onClick={() => setExportsModal(true)}><Download size={16} /> Exports</button>
           <button className="secondary small" onClick={() => setModal(true)}><FlaskConical size={17} /> Tester un prompt</button>
           <button className="primary small" onClick={() => setSeedModal(true)}><Plus size={17} /> Nouvelle collecte</button>
         </header>
@@ -151,7 +159,7 @@ export function Dashboard() {
           </section>
 
           {!configured && <div className="setup-banner"><Database size={17} /><div><strong>Base de données à connecter</strong><span>Ajoutez NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SECRET_KEY dans Vercel pour activer les données réelles.</span></div></div>}
-          {configured && !projectId && <div className="setup-banner"><Database size={17} /><div><strong>Créez votre premier workspace</strong><span>Le projet regroupera les sources, questions, prompts et observations.</span></div><button className="secondary" onClick={() => void createWorkspace()}>Créer Decathlon GEO</button></div>}
+          {configured && !projectId && <div className="setup-banner"><Database size={17} /><div><strong>Créez votre premier workspace</strong><span>Le projet regroupera les sources, questions, prompts et observations.</span></div><button className="secondary" onClick={() => setWorkspaceModal(true)}>Créer un workspace</button></div>}
           <section className="metrics">
             <article><div className="metric-icon violet"><CircleHelp /></div><div><span>Questions collectées</span><strong>{metrics.questions.toLocaleString("fr-FR")}</strong><small>Données persistées</small></div></article>
             <article><div className="metric-icon blue"><Layers3 /></div><div><span>Intentions détectées</span><strong>{metrics.clusters.toLocaleString("fr-FR")}</strong><small>Clusters disponibles</small></div></article>
@@ -200,6 +208,9 @@ export function Dashboard() {
       {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
       {costsModal && <CostsModal projectId={projectId} onClose={() => setCostsModal(false)} />}
       {docsModal && <DocumentationModal onClose={() => setDocsModal(false)} />}
+      {executionModal && <ExecutionCenterModal projectId={projectId} onClose={() => setExecutionModal(false)} />}
+      {exportsModal && <ExportsModal projectId={projectId} onClose={() => setExportsModal(false)} />}
+      {workspaceModal && <WorkspaceModal onClose={() => setWorkspaceModal(false)} onCreated={workspaceCreated} />}
     </div>
   );
 }

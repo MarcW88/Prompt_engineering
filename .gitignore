@@ -36,7 +36,7 @@ web/.next/
 *.jpeg
 *.jpg
 *.avif
-exports/
+/exports/
 
 # Supabase
 supabase/.temp/
