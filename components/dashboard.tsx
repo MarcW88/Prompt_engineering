@@ -204,7 +204,7 @@ export function Dashboard() {
       {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={reloadAfterPromptTest} />}
       {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
-      {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} />}
+      {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} onOpenCollection={() => { setPipelineModal(false); setSeedModal(true); }} onOpenDataset={() => { setPipelineModal(false); setDatasetModal(true); }} onOpenReview={() => { setPipelineModal(false); setReviewModal(true); }} onOpenExports={() => { setPipelineModal(false); setExportsModal(true); }} />}
       {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
       {costsModal && <CostsModal projectId={projectId} onClose={() => setCostsModal(false)} />}
       {docsModal && <DocumentationModal onClose={() => setDocsModal(false)} />}

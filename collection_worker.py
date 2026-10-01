@@ -9,6 +9,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Dict
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -220,13 +221,39 @@ class CollectionWorker:
             language=row["language"], market=row["market"], enabled=row["enabled"]
         ) for row in seed_rows)
         requested = set(job.get("input", {}).get("sources", []))
+        source_config = input_config.get("source_config", {}) if isinstance(input_config.get("source_config"), dict) else {}
+
+        def clean_list(key):
+            value = source_config.get(key)
+            if not isinstance(value, list):
+                return []
+            return [str(item).strip() for item in value if str(item).strip()]
+
         forum_config = config.sources.get("forums", {})
-        platforms = forum_config.get("platforms", [])
-        if "reddit" not in requested:
-            platforms = [platform for platform in platforms if platform.get("name") != "reddit"]
-        if "forum" not in requested:
-            platforms = [platform for platform in platforms if platform.get("name") == "reddit"]
+        configured_platforms = forum_config.get("platforms", [])
+        platforms = []
+        if "reddit" in requested:
+            reddit_platform = next((dict(platform) for platform in configured_platforms if platform.get("name") == "reddit"), {"name": "reddit", "search_method": "api"})
+            if "subreddits" in source_config:
+                reddit_platform["subreddits"] = clean_list("subreddits")
+            platforms.append(reddit_platform)
+        if "forum" in requested:
+            if "forum_urls" in source_config:
+                platforms.extend({
+                    "name": urlparse(url).netloc.replace("www.", "") or url,
+                    "url": url,
+                    "search_method": "google_site",
+                } for url in clean_list("forum_urls"))
+            else:
+                platforms.extend(platform for platform in configured_platforms if platform.get("name") != "reddit")
         forum_config["platforms"] = platforms
+
+        if "trustpilot_url" in source_config:
+            trustpilot_url = str(source_config.get("trustpilot_url") or "").strip()
+            config.sources.setdefault("reviews", {})["platforms"] = [{"name": "trustpilot", "url": trustpilot_url, "method": "api"}] if trustpilot_url else []
+        if "serp_templates" in source_config:
+            config.sources.setdefault("serp", {})["query_templates"] = clean_list("serp_templates")
+
         scrapers = []
         if requested & {"reddit", "forum"}:
             scrapers.append(ForumScraper(config))

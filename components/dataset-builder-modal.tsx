@@ -38,8 +38,36 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
         ? { label: "Analyse large", tone: "warn", text: "À réserver après un premier test réussi. Vérifiez le budget et laissez le job tourner en arrière-plan." }
         : { label: "Analyse massive", tone: "warn", text: "Non recommandée pour un test. Réduisez l'échantillon ou augmentez progressivement." };
 
+  function plannedBudget(nextExecutions: number, nextCost = costPerExecutionEur) {
+    return Math.max(1, Math.ceil(nextExecutions * nextCost * 1.25));
+  }
+
+  function updateCandidatePool(value: number) {
+    const corpus = Math.max(1, value || 1);
+    const recommendedSample = Math.min(corpus, Math.max(1, Math.min(50, Math.ceil(corpus * 0.1))));
+    const recommendedCandidates = Math.max(1, Math.min(9, Math.ceil(corpus / 20)));
+    setCandidatePoolSize(corpus);
+    setExecutionSampleSize(recommendedSample);
+    setCandidatesPerCluster(recommendedCandidates);
+    setMaxBudgetEur(plannedBudget(recommendedSample * repetitions * engines.length));
+  }
+
+  function updateExecutionSample(value: number) {
+    const sample = Math.max(1, Math.min(candidatePoolSize, value || 1));
+    setExecutionSampleSize(sample);
+    setMaxBudgetEur(plannedBudget(sample * repetitions * engines.length));
+  }
+
+  function updateCostPerExecution(value: number) {
+    const cost = Math.max(0, value || 0);
+    setCostPerExecutionEur(cost);
+    setMaxBudgetEur(plannedBudget(executions, cost));
+  }
+
   function toggleEngine(engine: string) {
-    setEngines((current) => current.includes(engine) ? current.filter((item) => item !== engine) : [...current, engine]);
+    const nextEngines = engines.includes(engine) ? engines.filter((item) => item !== engine) : [...engines, engine];
+    setEngines(nextEngines);
+    setMaxBudgetEur(plannedBudget(executionSampleSize * repetitions * nextEngines.length));
   }
 
   async function submit() {
@@ -88,15 +116,15 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
         <label>Nom du dataset<input value={name} onChange={(event) => setName(event.target.value)} /></label>
 
         <div className="form-row">
-          <label>Corpus candidat<input type="number" min="1" max="20000" value={candidatePoolSize} onChange={(event) => setCandidatePoolSize(Number(event.target.value))} /><small>Volume total de variantes à préparer. Ne correspond pas encore à des appels payants.</small></label>
-          <label>Échantillon exécuté<input type="number" min="1" max={candidatePoolSize} value={executionSampleSize} onChange={(event) => setExecutionSampleSize(Number(event.target.value))} /><small>Nombre de prompts réellement envoyés. Pour un premier test : 5.</small></label>
+          <label>Corpus candidat<input type="number" min="1" max="20000" value={candidatePoolSize} onChange={(event) => updateCandidatePool(Number(event.target.value))} /><small>Volume total de variantes à préparer. Ne correspond pas encore à des appels payants.</small></label>
+          <label>Échantillon exécuté<input type="number" min="1" max={candidatePoolSize} value={executionSampleSize} onChange={(event) => updateExecutionSample(Number(event.target.value))} /><small>Nombre de prompts réellement envoyés. Pour un premier test : 5.</small></label>
         </div>
         <div className="form-row">
           <label>Candidats par cluster<input type="number" min="1" max="36" value={candidatesPerCluster} onChange={(event) => setCandidatesPerCluster(Number(event.target.value))} /><small>Diversité maximale par intention. 3 suffit pour un test.</small></label>
           <label>Runs de screening<input type="number" min="1" max="1" value={repetitions} onChange={(event) => setRepetitions(Number(event.target.value))} /><small>Premier passage uniquement ; la stabilité complète se mesure ensuite à 3 ou 5 runs.</small></label>
         </div>
         <div className="form-row">
-          <label>Coût estimé par appel (€)<input type="number" min="0" step="0.001" value={costPerExecutionEur} onChange={(event) => setCostPerExecutionEur(Number(event.target.value))} /><small>Sert uniquement au plafond. Le coût réel reste visible dans “Coûts réels”.</small></label>
+          <label>Coût estimé par appel (€)<input type="number" min="0" step="0.001" value={costPerExecutionEur} onChange={(event) => updateCostPerExecution(Number(event.target.value))} /><small>Sert uniquement au plafond. Le coût réel reste visible dans “Coûts réels”.</small></label>
           <label>Budget maximum (€)<input type="number" min="0" step="1" value={maxBudgetEur} onChange={(event) => setMaxBudgetEur(Number(event.target.value))} /><small>Plafond de sécurité du job. Le worker s&rsquo;arrête avant de le dépasser.</small></label>
         </div>
         <div className="form-row">

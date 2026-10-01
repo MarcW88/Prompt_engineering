@@ -24,7 +24,8 @@ function number(value: string | undefined) {
   return Number.isFinite(parsed) ? Math.round(parsed) : 0;
 }
 
-export function parseGscCsv(text: string, minWords = 10): GscSignal[] {
+export function parseGscCsv(text: string, minWords = 10, queryPattern = ""): GscSignal[] {
+  const queryRegex = queryPattern ? new RegExp(queryPattern, "i") : null;
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
   const first = lines[0];
@@ -41,7 +42,7 @@ export function parseGscCsv(text: string, minWords = 10): GscSignal[] {
     const query = (values[queryIndex >= 0 ? queryIndex : 0] ?? "").trim();
     const key = query.toLowerCase().replace(/\s+/g, " ");
     const wordCount = query.split(/\s+/).filter(Boolean).length;
-    if (!key || seen.has(key) || wordCount < minWords) return [];
+    if (!key || seen.has(key) || wordCount < minWords || (queryRegex && !queryRegex.test(query))) return [];
     seen.add(key);
     return [{ raw_text: query, title: query, metadata: { word_count: wordCount, clicks: number(values[clicksIndex]), impressions: number(values[impressionsIndex]) } }];
   });
