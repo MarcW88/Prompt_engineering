@@ -27,6 +27,19 @@ class ProviderParsingTests(unittest.TestCase):
         self.assertEqual(len(observation.fan_outs), 3)
         self.assertEqual(observation.citations[0].url, "https://example.com/trail")
 
+    def test_brightdata_current_schema(self):
+        raw = [{
+            "answer_text_markdown": "Réponse structurée",
+            "web_search_query": "chaussures trail débutant",
+            "web_search_triggered": True,
+            "citations": [{"url": "https://example.com", "title": "Guide", "description": "Résumé"}],
+        }]
+        observation = BrightDataProvider(api_key="test", dataset_ids={"chatgpt": "test"}).parse_response(self.request, raw)
+        self.assertEqual(observation.answer, "Réponse structurée")
+        self.assertEqual(observation.fan_outs, ["chaussures trail débutant"])
+        self.assertEqual(observation.citations[0].title, "Guide")
+        self.assertTrue(observation.web_search_triggered)
+
     def test_oxylabs_parser(self):
         raw = json.loads((FIXTURES / "oxylabs_chatgpt.json").read_text())
         observation = OxylabsProvider("test", "test").parse_response(self.request, raw)

@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+import time
 import requests
 
 from analysis.models import AnalysisObservation, AnalysisRequest
@@ -9,7 +10,7 @@ class BrightDataProvider(AnalysisProvider):
     name = "brightdata"
     endpoint = "https://api.brightdata.com/datasets/v3/scrape"
 
-    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 120):
+    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 300):
         self.api_key = api_key or self.env("BRIGHTDATA_API_KEY")
         self.dataset_ids = dataset_ids or {
             "chatgpt": self.env("BRIGHTDATA_CHATGPT_DATASET_ID"),
@@ -32,9 +33,10 @@ class BrightDataProvider(AnalysisProvider):
         payload = [{
             "url": self._engine_url(request.engine),
             "prompt": request.prompt,
-            "country": request.country.lower(),
-            "language": request.language,
+            "country": request.country.upper(),
+            "require_sources": True,
             "web_search": request.web_search,
+            "additional_prompt": self._language_instruction(request.language),
         }]
         response = requests.post(
             self.endpoint,
@@ -45,15 +47,37 @@ class BrightDataProvider(AnalysisProvider):
         )
         if not response.ok:
             raise ProviderError(f"Bright Data returned HTTP {response.status_code}: {response.text[:300]}")
-        return self.parse_response(request, response.json())
+        raw = response.json()
+        if response.status_code == 202 or isinstance(raw, dict) and raw.get("snapshot_id"):
+            snapshot_id = raw.get("snapshot_id")
+            if not snapshot_id:
+                raise ProviderError("Bright Data returned a pending response without snapshot_id")
+            raw = self._wait_for_snapshot(snapshot_id)
+        return self.parse_response(request, raw)
+
+    def _wait_for_snapshot(self, snapshot_id: str):
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            response = requests.get(f"https://api.brightdata.com/datasets/v3/progress/{snapshot_id}", headers=headers, timeout=30)
+            response.raise_for_status()
+            status = response.json().get("status")
+            if status == "ready":
+                result = requests.get(f"https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}", params={"format": "json"}, headers=headers, timeout=60)
+                result.raise_for_status()
+                return result.json()
+            if status in {"failed", "canceled"}:
+                raise ProviderError(f"Bright Data snapshot {snapshot_id} ended with status {status}")
+            time.sleep(5)
+        raise ProviderError(f"Bright Data snapshot {snapshot_id} did not complete within {self.timeout}s")
 
     def parse_response(self, request: AnalysisRequest, raw: Any) -> AnalysisObservation:
         record = raw[0] if isinstance(raw, list) and raw else raw
         if not isinstance(record, dict):
             raise ProviderError("Bright Data returned an unsupported response")
-        answer = first_value(record, ["answer", "response", "content", "text"])
-        fan_outs = first_value(record, ["query_fan_out", "query_fan_outs", "search_queries", "queries"], [])
-        citations = first_value(record, ["citations", "sources", "links", "references"], [])
+        answer = first_value(record, ["answer_text_markdown", "answer_text", "answer", "response", "content", "text"])
+        fan_outs = first_value(record, ["query_fan_out", "query_fan_outs", "web_search_query", "search_queries", "queries"], [])
+        citations = first_value(record, ["citations", "search_sources", "references", "sources", "links"], [])
         return AnalysisObservation(
             prompt=request.prompt,
             provider=self.name,
@@ -68,6 +92,14 @@ class BrightDataProvider(AnalysisProvider):
             raw_response=record,
             metadata=request.metadata,
         )
+
+    @staticmethod
+    def _language_instruction(language: str) -> str:
+        return {
+            "fr": "Réponds en français.",
+            "nl": "Antwoord in het Nederlands.",
+            "en": "Answer in English.",
+        }.get(language, f"Answer in {language}.")
 
     @staticmethod
     def _engine_url(engine: str) -> str:

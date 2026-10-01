@@ -61,6 +61,8 @@ def normalize_citations(values: Any) -> List[Citation]:
 
 
 def normalize_fan_outs(values: Any) -> List[str]:
+    if isinstance(values, str):
+        values = [values]
     if not isinstance(values, list):
         return []
     result = []

@@ -20,6 +20,7 @@ const engineUrls: Record<string, string> = {
 };
 
 function list(value: unknown, keys: string[]) {
+  if (typeof value === "string") return [value];
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
     if (typeof item === "string") return item;
@@ -32,9 +33,9 @@ function list(value: unknown, keys: string[]) {
 }
 
 function normalize(prompt: string, provider: string, engine: string, record: Record<string, unknown>) {
-  const answer = ["answer", "response", "content", "text"].map((key) => record[key]).find((value) => typeof value === "string") ?? "";
-  const fanOutValue = ["query_fan_out", "query_fan_outs", "search_queries", "queries"].map((key) => record[key]).find(Array.isArray);
-  const citationValue = ["citations", "sources", "links", "references"].map((key) => record[key]).find(Array.isArray);
+  const answer = ["answer_text_markdown", "answer_text", "answer", "response", "content", "text"].map((key) => record[key]).find((value) => typeof value === "string") ?? "";
+  const fanOutValue = ["query_fan_out", "query_fan_outs", "web_search_query", "search_queries", "queries"].map((key) => record[key]).find((value) => Array.isArray(value) || typeof value === "string");
+  const citationValue = ["citations", "search_sources", "references", "sources", "links"].map((key) => record[key]).find(Array.isArray);
   return {
     id: randomUUID(), prompt, provider, engine, answer,
     fanOuts: list(fanOutValue, ["query", "text", "title", "keyword"]),
@@ -45,16 +46,34 @@ function normalize(prompt: string, provider: string, engine: string, record: Rec
   };
 }
 
+async function waitForBrightDataSnapshot(snapshotId: string, token: string) {
+  const deadline = Date.now() + 240_000;
+  while (Date.now() < deadline) {
+    const progress = await fetch(`https://api.brightdata.com/datasets/v3/progress/${snapshotId}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (!progress.ok) throw new Error(`Bright Data progress HTTP ${progress.status}`);
+    const state = await progress.json();
+    if (state.status === "ready") {
+      const result = await fetch(`https://api.brightdata.com/datasets/v3/snapshot/${snapshotId}?format=json`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      if (!result.ok) throw new Error(`Bright Data snapshot HTTP ${result.status}`);
+      return result.json();
+    }
+    if (["failed", "canceled"].includes(state.status)) throw new Error(`Bright Data snapshot ${state.status}`);
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error("Bright Data snapshot timeout");
+}
+
 async function brightData(body: RunBody) {
   const token = process.env.BRIGHTDATA_API_KEY;
   const datasetId = brightDataIds[body.engine];
   if (!token || !datasetId) throw new Error(`Bright Data n'est pas configuré pour ${body.engine}.`);
   const response = await fetch(`https://api.brightdata.com/datasets/v3/scrape?dataset_id=${encodeURIComponent(datasetId)}&format=json&include_errors=true`, {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify([{ url: engineUrls[body.engine] ?? engineUrls.chatgpt, prompt: body.prompt, country: body.country.toLowerCase(), language: body.language, web_search: true }]),
+    body: JSON.stringify([{ url: engineUrls[body.engine] ?? engineUrls.chatgpt, prompt: body.prompt, country: body.country.toUpperCase(), require_sources: true, web_search: true, additional_prompt: body.language === "fr" ? "Réponds en français." : body.language === "nl" ? "Antwoord in het Nederlands." : "Answer in English." }]),
   });
   if (!response.ok) throw new Error(`Bright Data HTTP ${response.status}`);
-  const raw = await response.json();
+  let raw = await response.json();
+  if (response.status === 202 || (!Array.isArray(raw) && raw.snapshot_id)) raw = await waitForBrightDataSnapshot(raw.snapshot_id, token);
   const record = Array.isArray(raw) ? raw[0] : raw;
   return normalize(body.prompt, body.provider, body.engine, record);
 }
