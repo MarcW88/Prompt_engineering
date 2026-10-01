@@ -100,6 +100,14 @@ prompts candidats × répétitions × moteurs
 
 Le worker traite les jobs `build_dataset` avec Bright Data par défaut. Utilisez `DATASET_PROVIDER=oxylabs` pour basculer sur Oxylabs lorsque le moteur demandé est pris en charge.
 
+Pour une exécution Cloud Run isolée, chaque instance reçoit explicitement son job :
+
+```bash
+python collection_worker.py --job-id <uuid>
+```
+
+Le job est réservé atomiquement dans Supabase, émet un heartbeat pendant son exécution et revient en file jusqu'à `max_attempts` en cas d'échec récupérable. Le `Dockerfile` à la racine contient l'image du worker.
+
 ## Pipeline de production
 
 Trois jobs raccordent maintenant le workflow de bout en bout :

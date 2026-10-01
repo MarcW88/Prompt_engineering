@@ -2,6 +2,9 @@
 import argparse
 import hashlib
 import os
+import socket
+import threading
+import uuid
 from datetime import datetime, timezone
 from typing import Dict
 
@@ -37,18 +40,57 @@ class SupabaseRest:
         response.raise_for_status()
         return response.json() if response.text else None
 
+    def rpc(self, function: str, body: Dict):
+        response = requests.post(f"{self.url}/rest/v1/rpc/{function}", headers=self.headers, json=body, timeout=60)
+        response.raise_for_status()
+        return response.json() if response.text else None
+
+
+class JobHeartbeat:
+    def __init__(self, db: SupabaseRest, job_id: str, worker_id: str, interval: int = 30):
+        self.db = db
+        self.job_id = job_id
+        self.worker_id = worker_id
+        self.interval = interval
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join(timeout=5)
+
+    def _run(self):
+        while not self.stop_event.wait(self.interval):
+            try:
+                self.db.request("PATCH", "jobs", f"id=eq.{self.job_id}&worker_id=eq.{self.worker_id}&status=eq.running", {"heartbeat_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            except Exception:
+                pass
+
 
 class CollectionWorker:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, worker_id: str = "", cloud_execution_id: str = ""):
         self.db = SupabaseRest()
         self.config_path = config_path
+        self.worker_id = worker_id or os.getenv("WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+        self.cloud_execution_id = cloud_execution_id or os.getenv("CLOUD_RUN_EXECUTION") or os.getenv("CLOUD_RUN_TASK_ID") or "local"
 
-    def run_once(self) -> bool:
-        jobs = self.db.request("GET", "jobs", "select=*&kind=in.(collect_sources,transform_signals,cluster_questions,build_dataset,validate_dataset,reverse_engineer)&status=eq.pending&order=created_at.asc&limit=1")
-        if not jobs:
+    def claim(self, job_id: str = ""):
+        function = "claim_job" if job_id else "claim_next_job"
+        body = {"p_worker_id": self.worker_id, "p_cloud_execution_id": self.cloud_execution_id}
+        if job_id:
+            body["p_job_id"] = job_id
+        jobs = self.db.rpc(function, body)
+        return jobs[0] if jobs else None
+
+    def run_once(self, job_id: str = "") -> bool:
+        job = self.claim(job_id)
+        if not job:
             return False
-        job = jobs[0]
-        self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "running", "progress": 5}, "return=minimal")
+        heartbeat = JobHeartbeat(self.db, job["id"], self.worker_id)
+        heartbeat.start()
         try:
             handlers = {
                 "collect_sources": self._collect,
@@ -59,10 +101,13 @@ class CollectionWorker:
                 "reverse_engineer": self._reverse_engineer,
             }
             result = handlers[job["kind"]](job)
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "completed", "progress": 100, "output": result, "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         except Exception as error:
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"status": "failed", "error": str(error), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            can_retry = int(job.get("attempt_count", 1)) < int(job.get("max_attempts", 3))
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
             raise
+        finally:
+            heartbeat.stop()
         return True
 
     def _collect(self, job: Dict) -> Dict:
@@ -320,10 +365,12 @@ def main():
     parser = argparse.ArgumentParser(description="Run Prompt Lab collection jobs")
     parser.add_argument("--config", default="config/decathlon.yaml")
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--job-id", default=os.getenv("JOB_ID", ""))
+    parser.add_argument("--worker-id", default=os.getenv("WORKER_ID", ""))
     args = parser.parse_args()
-    worker = CollectionWorker(args.config)
-    if args.once:
-        worker.run_once()
+    worker = CollectionWorker(args.config, args.worker_id)
+    if args.once or args.job_id:
+        worker.run_once(args.job_id)
         return
     while worker.run_once():
         pass
