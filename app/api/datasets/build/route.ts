@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
 
 const allowedEngines = new Set(["chatgpt", "perplexity", "gemini", "google_ai_mode"]);
@@ -22,8 +23,8 @@ export async function POST(request: Request) {
     if (!clusters.length) return NextResponse.json({ error: "Aucun cluster GEO exploitable. Lancez d'abord le clustering." }, { status: 409 });
     const datasets = await supabaseRest<Array<{ id: string }>>("datasets", { method: "POST", body: [{ project_id: body.projectId, name: body.name ?? `Dataset ${new Date().toLocaleDateString("fr-BE")}`, target_size: candidatePoolSize, candidate_pool_size: candidatePoolSize, execution_sample_size: executionSampleSize, repetitions, engines, cost_per_execution_eur: costPerExecutionEur, max_budget_eur: maxBudgetEur, estimated_cost_eur: estimatedCostEur, build_config: { candidates_per_cluster: candidatesPerCluster, max_per_cluster: Number(body.maxPerCluster ?? 5), personas: body.personas ?? [], stages: body.stages ?? ["discovery", "comparison"], specificity_levels: body.specificityLevels ?? [0, 1, 2], quality_threshold: Number(body.qualityThreshold ?? 0.65) } }] });
     const dataset = datasets[0];
-    const jobs = await supabaseRest("jobs", { method: "POST", body: [{ project_id: body.projectId, kind: "build_dataset", status: "pending", input: { dataset_id: dataset.id } }] });
-    return NextResponse.json({ dataset, jobs }, { status: 202 });
+    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "build_dataset", status: "pending", input: { dataset_id: dataset.id } });
+    return NextResponse.json({ dataset, ...result }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Construction impossible." }, { status: 502 });
   }

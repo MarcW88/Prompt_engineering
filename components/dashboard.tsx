@@ -12,6 +12,7 @@ import { Logo } from "./logo";
 import { SeedModal } from "./seed-modal";
 import { DatasetBuilderModal } from "./dataset-builder-modal";
 import { PipelineModal } from "./pipeline-modal";
+import { ManualReviewModal } from "./manual-review-modal";
 
 const nav = [
   { label: "Vue d'ensemble", icon: BarChart3 },
@@ -43,6 +44,7 @@ export function Dashboard() {
   const [seedModal, setSeedModal] = useState(false);
   const [datasetModal, setDatasetModal] = useState(false);
   const [pipelineModal, setPipelineModal] = useState(false);
+  const [reviewModal, setReviewModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
@@ -124,7 +126,7 @@ export function Dashboard() {
         <div className="content">
           <section className="hero">
             <div><span className="eyebrow">GEO INTELLIGENCE WORKSPACE</span><h1>Bonjour Marc,</h1><p>Transformez les signaux réels en prompts fiables — puis vérifiez ce que les moteurs génératifs comprennent vraiment.</p></div>
-            <div className="hero-actions"><button className="secondary" onClick={() => setDatasetModal(true)}><Database size={17} /> Dataset Builder</button><button className="primary" onClick={() => setModal(true)}><Plus size={18} /> Lancer une analyse</button></div>
+            <div className="hero-actions"><button className="secondary" onClick={() => setReviewModal(true)}><ShieldCheck size={17} /> Revue manuelle</button><button className="secondary" onClick={() => setDatasetModal(true)}><Database size={17} /> Dataset Builder</button><button className="primary" onClick={() => setModal(true)}><Plus size={18} /> Lancer une analyse</button></div>
           </section>
 
           {!configured && <div className="setup-banner"><Database size={17} /><div><strong>Base de données à connecter</strong><span>Ajoutez NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SECRET_KEY dans Vercel pour activer les données réelles.</span></div></div>}
@@ -174,6 +176,7 @@ export function Dashboard() {
       {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
       {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} />}
+      {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
     </div>
   );
 }

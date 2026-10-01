@@ -183,12 +183,10 @@ class CollectionWorker:
             "confidence": question.confidence, "metadata": question.metadata,
         } for question in questions]
         saved = self.db.request("POST", "questions", "on_conflict=project_id,signal_id,text", rows, "resolution=ignore-duplicates,return=representation") if rows else []
+        result = {"signals": len(signals), "pending": len(pending), "questions": len(saved or [])}
         if job.get("input", {}).get("chain_cluster"):
-            self.db.request("POST", "jobs", body=[{
-                "project_id": project_id, "kind": "cluster_questions", "status": "pending",
-                "depends_on": job["id"], "input": job["input"].get("cluster_config", {}),
-            }])
-        return {"signals": len(signals), "pending": len(pending), "questions": len(saved or [])}
+            result["clustering"] = self._cluster_questions({**job, "input": job["input"].get("cluster_config", {})})
+        return result
 
     def _cluster_questions(self, job: Dict) -> Dict:
         project_id = job["project_id"]

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
 
 const stages = new Set(["prepare_questions", "transform_signals", "cluster_questions", "reverse_engineer"]);
@@ -26,8 +27,8 @@ export async function POST(request: Request) {
     input = { ...input, chain_cluster: true, cluster_config: { similarity_threshold: Number(body.similarityThreshold ?? 0.82), min_cluster_size: Number(body.minClusterSize ?? 2) } };
   }
   try {
-    const jobs = await supabaseRest("jobs", { method: "POST", body: [{ project_id: body.projectId, kind, status: "pending", input }] });
-    return NextResponse.json({ jobs }, { status: 202 });
+    const result = await createAndTriggerJob({ project_id: body.projectId, kind, status: "pending", input });
+    return NextResponse.json(result, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Création du job impossible." }, { status: 502 });
   }
