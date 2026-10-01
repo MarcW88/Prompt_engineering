@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBuilder
 from analysis.dataset_quality import score_dataset_example
 from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
-from analysis.models import AnalysisRequest, PromptCandidate, PromptProvenance
+from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
@@ -134,12 +134,27 @@ class CollectionWorker:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
         return observation_id
 
-    def _run_candidate(self, provider, candidate, prompt, example, engines, repetitions, project):
-        observations = []
-        for engine in engines:
-            for _ in range(repetitions):
-                observations.append(self._execute_analysis(provider, AnalysisRequest(prompt=candidate.text, engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"example_id": example["id"]})))
-        return candidate, prompt, example, observations
+    def _run_once(self, provider, candidate, example, engine, run_index, project, phase):
+        return self._execute_analysis(provider, AnalysisRequest(
+            prompt=candidate.text, engine=engine, country=project.get("country", "BE"),
+            language=project.get("language", "fr"),
+            metadata={"example_id": example["id"], "run_index": run_index, "phase": phase},
+        ))
+
+    def _stored_observations(self, prompt_id: str, engines=None):
+        engine_filter = f"&engine=in.({','.join(engines)})" if engines else ""
+        rows = self.db.request("GET", "observations", f"select=*&prompt_id=eq.{prompt_id}{engine_filter}&order=observed_at.asc")
+        observation_ids = [row["id"] for row in rows]
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&observation_id=in.({','.join(observation_ids)})") if observation_ids else []
+        fan_outs = {}
+        for row in fan_out_rows:
+            fan_outs.setdefault(row["observation_id"], []).append(row["query"])
+        return [AnalysisObservation(
+            prompt="", provider=row["provider"], engine=row["engine"], answer=row.get("answer", ""),
+            fan_outs=fan_outs.get(row["id"], []), citations=[], country=row.get("country", "BE"),
+            language=row.get("language", "fr"), model=row.get("model", ""),
+            web_search_triggered=row.get("web_search_triggered"), raw_response=row.get("raw_response", {}),
+        ) for row in rows]
 
     def _job_cost_summary(self, job_id: str):
         rows = self.db.request("GET", "analysis_costs", f"select=amount,cost_status&job_id=eq.{job_id}")
@@ -349,37 +364,50 @@ class CollectionWorker:
         threshold = float(build_config.get("quality_threshold", 0.65))
         records = []
         accepted = rejected = completed = openai_search_calls = 0
+        tasks = []
+        stored_observations = {}
         for candidate in selected:
             prompt = prompts_by_text.get(candidate.text)
             example = examples_by_prompt.get(prompt["id"]) if prompt else None
             if not prompt or not example:
                 continue
-            if int(example.get("completed_runs") or 0) >= repetitions:
+            existing = self._stored_observations(prompt["id"], engines)
+            stored_observations[example["id"]] = existing
+            if int(example.get("completed_runs") or 0) >= repetitions or min(sum(item.engine == engine for item in existing) for engine in engines) >= repetitions:
                 accepted += int(example.get("status") == "accepted")
                 rejected += int(example.get("status") == "rejected")
                 continue
-            records.append((candidate, prompt, example))
+            records.append((candidate, prompt, example, existing))
+            for engine in engines:
+                completed_runs = sum(item.engine == engine for item in existing)
+                for run_index in range(completed_runs, repetitions):
+                    tasks.append((candidate, prompt, example, engine, run_index))
         openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         all_prompts = [candidate.text for candidate in candidates]
-        total = max(1, len(records) * repetitions * len(engines))
+        total = max(1, len(tasks))
+        expected = {example["id"]: repetitions * len(engines) for _, _, example, _ in records}
+        received = {example["id"]: 0 for _, _, example, _ in records}
         concurrency = max(1, min(10, int(os.getenv("ANALYSIS_CONCURRENCY", "5"))))
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = [executor.submit(self._run_candidate, provider, candidate, prompt, example, engines, repetitions, language) for candidate, prompt, example in records]
+            futures = {executor.submit(self._run_once, provider, candidate, example, engine, run_index, language, "build"): (candidate, prompt, example) for candidate, prompt, example, engine, run_index in tasks}
             for future in as_completed(futures):
-                candidate, prompt, example, observations = future.result()
-                for observation in observations:
-                    self._persist_observation(prompt, observation)
-                    usage = observation.metadata.get("fan_out_usage") or {}
-                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                    for key in openai_usage:
-                        openai_usage[key] += int(usage.get(key) or 0)
-                    completed += 1
-                scores = score_dataset_example(candidate, observations, all_prompts)
-                is_accepted = scores["quality_score"] >= threshold
-                accepted += int(is_accepted)
-                rejected += int(not is_accepted)
-                self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
-                self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
+                candidate, prompt, example = futures[future]
+                observation = future.result()
+                self._persist_observation(prompt, observation)
+                stored_observations[example["id"]].append(observation)
+                received[example["id"]] += 1
+                usage = observation.metadata.get("fan_out_usage") or {}
+                openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
+                for key in openai_usage:
+                    openai_usage[key] += int(usage.get(key) or 0)
+                completed += 1
+                if len(stored_observations[example["id"]]) == expected[example["id"]]:
+                    scores = score_dataset_example(candidate, stored_observations[example["id"]], all_prompts)
+                    is_accepted = scores["quality_score"] >= threshold
+                    accepted += int(is_accepted)
+                    rejected += int(not is_accepted)
+                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                    self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                 self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
@@ -409,7 +437,20 @@ class CollectionWorker:
         prompts = {prompt["id"]: prompt for prompt in prompt_rows}
         project = self.db.request("GET", "projects", f"select=language,country&id=eq.{dataset['project_id']}&limit=1")[0]
         engines = dataset.get("engines", ["chatgpt"])
-        additional_executions = sum(max(0, target_runs - int(example.get("completed_runs", 0))) * len(engines) for example in examples)
+        records = []
+        tasks = []
+        stored_observations = {}
+        for example in examples:
+            prompt = prompts[example["prompt_id"]]
+            candidate = PromptCandidate(text=prompt["text"], provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
+            existing = self._stored_observations(prompt["id"], engines)
+            stored_observations[example["id"]] = existing
+            records.append((candidate, prompt, example, existing))
+            for engine in engines:
+                completed_runs = sum(item.engine == engine for item in existing)
+                for run_index in range(completed_runs, target_runs):
+                    tasks.append((candidate, prompt, example, engine, run_index))
+        additional_executions = len(tasks)
         additional_cost = additional_executions * float(dataset.get("cost_per_execution_eur", 0))
         projected_cost = float(dataset.get("estimated_cost_eur", 0)) + additional_cost
         if projected_cost > float(dataset.get("max_budget_eur", 0)):
@@ -420,25 +461,21 @@ class CollectionWorker:
         completed = openai_search_calls = 0
         openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         concurrency = max(1, min(10, int(os.getenv("ANALYSIS_CONCURRENCY", "5"))))
-        records = []
-        for example in examples:
-            prompt = prompts[example["prompt_id"]]
-            candidate = PromptCandidate(text=prompt["text"], provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
-            remaining = max(0, target_runs - int(example.get("completed_runs", 0)))
-            records.append((candidate, prompt, example, remaining))
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = [executor.submit(self._run_candidate, provider, candidate, prompt, example, engines, remaining, project) for candidate, prompt, example, remaining in records]
+            futures = {executor.submit(self._run_once, provider, candidate, example, engine, run_index, project, "validation"): (candidate, prompt, example) for candidate, prompt, example, engine, run_index in tasks}
             for future in as_completed(futures):
-                candidate, prompt, example, observations = future.result()
-                for observation in observations:
-                    self._persist_observation(prompt, observation)
-                    usage = observation.metadata.get("fan_out_usage") or {}
-                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                    for key in openai_usage:
-                        openai_usage[key] += int(usage.get(key) or 0)
-                    completed += 1
-                scores = score_dataset_example(candidate, observations) if observations else {}
-                self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
+                candidate, prompt, example = futures[future]
+                observation = future.result()
+                self._persist_observation(prompt, observation)
+                stored_observations[example["id"]].append(observation)
+                usage = observation.metadata.get("fan_out_usage") or {}
+                openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
+                for key in openai_usage:
+                    openai_usage[key] += int(usage.get(key) or 0)
+                completed += 1
+                if min(sum(item.engine == engine for item in stored_observations[example["id"]]) for engine in engines) >= target_runs:
+                    scores = score_dataset_example(candidate, stored_observations[example["id"]])
+                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
                 self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / max(1, additional_executions)))}, "return=minimal")
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
