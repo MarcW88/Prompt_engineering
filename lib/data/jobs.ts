@@ -17,7 +17,7 @@ export async function createAndTriggerJob(input: JobInput) {
     const cloudRun = await triggerCloudRunJob(job.id);
     return { jobs, cloudRun };
   } catch (error) {
-    await supabaseRest("jobs", { method: "PATCH", query: `id=eq.${encodeURIComponent(job.id)}`, body: { error: error instanceof Error ? error.message : "Déclenchement Cloud Run impossible" }, prefer: "return=minimal" });
+    await supabaseRest("jobs", { method: "PATCH", query: `id=eq.${encodeURIComponent(job.id)}`, body: { status: "failed", error: error instanceof Error ? error.message : "Déclenchement Cloud Run impossible", completed_at: new Date().toISOString() }, prefer: "return=minimal" });
     throw error;
   }
 }

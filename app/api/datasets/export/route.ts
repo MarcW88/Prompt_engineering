@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const tier = Math.max(1, Math.min(3, Number(params.get("tier") ?? 3)));
   if (!datasetId) return NextResponse.json({ error: "datasetId est requis." }, { status: 400 });
   try {
-    const examples = await supabaseRest<Array<Record<string, unknown>>>("dataset_examples", { query: `select=id,edited_prompt_text,validation_tier,persona,journey_stage,specificity_level,pre_execution_score,quality_score,stability_score,reproduction_score,prompts(text,provenance,confidence,clusters(label))&dataset_id=eq.${encodeURIComponent(datasetId)}&status=eq.accepted&manual_review_status=eq.approved&validation_tier=lte.${tier}&order=quality_score.desc` });
+    const examples = await supabaseRest<Array<Record<string, unknown>>>("dataset_examples", { query: `select=id,edited_prompt_text,validation_tier,persona,journey_stage,specificity_level,pre_execution_score,quality_score,stability_score,reproduction_score,prompts!dataset_examples_prompt_id_fkey(text,provenance,confidence,clusters(label))&dataset_id=eq.${encodeURIComponent(datasetId)}&status=eq.accepted&manual_review_status=eq.approved&validation_tier=lte.${tier}&order=quality_score.desc` });
     const header = ["prompt", "category", "persona", "intent", "specificity", "provenance", "confidence_score", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "tier"];
     const rows = examples.map((example) => {
       const prompt = example.prompts as Record<string, unknown>;

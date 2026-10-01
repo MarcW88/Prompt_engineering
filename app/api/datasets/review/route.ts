@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   if (!datasetId) return NextResponse.json({ error: "datasetId est requis." }, { status: 400 });
   const filter = status && statuses.has(status) ? `&manual_review_status=eq.${status}` : "";
   try {
-    const examples = await supabaseRest("dataset_examples", { query: `select=id,status,manual_review_status,review_note,edited_prompt_text,validation_tier,persona,journey_stage,specificity_level,pre_execution_score,quality_score,stability_score,reproduction_score,expected_sub_intents,prompts(id,text,provenance,confidence,clusters(label))&dataset_id=eq.${encodeURIComponent(datasetId)}&status=eq.accepted${filter}&order=quality_score.desc` });
+    const examples = await supabaseRest("dataset_examples", { query: `select=id,status,manual_review_status,review_note,edited_prompt_text,validation_tier,persona,journey_stage,specificity_level,pre_execution_score,quality_score,stability_score,reproduction_score,expected_sub_intents,prompts!dataset_examples_prompt_id_fkey(id,text,provenance,confidence,clusters(label))&dataset_id=eq.${encodeURIComponent(datasetId)}&status=eq.accepted${filter}&order=quality_score.desc` });
     return NextResponse.json({ examples });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Chargement impossible." }, { status: 502 });
