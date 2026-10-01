@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   try {
     const seeds = await supabaseRest<Array<{ id: string }>>("seeds", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&enabled=eq.true&order=priority.desc` });
     if (!seeds.length) return NextResponse.json({ error: "Ajoutez au moins un seed actif avant de lancer la collecte." }, { status: 409 });
-    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "collect_sources", status: "pending", input: { sources, seed_ids: seeds.map((seed) => seed.id), query_budget: queryBudget, source_config: sourceConfig } });
+    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "collect_sources", status: "pending", input: { sources, query_budget: queryBudget, source_config: sourceConfig } });
     return NextResponse.json(result, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Création du job impossible." }, { status: 502 });
