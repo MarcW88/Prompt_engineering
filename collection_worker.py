@@ -256,13 +256,13 @@ class CollectionWorker:
         cost = estimate_cost(len(selected), repetitions, len(engines), float(dataset.get("cost_per_execution_eur", 0)))
         if cost["estimated_cost_eur"] > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Estimated cost {cost['estimated_cost_eur']:.2f} EUR exceeds budget")
-        prompt_rows = self.db.request("POST", "prompts", body=[{
+        prompt_rows = self.db.request("POST", "prompts", "on_conflict=project_id,text", [{
             "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
             "provenance": candidate.provenance.value, "confidence": candidate.confidence,
             "status": "testing" if candidate.id in selected_ids else "draft",
             "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
-        } for candidate in candidates]) if candidates else []
-        examples = self.db.request("POST", "dataset_examples", body=[{
+        } for candidate in candidates], "resolution=merge-duplicates,return=representation") if candidates else []
+        examples = self.db.request("POST", "dataset_examples", "on_conflict=dataset_id,prompt_id", [{
             "dataset_id": dataset_id, "prompt_id": prompt["id"], "cluster_id": prompt["cluster_id"],
             "status": "executing" if candidate.id in selected_ids else "candidate",
             "persona": candidate.metadata["persona"], "journey_stage": candidate.metadata["stage"],
@@ -272,7 +272,7 @@ class CollectionWorker:
             "selected_for_execution": candidate.id in selected_ids,
             "selection_reason": "stratified_screening" if candidate.id in selected_ids else "candidate_pool",
             "validation_tier": 3, "target_runs": repetitions,
-        } for prompt, candidate in zip(prompt_rows, candidates)]) if prompt_rows else []
+        } for prompt, candidate in zip(prompt_rows, candidates)], "resolution=merge-duplicates,return=representation") if prompt_rows else []
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
         provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
