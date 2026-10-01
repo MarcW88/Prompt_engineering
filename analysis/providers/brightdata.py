@@ -10,7 +10,7 @@ class BrightDataProvider(AnalysisProvider):
     name = "brightdata"
     endpoint = "https://api.brightdata.com/datasets/v3/scrape"
 
-    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 300):
+    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 900):
         self.api_key = api_key or self.env("BRIGHTDATA_API_KEY")
         self.dataset_ids = dataset_ids or {
             "chatgpt": self.env("BRIGHTDATA_CHATGPT_DATASET_ID"),
