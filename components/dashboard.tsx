@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, BookOpen, ChevronDown, CircleDollarSign, CircleHelp,
   Database, Download, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
-  Search, Settings, ShieldCheck, Sparkles, X,
+  RotateCcw, Search, Settings, ShieldCheck, Sparkles, X,
 } from "lucide-react";
 
 import type { PromptRecord, Provenance } from "@/lib/types";
@@ -55,6 +55,7 @@ export function Dashboard() {
   const [executionModal, setExecutionModal] = useState(false);
   const [exportsModal, setExportsModal] = useState(false);
   const [workspaceModal, setWorkspaceModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
   const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
@@ -116,6 +117,23 @@ export function Dashboard() {
     await switchWorkspace(project.id);
   }
 
+  async function resetWorkspace() {
+    if (!projectId || resetting) return;
+    const confirmed = window.confirm(`Réinitialiser « ${projectName} » ? Tous les seeds, signaux, questions, clusters, prompts, analyses, coûts et historiques de jobs seront supprimés de ce workspace. Cette action est irréversible.`);
+    if (!confirmed) return;
+    setResetting(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/reset`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Réinitialisation impossible.");
+      await loadDashboard(projectId);
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Réinitialisation impossible.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function reloadAfterPromptTest() {
     setModal(false);
     window.location.reload();
@@ -131,6 +149,7 @@ export function Dashboard() {
         <div className="workspace">
           <span className="workspace-avatar">{projectName.slice(0, 1).toUpperCase()}</span>
           <div><small>Workspace</small>{projects.length > 1 ? <select className="workspace-select" value={projectId ?? ""} onChange={(event) => void switchWorkspace(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select> : <strong>{projectName}</strong>}</div>
+          <button type="button" className="workspace-add danger" onClick={() => void resetWorkspace()} disabled={!projectId || resetting} aria-label="Réinitialiser le workspace"><RotateCcw size={15} className={resetting ? "spin" : ""} /></button>
           <button type="button" className="workspace-add" onClick={() => setWorkspaceModal(true)} aria-label="Créer un workspace"><Plus size={15} /></button>
         </div>
         <nav>
