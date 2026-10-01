@@ -19,6 +19,11 @@ class BaseScraper(ABC):
         self.session = self._create_session()
         self.items_scraped = 0
         self.errors_count = 0
+        self.progress_callback = None
+
+    def _report_progress(self, processed: int, total: int, detail: str = ""):
+        if callable(self.progress_callback):
+            self.progress_callback(processed, total, detail)
     
     def _create_session(self) -> requests.Session:
         """Crée une session HTTP avec headers par défaut"""

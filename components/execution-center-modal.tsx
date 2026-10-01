@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertCircle, CheckCircle2, CircleSlash, Clock3, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle2, CircleSlash, Clock3, LoaderCircle, RefreshCw, Trash2, X } from "lucide-react";
 
 interface ExecutionJob {
   id: string;
@@ -90,6 +90,7 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -134,6 +135,21 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
     }
   }
 
+  async function removeJob(jobId: string) {
+    setRemoving(jobId);
+    setError("");
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Suppression impossible.");
+      setJobs((current) => current.filter((job) => job.id !== jobId));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Suppression impossible.");
+    } finally {
+      setRemoving(null);
+    }
+  }
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section className="modal execution-modal" onMouseDown={(event) => event.stopPropagation()}>
@@ -171,7 +187,13 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
                     <CircleSlash size={13} /> {cancelling === job.id ? "Annulation…" : "Annuler"}
                   </button>
                 )}
+                {!(job.status === "running" || job.status === "pending") && (
+                  <button type="button" className="remove-button" onClick={() => void removeJob(job.id)} disabled={removing === job.id} aria-label="Retirer ce run">
+                    <Trash2 size={13} /> {removing === job.id ? "Suppression…" : "Retirer"}
+                  </button>
+                )}
               </div>
+              {typeof job.output?.stage === "string" && <small className="execution-stage">{job.output.stage}</small>}
               {details(job.output) && <small className="execution-output">{details(job.output)}</small>}
               {job.error && <p className="form-error">{job.error}</p>}
             </article>

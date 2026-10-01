@@ -81,16 +81,18 @@ class SerpScraper(BaseScraper):
         queries = self._generate_queries(query_templates)
         self.logger.info(f"Generated {len(queries)} search queries")
         
-        for planned in queries:
+        for index, planned in enumerate(queries, start=1):
+            self._report_progress(index - 1, len(queries), f"SERP/PAA · {planned.query}")
             try:
                 query_items = [*self._scrape_paa_dataforseo(planned.query), *self._scrape_suggestions_dataforseo(planned.query)]
                 for item in query_items:
                     item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
                 items.extend(query_items)
-                
+                self._report_progress(index, len(queries), f"SERP/PAA · {planned.query} · {len(items)} signaux")
             except Exception as e:
                 self.logger.error(f"Error scraping SERP for '{planned.query}': {e}")
                 self.errors_count += 1
+                self._report_progress(index, len(queries), f"SERP/PAA · erreur sur {planned.query}")
         
         self.items_scraped = len(items)
         return items

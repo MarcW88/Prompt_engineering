@@ -212,7 +212,17 @@ class CollectionWorker:
         budget = clamp_collection_budget(input_config.get("query_budget", 10))
         seed_ids = [str(seed_id) for seed_id in input_config.get("seed_ids", []) if seed_id]
         seed_filter = f"&id=in.({','.join(seed_ids)})" if seed_ids else ""
+
+        def report(progress: int, stage: str, extra=None):
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {
+                "progress": max(0, min(99, progress)),
+                "output": {"stage": stage, **(extra or {})},
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+            }, "return=minimal")
+
+        report(3, "Chargement des seeds")
         seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true{seed_filter}&order=priority.desc")
+        report(8, f"{len(seed_rows)} seeds chargés · préparation des sources")
         config.scraping.serp["query_budget"] = budget
         config.scraping.forum["max_threads"] = budget
         config.scraping.reviews["max_pages"] = min(10, budget)
@@ -261,7 +271,19 @@ class CollectionWorker:
             scrapers.append(SerpScraper(config))
         if "review" in requested:
             scrapers.append(ReviewScraper(config))
-        items = [item for scraper in scrapers for item in scraper.run()]
+
+        fractions = {id(scraper): 0.0 for scraper in scrapers}
+
+        def scraper_progress(scraper, processed: int, total: int, detail: str):
+            fractions[id(scraper)] = processed / max(total, 1)
+            percent = 10 + int(82 * sum(fractions.values()) / max(len(fractions), 1))
+            report(percent, detail, {"source_progress": round(processed / max(total, 1), 3)})
+
+        items = []
+        for scraper in scrapers:
+            scraper.progress_callback = lambda processed, total, detail, current=scraper: scraper_progress(current, processed, total, detail)
+            items.extend(scraper.run())
+        report(94, f"Import de {len(items)} signaux collectés")
         dataforseo_cost = sum(float(getattr(scraper, "api_cost_usd", 0)) for scraper in scrapers)
         if dataforseo_cost:
             self._record_cost(job, "dataforseo", "serp_api", amount=dataforseo_cost, quantity=budget, unit="queries", cost_status="actual")
@@ -276,6 +298,7 @@ class CollectionWorker:
             batch = rows[start:start + 200]
             saved = self.db.request("POST", "signals", "on_conflict=project_id,content_hash", batch, "resolution=ignore-duplicates,return=representation")
             imported += len(saved or [])
+            report(94 + min(5, int(5 * min(start + len(batch), len(rows)) / max(len(rows), 1))), f"Import des signaux · {min(start + len(batch), len(rows))}/{len(rows)}", {"imported": imported})
         return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds), "query_budget": budget}
 
     def _transform_signals(self, job: Dict) -> Dict:

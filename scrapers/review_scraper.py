@@ -47,10 +47,10 @@ class ReviewScraper(BaseScraper):
         reviews_config = self.config.sources.get("reviews", {})
         platforms = reviews_config.get("platforms", [])
         
-        for platform in platforms:
+        for index, platform in enumerate(platforms, start=1):
             name = platform.get("name", "")
             self.logger.info(f"Scraping reviews: {name}")
-            
+            self._report_progress(index - 1, len(platforms), f"Avis · {name}")
             try:
                 if name == "trustpilot":
                     items.extend(self._scrape_trustpilot(platform))
@@ -58,9 +58,11 @@ class ReviewScraper(BaseScraper):
                     items.extend(self._scrape_google_reviews(platform))
                 else:
                     self.logger.warning(f"Unknown review platform: {name}")
+                self._report_progress(index, len(platforms), f"Avis · {name} · {len(items)} signaux")
             except Exception as e:
                 self.logger.error(f"Error scraping {name}: {e}")
                 self.errors_count += 1
+                self._report_progress(index, len(platforms), f"Avis · erreur sur {name}")
         
         self.items_scraped = len(items)
         return items
@@ -103,11 +105,12 @@ class ReviewScraper(BaseScraper):
             return []
         result = task.get("result") or []
         task_id = task.get("id")
-        for _ in range(60):
+        for attempt in range(60):
             if result:
                 break
             if not task_id:
                 return []
+            self._report_progress(attempt, 60, f"Trustpilot · attente DataForSEO {attempt + 1}/60")
             time.sleep(5)
             response = requests.get(f"https://api.dataforseo.com/v3/business_data/trustpilot/reviews/task_get/{task_id}", headers=headers, timeout=60)
             response.raise_for_status()

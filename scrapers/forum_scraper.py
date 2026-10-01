@@ -74,18 +74,20 @@ class ForumScraper(BaseScraper):
         forums_config = self.config.sources.get("forums", {})
         platforms = forums_config.get("platforms", [])
         
-        for platform in platforms:
+        for index, platform in enumerate(platforms, start=1):
             name = platform.get("name", "")
             self.logger.info(f"Scraping forum: {name}")
-            
+            self._report_progress(index - 1, len(platforms), f"Forum · {name}")
             try:
                 if name == "reddit":
                     items.extend(self._scrape_reddit(platform))
                 else:
                     items.extend(self._scrape_generic_forum(platform))
+                self._report_progress(index, len(platforms), f"Forum · {name} · {len(items)} signaux")
             except Exception as e:
                 self.logger.error(f"Error scraping {name}: {e}")
                 self.errors_count += 1
+                self._report_progress(index, len(platforms), f"Forum · erreur sur {name}")
         
         self.items_scraped = len(items)
         return items
@@ -96,9 +98,11 @@ class ForumScraper(BaseScraper):
         subreddits = platform_config.get("subreddits", [])
         max_threads = self.config.scraping.forum.get("max_threads", 50)
         
-        for subreddit_name in subreddits:
+        for index, subreddit_name in enumerate(subreddits, start=1):
+            self._report_progress(index - 1, len(subreddits), f"Reddit · r/{subreddit_name}")
             subreddit_items = self._scrape_subreddit_json(subreddit_name, max_threads)
             items.extend(subreddit_items)
+            self._report_progress(index, len(subreddits), f"Reddit · r/{subreddit_name} · {len(subreddit_items)} signaux")
         
         return items
     
@@ -107,7 +111,8 @@ class ForumScraper(BaseScraper):
         items = []
         
         planned_queries = plan_queries(self.config.seeds, "reddit", max_threads)
-        for planned in planned_queries:
+        for index, planned in enumerate(planned_queries, start=1):
+            self._report_progress(index - 1, len(planned_queries), f"Reddit · r/{subreddit_name} · {planned.query}")
             try:
                 url = f"https://www.reddit.com/r/{subreddit_name}/search.json"
                 params = {
@@ -168,6 +173,8 @@ class ForumScraper(BaseScraper):
                 
             except Exception as e:
                 self.logger.error(f"Error scraping r/{subreddit_name} for '{planned.query}': {e}")
+            finally:
+                self._report_progress(index, len(planned_queries), f"Reddit · r/{subreddit_name} · {index}/{len(planned_queries)} requêtes")
         
         self.logger.info(f"Scraped {len(items)} posts from r/{subreddit_name}")
         return items
@@ -186,11 +193,13 @@ class ForumScraper(BaseScraper):
         
         planned_queries = plan_queries(self.config.seeds, "forum", max_threads, domain)
         per_query_limit = max(1, min(10, max_threads // max(len(planned_queries), 1)))
-        for planned in planned_queries:
+        for index, planned in enumerate(planned_queries, start=1):
+            self._report_progress(index - 1, len(planned_queries), f"Forum · {name} · {planned.query}")
             search_items = self._google_search_scrape(planned.query, name, per_query_limit)
             for item in search_items:
                 item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
             items.extend(search_items)
+            self._report_progress(index, len(planned_queries), f"Forum · {name} · {index}/{len(planned_queries)} requêtes")
         
         return items
     
