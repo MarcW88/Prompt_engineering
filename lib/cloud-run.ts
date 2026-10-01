@@ -13,8 +13,7 @@ export function isCloudRunConfigured() {
   return Boolean(projectId && projectNumber && serviceAccount && poolId && providerId && jobName);
 }
 
-export async function triggerCloudRunJob(jobId: string) {
-  if (!isCloudRunConfigured()) throw new Error("Cloud Run n'est pas configuré.");
+async function getAccessToken() {
   const audience = `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
   const authClient = ExternalAccountClient.fromJSON({
     type: "external_account",
@@ -27,13 +26,31 @@ export async function triggerCloudRunJob(jobId: string) {
   if (!authClient) throw new Error("Impossible d'initialiser l'identité Google Cloud.");
   const accessToken = await authClient.getAccessToken();
   if (!accessToken.token) throw new Error("Impossible d'obtenir un jeton Google Cloud.");
+  return accessToken.token;
+}
+
+export async function triggerCloudRunJob(jobId: string) {
+  if (!isCloudRunConfigured()) throw new Error("Cloud Run n'est pas configuré.");
+  const token = await getAccessToken();
   const response = await fetch(`https://run.googleapis.com/v2/projects/${projectId}/locations/${region}/jobs/${jobName}:run`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken.token}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ overrides: { containerOverrides: [{ args: ["--job-id", jobId] }] } }),
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Cloud Run HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
   const operation = await response.json();
   return { operationName: operation.name as string };
+}
+
+export async function cancelCloudRunExecution(executionId: string) {
+  if (!isCloudRunConfigured() || !executionId) return { cancelled: false };
+  const token = await getAccessToken();
+  const response = await fetch(`https://run.googleapis.com/v2/projects/${projectId}/locations/${region}/jobs/${jobName}/executions/${executionId}:cancel`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!response.ok && response.status !== 404) throw new Error(`Annulation Cloud Run HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  return { cancelled: response.ok };
 }

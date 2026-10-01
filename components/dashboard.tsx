@@ -56,13 +56,23 @@ export function Dashboard() {
   const [exportsModal, setExportsModal] = useState(false);
   const [workspaceModal, setWorkspaceModal] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
-  const [metrics, setMetrics] = useState({ questions: 0, clusters: 0, prompts: 0, stability: 0 });
+  const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
+  const [jobs, setJobs] = useState<Array<{ kind: string; status: string }>>([]);
   const [configured, setConfigured] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Workspace GEO");
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const filtered = useMemo(() => records.filter((item) => item.prompt.toLowerCase().includes(query.toLowerCase())), [query, records]);
+  const activeJob = jobs.find((job) => job.status === "running" || job.status === "pending");
+  const nextAction = useMemo(() => {
+    if (!projectId) return { title: "Créer un workspace", text: "Le workspace regroupera vos seeds, signaux, questions et prompts.", action: () => setWorkspaceModal(true), button: "Créer" };
+    if (activeJob) return { title: "Exécution en cours", text: "Suivez sa progression ou annulez-la si elle est en doublon.", action: () => setExecutionModal(true), button: "Voir la progression" };
+    if (!metrics.seeds) return { title: "Nouvelle collecte", text: "Ajoutez vos seeds et choisissez Reddit, forums, PAA, Trustpilot ou GSC.", action: () => setSeedModal(true), button: "Collecter" };
+    if (!metrics.signals || !metrics.questions || !metrics.clusters) return { title: "Préparer les questions", text: "Transforme les signaux en questions, puis lance automatiquement le clustering.", action: () => setPipelineModal(true), button: "Ouvrir le workflow" };
+    if (!metrics.prompts) return { title: "Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir" };
+    return { title: "Valider et revoir", text: "Lancez la validation, le reverse engineering, puis approuvez les prompts exportables.", action: () => setPipelineModal(true), button: "Continuer" };
+  }, [activeJob, metrics, projectId]);
 
   async function loadDashboard(selectedProjectId?: string) {
     const suffix = selectedProjectId ? `?projectId=${encodeURIComponent(selectedProjectId)}` : "";
@@ -74,6 +84,7 @@ export function Dashboard() {
     setProjectName(data.projectName ?? "Workspace GEO");
     setMetrics(data.metrics);
     setSources(data.sources);
+    setJobs(data.jobs ?? []);
     setRecords(data.prompts.map((item: { id: string; text: string; provenance: Provenance; confidence: number; status: PromptRecord["status"] }) => ({
       id: item.id.slice(0, 8), prompt: item.text, provenance: item.provenance, confidence: Math.round(Number(item.confidence) * 100), status: item.status,
       engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0,
@@ -165,6 +176,11 @@ export function Dashboard() {
             <article><div className="metric-icon blue"><Layers3 /></div><div><span>Intentions détectées</span><strong>{metrics.clusters.toLocaleString("fr-FR")}</strong><small>Clusters disponibles</small></div></article>
             <article><div className="metric-icon amber"><Sparkles /></div><div><span>Prompts reconstruits</span><strong>{metrics.prompts.toLocaleString("fr-FR")}</strong><small>Corpus actif</small></div></article>
             <article><div className="metric-icon green"><ShieldCheck /></div><div><span>Score de stabilité</span><strong>{metrics.stability}<span>%</span></strong><small>Moyenne des validations</small></div></article>
+          </section>
+
+          <section className="next-action">
+            <div><span className="eyebrow">PROCHAINE ÉTAPE</span><h2>{nextAction.title}</h2><p>{nextAction.text}</p></div>
+            <button className="primary" onClick={nextAction.action}>{nextAction.button}<ArrowRight size={16} /></button>
           </section>
 
           <section className="workflow-section">

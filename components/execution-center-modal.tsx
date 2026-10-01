@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertCircle, CheckCircle2, Clock3, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle2, CircleSlash, Clock3, LoaderCircle, RefreshCw, X } from "lucide-react";
 
 interface ExecutionJob {
   id: string;
   kind: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   output?: Record<string, unknown>;
   error?: string | null;
@@ -30,6 +30,7 @@ const statusLabels: Record<ExecutionJob["status"], string> = {
   running: "En cours",
   completed: "Terminé",
   failed: "Échoué",
+  cancelled: "Annulé",
 };
 
 function duration(from: string | null | undefined, to?: string | null) {
@@ -47,6 +48,25 @@ function estimate(job: ExecutionJob) {
   const remaining = Math.round(elapsed * (100 - job.progress) / job.progress / 1000);
   if (remaining <= 0 || !Number.isFinite(remaining)) return "—";
   return remaining < 60 ? `≈ ${remaining}s` : `≈ ${Math.floor(remaining / 60)}m ${remaining % 60}s`;
+}
+
+const orderedKinds = ["collect_sources", "transform_signals", "cluster_questions", "build_dataset", "validate_dataset", "reverse_engineer"];
+
+function nextStep(jobs: ExecutionJob[]) {
+  const active = jobs.find((job) => job.status === "running" || job.status === "pending");
+  if (active) return `En cours : ${kindLabels[active.kind] ?? active.kind}. Vous pouvez suivre ou annuler cette exécution ci-dessous.`;
+  const latestByKind = new Map(jobs.map((job) => [job.kind, job]));
+  const nextKind = orderedKinds.find((kind) => latestByKind.get(kind)?.status !== "completed");
+  if (!nextKind) return "Prochaine étape : ouvrez Revue manuelle, puis exportez les prompts approuvés.";
+  const actions: Record<string, string> = {
+    collect_sources: "Prochaine étape : ouvrez Nouvelle collecte.",
+    transform_signals: "Prochaine étape : Piloter le workflow → Préparer les questions.",
+    cluster_questions: "Prochaine étape : Piloter le workflow → Préparer les questions (le clustering se lance automatiquement).",
+    build_dataset: "Prochaine étape : ouvrez Dataset Builder.",
+    validate_dataset: "Prochaine étape : ouvrez Dataset Builder et lancez la validation à 3 runs.",
+    reverse_engineer: "Prochaine étape : Piloter le workflow → Reverse engineering.",
+  };
+  return actions[nextKind];
 }
 
 function details(output: Record<string, unknown> | undefined) {
@@ -69,6 +89,7 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
   const [loading, setLoading] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [error, setError] = useState("");
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -98,6 +119,21 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
 
   const running = jobs.filter((job) => job.status === "running" || job.status === "pending").length;
 
+  async function cancelJob(jobId: string) {
+    setCancelling(jobId);
+    setError("");
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Annulation impossible.");
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Annulation impossible.");
+    } finally {
+      setCancelling(null);
+    }
+  }
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section className="modal execution-modal" onMouseDown={(event) => event.stopPropagation()}>
@@ -113,12 +149,13 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
           <span><Activity size={16} /> {running} job{running > 1 ? "s" : ""} actif{running > 1 ? "s" : ""}</span>
           <small>{updatedAt ? `Actualisé à ${updatedAt.toLocaleTimeString("fr-FR")}` : "Actualisation…"}</small>
         </div>
+        <div className="next-step"><strong>À faire maintenant</strong><p>{nextStep(jobs)}</p></div>
         {error && <p className="form-error">{error}</p>}
         <div className="execution-list">
           {jobs.map((job) => (
             <article key={job.id} className={`execution-item job-${job.status}`}>
               <div className="execution-title">
-                {job.status === "completed" ? <CheckCircle2 size={18} /> : job.status === "failed" ? <AlertCircle size={18} /> : <LoaderCircle size={18} className={job.status === "running" ? "spin" : ""} />}
+                {job.status === "completed" ? <CheckCircle2 size={18} /> : job.status === "failed" || job.status === "cancelled" ? <AlertCircle size={18} /> : <LoaderCircle size={18} className={job.status === "running" ? "spin" : ""} />}
                 <div>
                   <strong>{kindLabels[job.kind] ?? job.kind}</strong>
                   <small>{statusLabels[job.status]} · démarré {job.started_at ? new Date(job.started_at).toLocaleTimeString("fr-FR") : "—"}</small>
@@ -129,6 +166,11 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
                 <span>{job.progress}%</span>
                 <span><Clock3 size={13} /> {duration(job.started_at, job.completed_at)}</span>
                 <span>Reste {estimate(job)}</span>
+                {(job.status === "running" || job.status === "pending") && (
+                  <button type="button" className="cancel-button" onClick={() => void cancelJob(job.id)} disabled={cancelling === job.id}>
+                    <CircleSlash size={13} /> {cancelling === job.id ? "Annulation…" : "Annuler"}
+                  </button>
+                )}
               </div>
               {details(job.output) && <small className="execution-output">{details(job.output)}</small>}
               {job.error && <p className="form-error">{job.error}</p>}
