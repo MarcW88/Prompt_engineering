@@ -19,6 +19,7 @@ class SocialScraper(BaseScraper):
         "facebook": "BRIGHTDATA_FACEBOOK_DATASET_ID",
         "instagram": "BRIGHTDATA_INSTAGRAM_DATASET_ID",
         "linkedin": "BRIGHTDATA_LINKEDIN_DATASET_ID",
+        "x": "BRIGHTDATA_X_DATASET_ID",
     }
 
     def __init__(self, config: Config, platforms: List[str]):

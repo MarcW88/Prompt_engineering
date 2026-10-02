@@ -13,6 +13,7 @@ const sourceLabels: Record<string, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  x: "X / Twitter",
 };
 
 const defaultGscPattern = "^(?:\\S+\\s+){9,}\\S+$";
@@ -49,10 +50,12 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [facebookUrls, setFacebookUrls] = useState("");
   const [instagramUrls, setInstagramUrls] = useState("");
   const [linkedinUrls, setLinkedinUrls] = useState("");
+  const [xUrls, setXUrls] = useState("");
   const [redditDatasetId, setRedditDatasetId] = useState("");
   const [facebookDatasetId, setFacebookDatasetId] = useState("");
   const [instagramDatasetId, setInstagramDatasetId] = useState("");
   const [linkedinDatasetId, setLinkedinDatasetId] = useState("");
+  const [xDatasetId, setXDatasetId] = useState("");
   const [serpTemplates, setSerpTemplates] = useState("{theme} {brand} avis\n{theme} {brand} qualité\nmeilleur {theme} {brand}\n{brand} vs {competitor}\nproblème {brand}\nalternative {brand} {theme}");
   const [gscPattern, setGscPattern] = useState(defaultGscPattern);
   const [status, setStatus] = useState("");
@@ -71,6 +74,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
       facebook: lines(facebookUrls).length,
       instagram: lines(instagramUrls).length,
       linkedin: lines(linkedinUrls).length,
+      x: lines(xUrls).length,
     };
     const requests =
       (sources.includes("reddit") ? queryBudget * Math.max(1, platformCounts.reddit) : 0) +
@@ -78,9 +82,10 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
       (sources.includes("serp") ? queryBudget : 0) +
       (sources.includes("facebook") ? queryBudget * Math.max(1, platformCounts.facebook) : 0) +
       (sources.includes("instagram") ? queryBudget * Math.max(1, platformCounts.instagram) : 0) +
-      (sources.includes("linkedin") ? queryBudget * Math.max(1, platformCounts.linkedin) : 0);
+      (sources.includes("linkedin") ? queryBudget * Math.max(1, platformCounts.linkedin) : 0) +
+      (sources.includes("x") ? queryBudget * Math.max(1, platformCounts.x) : 0);
     return requests + (sources.includes("review") ? Math.min(10, queryBudget) : 0);
-  }, [facebookUrls, forumUrls, instagramUrls, linkedinUrls, queryBudget, sources, subreddits]);
+  }, [facebookUrls, forumUrls, instagramUrls, linkedinUrls, queryBudget, sources, subreddits, xUrls]);
 
   async function importSeedFile(file: File) {
     setFileStatus("Lecture du fichier…");
@@ -147,10 +152,12 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         facebook_urls: lines(facebookUrls),
         instagram_urls: lines(instagramUrls),
         linkedin_urls: lines(linkedinUrls),
+        x_urls: lines(xUrls),
         reddit_dataset_id: redditDatasetId.trim(),
         facebook_dataset_id: facebookDatasetId.trim(),
         instagram_dataset_id: instagramDatasetId.trim(),
         linkedin_dataset_id: linkedinDatasetId.trim(),
+        x_dataset_id: xDatasetId.trim(),
         serp_templates: lines(serpTemplates),
       };
       const jobResponse = await fetch("/api/jobs/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sources, queryBudget, sourceConfig }) });
@@ -214,6 +221,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         {sources.includes("facebook") && <><label>Pages/posts Facebook, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial"} /><small>Collector Bright Data Facebook : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Facebook<input value={facebookDatasetId} onChange={(event) => setFacebookDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
         {sources.includes("instagram") && <><label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Instagram<input value={instagramDatasetId} onChange={(event) => setInstagramDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
         {sources.includes("linkedin") && <><label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data LinkedIn<input value={linkedinDatasetId} onChange={(event) => setLinkedinDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
+        {sources.includes("x") && <><label>Comptes/posts X, une URL par ligne<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} placeholder={"https://x.com/pairidaiza"} /><small>Collector Bright Data X/Twitter : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data X<input value={xDatasetId} onChange={(event) => setXDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
         {sources.includes("serp") && <label>Templates SERP, un par ligne<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables disponibles : {"{theme}"}, {"{seed}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
 
         <div className="gsc-box">

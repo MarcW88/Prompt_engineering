@@ -293,13 +293,14 @@ class CollectionWorker:
         if "serp_templates" in source_config:
             config.sources.setdefault("serp", {})["query_templates"] = clean_list("serp_templates")
 
-        social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin") if platform in requested]
+        social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin", "x") if platform in requested]
         if social_platforms:
             config.sources["social"] = {
                 "reddit": {"subreddits": clean_list("subreddits"), "dataset_id": str(source_config.get("reddit_dataset_id") or "").strip()},
                 "facebook": {"urls": clean_list("facebook_urls"), "dataset_id": str(source_config.get("facebook_dataset_id") or "").strip()},
                 "instagram": {"urls": clean_list("instagram_urls"), "dataset_id": str(source_config.get("instagram_dataset_id") or "").strip()},
                 "linkedin": {"urls": clean_list("linkedin_urls"), "dataset_id": str(source_config.get("linkedin_dataset_id") or "").strip()},
+                "x": {"urls": clean_list("x_urls"), "dataset_id": str(source_config.get("x_dataset_id") or "").strip()},
             }
 
         scrapers = []
