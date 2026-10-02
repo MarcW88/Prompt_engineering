@@ -37,6 +37,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [priority, setPriority] = useState(70);
   const [sources, setSources] = useState(["reddit", "forum", "serp", "review"]);
   const [queryBudget, setQueryBudget] = useState(10);
+  const [socialPostLimit, setSocialPostLimit] = useState(10);
+  const [socialCommentLimit, setSocialCommentLimit] = useState(5);
   const [brandName, setBrandName] = useState("");
   const [domain, setDomain] = useState("");
   const [market, setMarket] = useState("BE");
@@ -148,6 +150,9 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         instagram_urls: lines(instagramUrls),
         linkedin_urls: lines(linkedinUrls),
         x_urls: lines(xUrls),
+        social_target_limit: Math.max(1, Math.min(50, queryBudget)),
+        social_post_limit: Math.max(1, Math.min(50, socialPostLimit)),
+        social_comment_limit: Math.max(0, Math.min(20, socialCommentLimit)),
         serp_templates: lines(serpTemplates),
       };
       const jobResponse = await fetch("/api/jobs/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sources, queryBudget, sourceConfig }) });
@@ -176,7 +181,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
             <li>Les seeds servent à générer les recherches Reddit, forums, réseaux sociaux et SERP.</li>
             <li>Le budget limite les requêtes par plateforme : Reddit = subreddits × budget ; forums = URLs × budget ; SERP = budget total ; Trustpilot = maximum {Math.min(10, queryBudget)} pages.</li>
             <li>Estimation actuelle : <b>{plannedRequests.toLocaleString("fr-FR")} requêtes/planifications</b> avant déduplication et résultats vides.</li>
-            <li>Les réseaux sociaux utilisent les datasets Bright Data configurés côté worker.</li>
+            <li>Les réseaux sociaux utilisent les datasets Bright Data configurés côté worker, avec au maximum {socialPostLimit} posts et {socialCommentLimit} commentaires importés par post.</li>
           </ol>
         </div>
 
@@ -202,6 +207,10 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><small>Les seeds les plus prioritaires sont planifiés en premier.</small></label>
         </div>
         <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Recommandé : 5–10 pour un test, 20–50 pour un corpus réaliste, au-delà seulement si le secteur est très discuté. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
+        <div className="form-row compact">
+          <label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /><small>Demandé à Bright Data quand le dataset l’accepte.</small></label>
+          <label>Commentaires max par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>Les commentaires au-delà sont ignorés dans l’import.</small></label>
+        </div>
 
         <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram, LinkedIn et X utilisent les datasets Bright Data configurés côté worker ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
 

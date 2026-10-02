@@ -256,6 +256,13 @@ class CollectionWorker:
                 return []
             return [str(item).strip() for item in value if str(item).strip()]
 
+        def bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(source_config.get(name) or default)
+            except (TypeError, ValueError):
+                value = default
+            return max(minimum, min(maximum, value))
+
         client_name = str(source_config.get("client_name") or "").strip()
         if client_name:
             config.client.name = client_name
@@ -295,7 +302,13 @@ class CollectionWorker:
 
         social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin", "x") if platform in requested]
         if social_platforms:
+            social_limits = {
+                "targets": bounded_int("social_target_limit", min(query_budget, 20), 1, 50),
+                "posts": bounded_int("social_post_limit", 10, 1, 50),
+                "comments": bounded_int("social_comment_limit", 5, 0, 20),
+            }
             config.sources["social"] = {
+                "limits": social_limits,
                 "reddit": {"subreddits": clean_list("subreddits"), "dataset_id": str(source_config.get("reddit_dataset_id") or "").strip()},
                 "facebook": {"urls": clean_list("facebook_urls"), "dataset_id": str(source_config.get("facebook_dataset_id") or "").strip()},
                 "instagram": {"urls": clean_list("instagram_urls"), "dataset_id": str(source_config.get("instagram_dataset_id") or "").strip()},

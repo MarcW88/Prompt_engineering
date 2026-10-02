@@ -28,6 +28,10 @@ class SocialScraper(BaseScraper):
         self.api_key = os.getenv("BRIGHTDATA_API_KEY", "")
         self.timeout = int(os.getenv("BRIGHTDATA_SOCIAL_TIMEOUT", "240"))
         self.batch_size = int(os.getenv("BRIGHTDATA_SOCIAL_BATCH_SIZE", "20"))
+        limits = self.config.sources.get("social", {}).get("limits", {})
+        self.target_limit = int(limits.get("targets") or os.getenv("BRIGHTDATA_SOCIAL_TARGET_LIMIT", "20"))
+        self.post_limit = int(limits.get("posts") or os.getenv("BRIGHTDATA_SOCIAL_POST_LIMIT", "10"))
+        self.comment_limit = int(limits.get("comments") if limits.get("comments") is not None else os.getenv("BRIGHTDATA_SOCIAL_COMMENT_LIMIT", "5"))
         self.api_cost_usd = 0.0
         self.skipped: Dict[str, str] = {}
         self._progress_processed = 0
@@ -52,7 +56,7 @@ class SocialScraper(BaseScraper):
         for platform_index, platform in enumerate(self.platforms, start=1):
             configured = self.config.sources.get("social", {}).get(platform, {})
             dataset_id = configured.get("dataset_id") or os.getenv(self.dataset_env[platform], "")
-            targets = self._targets(platform)
+            targets = self._targets(platform)[:self.target_limit]
             if not dataset_id:
                 self.skipped[platform] = f"{self.dataset_env[platform]} manquant"
                 self.logger.warning(f"Bright Data dataset ID missing for {platform}")
@@ -70,6 +74,7 @@ class SocialScraper(BaseScraper):
                 try:
                     payload = [item for target in batch for item in self._payload(platform, target)]
                     records = self._collect_dataset(dataset_id, payload)
+                    records = records[:len(batch) * self.post_limit]
                     parsed = [self._record_to_item(platform, record, self._record_target(record, batch)) for record in records]
                     items.extend(item for item in parsed if item)
                     processed = min(start + len(batch), len(targets))
@@ -99,6 +104,8 @@ class SocialScraper(BaseScraper):
 
     def _payload(self, platform: str, target: Dict[str, str]) -> List[Dict[str, Any]]:
         payload: Dict[str, Any] = {"url": target["url"]}
+        if platform in {"facebook", "instagram", "reddit"}:
+            payload["num_of_posts"] = self.post_limit
         if target.get("query"):
             payload["query"] = target["query"]
         if platform == "reddit" and target.get("subreddit"):
@@ -164,7 +171,7 @@ class SocialScraper(BaseScraper):
         comments = record.get("comments") or record.get("top_comments") or []
         comment_texts = []
         if isinstance(comments, list):
-            for comment in comments[:10]:
+            for comment in comments[:self.comment_limit]:
                 if isinstance(comment, dict):
                     value = comment.get("text") or comment.get("comment") or comment.get("content") or ""
                     if value:
@@ -183,6 +190,6 @@ class SocialScraper(BaseScraper):
             title=title or None,
             brand=self._detect_brand(raw_text) or self.config.client.name,
             theme=self._detect_theme(raw_text),
-            metadata={"provider": "brightdata", "target": target, "comment_count": len(comment_texts), "raw_record_keys": sorted(record.keys())[:30]},
+            metadata={"provider": "brightdata", "target": target, "comment_count": len(comment_texts), "limits": {"posts": self.post_limit, "comments": self.comment_limit}, "raw_record_keys": sorted(record.keys())[:30]},
             client_slug=self.config.client.slug,
         )
