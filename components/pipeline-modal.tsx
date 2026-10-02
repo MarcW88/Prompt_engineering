@@ -6,9 +6,20 @@ import { ArrowRight, CheckCircle2, Circle, LoaderCircle, X } from "lucide-react"
 interface PipelineJob {
   id: string;
   kind: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
+  output?: Record<string, unknown>;
   error?: string;
+}
+
+interface WorkflowMetrics {
+  signals: number;
+  questions: number;
+  clusters: number;
+  datasets: number;
+  observations: number;
+  validations: number;
+  approved: number;
 }
 
 const steps = [
@@ -35,12 +46,17 @@ interface PipelineModalProps {
 
 export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenDataset, onOpenReview, onOpenExports }: PipelineModalProps) {
   const [jobs, setJobs] = useState<PipelineJob[]>([]);
+  const [metrics, setMetrics] = useState<WorkflowMetrics>({ signals: 0, questions: 0, clusters: 0, datasets: 0, observations: 0, validations: 0, approved: 0 });
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {
     if (!projectId) return;
-    const response = await fetch(`/api/jobs?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" });
-    if (response.ok) setJobs((await response.json()).jobs ?? []);
+    const [jobsResponse, dashboardResponse] = await Promise.all([
+      fetch(`/api/jobs?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
+      fetch(`/api/dashboard?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
+    ]);
+    if (jobsResponse.ok) setJobs((await jobsResponse.json()).jobs ?? []);
+    if (dashboardResponse.ok) setMetrics((await dashboardResponse.json()).metrics ?? { signals: 0, questions: 0, clusters: 0, datasets: 0, observations: 0, validations: 0, approved: 0 });
   }, [projectId]);
 
   useEffect(() => {
@@ -65,6 +81,31 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
     return jobs.find((job) => job.kind === kind);
   }
 
+  function isDone(kind: string) {
+    if (kind === "collect_sources") return metrics.signals > 0;
+    if (kind === "transform_signals") return metrics.questions > 0;
+    if (kind === "cluster_questions") return metrics.clusters > 0;
+    if (kind === "build_dataset") return metrics.observations > 0;
+    if (kind === "validate_dataset") return metrics.validations > 0;
+    if (kind === "manual_review") return metrics.approved > 0;
+    if (kind === "semactic_export") return false;
+    return latest(kind)?.status === "completed";
+  }
+
+  function visibleJob(kind: string) {
+    if (kind === "cluster_questions") return latest("cluster_questions") ?? latest("transform_signals");
+    return latest(kind);
+  }
+
+  function statusLabel(kind: string) {
+    const job = visibleJob(kind);
+    if (isDone(kind)) return "Terminé";
+    if (job?.status === "running" || job?.status === "pending") return "En cours";
+    if (job?.status === "failed") return "Échec";
+    if (job?.status === "cancelled") return "Annulé";
+    return "Non lancé";
+  }
+
   function openAction(action: string) {
     if (action === "collection") onOpenCollection();
     if (action === "dataset") onOpenDataset();
@@ -81,21 +122,23 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
         </div>
         <div className="pipeline-steps">
           {steps.map((step) => {
-            const job = latest(step.kind);
+            const job = visibleJob(step.kind);
             const launchable = launchableKinds.has(step.kind);
+            const done = isDone(step.kind);
+            const running = job?.status === "running" || job?.status === "pending";
+            const label = done ? "Terminé" : launchable ? (step.kind === "transform_signals" ? "Préparer" : "Lancer") : step.action === "collection" ? "Configurer" : step.action === "dataset" ? "Ouvrir" : step.action === "review" ? "Réviser" : "Exporter";
             return (
               <article key={step.kind}>
                 <div className="pipeline-index">
-                  {job?.status === "completed" ? <CheckCircle2 size={19} /> : job?.status === "running" ? <LoaderCircle className="spin" size={19} /> : <Circle size={19} />}
+                  {done ? <CheckCircle2 size={19} /> : running ? <LoaderCircle className="spin" size={19} /> : <Circle size={19} />}
                 </div>
                 <div>
                   <h3>{step.title}</h3>
                   <p>{step.text}</p>
-                  {job && <small className={`job-${job.status}`}>{job.status} · {job.progress}%{job.error ? ` · ${job.error}` : ""}</small>}
-                  {!job && <small>Non lancé</small>}
+                  <small className={`job-${done ? "completed" : job?.status ?? "pending"}`}>{statusLabel(step.kind)}{job && !done ? ` · ${job.progress}%` : ""}{job?.error && !done ? ` · ${job.error}` : ""}</small>
                 </div>
-                <button className="secondary" onClick={() => launchable ? void launch(step.kind) : openAction(step.action)}>
-                  {launchable ? (job ? "Relancer" : "Lancer") : step.action === "collection" ? "Configurer" : step.action === "dataset" ? "Ouvrir" : step.action === "review" ? "Réviser" : "Exporter"}<ArrowRight size={14} />
+                <button className="secondary" disabled={done && step.kind !== "collect_sources" || running} onClick={() => launchable ? void launch(step.kind === "transform_signals" ? "prepare_questions" : step.kind) : openAction(step.action)}>
+                  {label}<ArrowRight size={14} />
                 </button>
               </article>
             );
