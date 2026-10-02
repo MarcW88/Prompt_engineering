@@ -26,9 +26,13 @@ class SocialScraper(BaseScraper):
         super().__init__(config)
         self.platforms = platforms
         self.api_key = os.getenv("BRIGHTDATA_API_KEY", "")
-        self.timeout = int(os.getenv("BRIGHTDATA_SOCIAL_TIMEOUT", "900"))
+        self.timeout = int(os.getenv("BRIGHTDATA_SOCIAL_TIMEOUT", "240"))
+        self.batch_size = int(os.getenv("BRIGHTDATA_SOCIAL_BATCH_SIZE", "20"))
         self.api_cost_usd = 0.0
         self.skipped: Dict[str, str] = {}
+        self._progress_processed = 0
+        self._progress_total = 1
+        self._progress_label = "social"
 
     @property
     def source_type(self) -> str:
@@ -56,19 +60,28 @@ class SocialScraper(BaseScraper):
             if not targets:
                 self.skipped[platform] = "aucune cible configurée"
                 continue
-            for index, target in enumerate(targets, start=1):
-                label = target.get("label") or target.get("url") or target.get("query")
-                self._report_progress(index - 1, len(targets), f"{platform} · {label}")
+            for start in range(0, len(targets), self.batch_size):
+                batch = targets[start:start + self.batch_size]
+                label = batch[0].get("label") or batch[0].get("url") or batch[0].get("query")
+                self._progress_processed = start
+                self._progress_total = len(targets)
+                self._progress_label = f"{platform} · {label}"
+                self._report_progress(start, len(targets), f"{platform} · batch {start // self.batch_size + 1} · {len(batch)} cible(s)")
                 try:
-                    records = self._collect_dataset(dataset_id, self._payload(platform, target))
-                    parsed = [self._record_to_item(platform, record, target) for record in records]
+                    payload = [item for target in batch for item in self._payload(platform, target)]
+                    records = self._collect_dataset(dataset_id, payload)
+                    parsed = [self._record_to_item(platform, record, self._record_target(record, batch)) for record in records]
                     items.extend(item for item in parsed if item)
-                    self._report_progress(index, len(targets), f"{platform} · {label} · {len(parsed)} signaux")
+                    processed = min(start + len(batch), len(targets))
+                    self._progress_processed = processed
+                    self._report_progress(processed, len(targets), f"{platform} · {len(parsed)} signaux · batch {start // self.batch_size + 1}")
                 except Exception as error:
                     self.errors_count += 1
                     self.skipped[platform] = str(error)[:200]
-                    self.logger.error(f"Bright Data {platform} error for {label}: {error}")
-                    self._report_progress(index, len(targets), f"{platform} · erreur sur {label}")
+                    self.logger.error(f"Bright Data {platform} error for batch starting at {label}: {error}")
+                    processed = min(start + len(batch), len(targets))
+                    self._progress_processed = processed
+                    self._report_progress(processed, len(targets), f"{platform} · erreur sur le batch {start // self.batch_size + 1}")
             self._report_progress(platform_index, len(self.platforms), f"{platform} · {len(items)} signaux au total")
         self.items_scraped = len(items)
         return items
@@ -123,6 +136,7 @@ class SocialScraper(BaseScraper):
             response = requests.get(f"https://api.brightdata.com/datasets/v3/progress/{snapshot_id}", headers=headers, timeout=30)
             response.raise_for_status()
             status = response.json().get("status")
+            self._report_progress(self._progress_processed, self._progress_total, f"{self._progress_label} · Bright Data {status or 'en cours'}")
             if status == "ready":
                 result = requests.get(f"https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}", params={"format": "json"}, headers=headers, timeout=120)
                 result.raise_for_status()
@@ -131,7 +145,20 @@ class SocialScraper(BaseScraper):
             if status in {"failed", "canceled"}:
                 raise RuntimeError(f"Bright Data snapshot {snapshot_id} ended with status {status}")
             time.sleep(5)
-        raise RuntimeError(f"Bright Data snapshot {snapshot_id} timed out")
+        raise RuntimeError(f"Bright Data snapshot {snapshot_id} timed out after {self.timeout}s")
+
+    def _record_target(self, record: Dict[str, Any], targets: List[Dict[str, str]]) -> Dict[str, str]:
+        input_value = record.get("input")
+        record_url = str(
+            record.get("input_url")
+            or (input_value.get("url") if isinstance(input_value, dict) else "")
+            or record.get("url")
+            or ""
+        )
+        for target in targets:
+            if target.get("url") and target["url"] == record_url:
+                return target
+        return targets[0]
 
     def _record_to_item(self, platform: str, record: Dict[str, Any], target: Dict[str, str]) -> Optional[RawItem]:
         comments = record.get("comments") or record.get("top_comments") or []
