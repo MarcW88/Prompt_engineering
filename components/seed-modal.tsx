@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Database, FileUp, Play, Upload, X } from "lucide-react";
 import readExcelFile from "read-excel-file";
 import { parseSeedText, type SeedType } from "@/lib/data/seeds";
+import { recommendBudget } from "@/lib/data/budget";
 
 const sourceLabels: Record<string, string> = {
   reddit: "Reddit",
@@ -63,6 +64,17 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   function toggleSource(source: string) {
     setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
   }
+
+  const collectionRecommendation = useMemo(() => recommendBudget({
+    seeds: parseSeedText(text, { seedType, priority, source: "dashboard" }).length,
+    signals: 0,
+    themes: lines(themes).length,
+    competitors: lines(competitors).length,
+    socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length,
+    languages: Math.max(1, lines(languages).length),
+    markets: 1,
+  }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, priority, seedType, subreddits, text, themes, xUrls]);
+  const recommendedQueryBudget = { light: 5, standard: 15, extended: 30, segmented: 40 }[collectionRecommendation.tier];
 
   const plannedRequests = useMemo(() => {
     const platformCounts = {
@@ -153,6 +165,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         social_target_limit: Math.max(1, Math.min(50, queryBudget)),
         social_post_limit: Math.max(1, Math.min(50, socialPostLimit)),
         social_comment_limit: Math.max(0, Math.min(20, socialCommentLimit)),
+        recommended_budget_total_eur: collectionRecommendation.totalEur,
+        budget_profile: { tier: collectionRecommendation.tier, score: collectionRecommendation.score, corpus_target: collectionRecommendation.corpusTarget, allocations: collectionRecommendation.allocations },
         serp_templates: lines(serpTemplates),
       };
       const jobResponse = await fetch("/api/jobs/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sources, queryBudget, sourceConfig }) });
@@ -183,6 +197,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
             <li>Estimation actuelle : <b>{plannedRequests.toLocaleString("fr-FR")} requêtes/planifications</b> avant déduplication et résultats vides.</li>
             <li>Les réseaux sociaux utilisent les datasets Bright Data configurés côté worker, avec au maximum {socialPostLimit} posts et {socialCommentLimit} commentaires importés par post.</li>
           </ol>
+          <p><strong>Profil recommandé : {collectionRecommendation.tier}</strong> · corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux · budget global indicatif {collectionRecommendation.totalEur.toFixed(2)} €.</p>
+          <p>Budget de requêtes conseillé pour cette première passe : {recommendedQueryBudget}. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer</button></p>
         </div>
 
         <div className="form-row">

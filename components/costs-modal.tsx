@@ -21,7 +21,7 @@ export function CostsModal({ projectId, onClose }: { projectId: string | null; o
   }, [projectId]);
   async function saveBudget() {
     if (!projectId) return;
-    const response = await fetch("/api/budget", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, totalEur }) });
+    const response = await fetch("/api/budget", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, totalEur, profile: { mode: "manual" } }) });
     const value = await response.json();
     if (!response.ok) { setError(value.error ?? "Mise à jour impossible."); return; }
     setBudget((current) => current ? { ...current, configuredTotal: value.totalEur, remainingEur: Math.max(0, value.totalEur - current.confirmedEur), spentPercent: Math.min(100, Math.round(current.confirmedEur / value.totalEur * 100)) } : current);

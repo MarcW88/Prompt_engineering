@@ -17,12 +17,16 @@ export async function POST(request: Request) {
     const [seeds, activeJobs, projects, costs] = await Promise.all([
       supabaseRest<Array<{ id: string }>>("seeds", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&enabled=eq.true&order=priority.desc` }),
       supabaseRest<Array<{ id: string }>>("jobs", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&kind=eq.collect_sources&status=in.(pending,running)&limit=1` }),
-      supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encodeURIComponent(body.projectId)}&limit=1` }),
+      supabaseRest<Array<{ budget_total_eur: number; budget_profile: Record<string, unknown> }>>("projects", { query: `select=budget_total_eur,budget_profile&id=eq.${encodeURIComponent(body.projectId)}&limit=1` }),
       supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encodeURIComponent(body.projectId)}` }),
     ]);
     if (!seeds.length) return NextResponse.json({ error: "Ajoutez au moins un seed actif avant de lancer la collecte." }, { status: 409 });
     if (activeJobs.length) return NextResponse.json({ error: "Une collecte est déjà en cours dans ce workspace.", jobId: activeJobs[0].id }, { status: 409 });
-    const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
+    const existingProfile = projects[0]?.budget_profile ?? {};
+    const automaticBudget = Object.keys(existingProfile).length === 0;
+    const recommendedBudget = Math.max(1, Math.min(30, Number((sourceConfig as Record<string, unknown>).recommended_budget_total_eur ?? 8)));
+    const totalBudgetEur = automaticBudget ? recommendedBudget : Number(projects[0]?.budget_total_eur ?? 8);
+    if (automaticBudget) await supabaseRest("projects", { method: "PATCH", query: `id=eq.${encodeURIComponent(body.projectId)}`, body: { budget_total_eur: totalBudgetEur, budget_profile: { ...((sourceConfig as Record<string, unknown>).budget_profile as Record<string, unknown> ?? {}), mode: "automatic" } } });
     const spentEur = confirmedCostEur(costs);
     if (spentEur >= totalBudgetEur) return NextResponse.json({ error: `Budget global atteint (${spentEur.toFixed(2)} € / ${totalBudgetEur.toFixed(2)} €). Augmentez le plafond ou segmentez l’audit.` }, { status: 422 });
     const result = await createAndTriggerJob({ project_id: body.projectId, kind: "collect_sources", status: "pending", input: { sources, query_budget: queryBudget, source_config: sourceConfig, budget_snapshot: { total_eur: totalBudgetEur, spent_eur: spentEur, remaining_eur: Math.max(0, totalBudgetEur - spentEur) } } });
