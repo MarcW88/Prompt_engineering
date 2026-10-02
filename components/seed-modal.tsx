@@ -38,7 +38,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [sources, setSources] = useState(["reddit", "forum", "serp", "review"]);
   const [queryBudget, setQueryBudget] = useState(10);
   const [socialPostLimit, setSocialPostLimit] = useState(10);
-  const [socialCommentLimit, setSocialCommentLimit] = useState(5);
+  const [socialCommentLimit, setSocialCommentLimit] = useState(0);
   const [brandName, setBrandName] = useState("");
   const [domain, setDomain] = useState("");
   const [market, setMarket] = useState("BE");
@@ -209,7 +209,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Recommandé : 5–10 pour un test, 20–50 pour un corpus réaliste, au-delà seulement si le secteur est très discuté. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
         <div className="form-row compact">
           <label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /><small>Demandé à Bright Data quand le dataset l’accepte.</small></label>
-          <label>Commentaires max par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>Les commentaires au-delà sont ignorés dans l’import.</small></label>
+          <label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé : le dataset peut facturer tous les commentaires avant filtrage. Active uniquement pour un test contrôlé.</small></label>
         </div>
 
         <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram, LinkedIn et X utilisent les datasets Bright Data configurés côté worker ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
@@ -217,7 +217,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         {sources.includes("reddit") && <label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"belgique\nzoos\nPlanetZoo"} /><small>Noms sans `r/`. Chaque subreddit peut planifier jusqu’au budget indiqué via Bright Data.</small></label>}
         {sources.includes("forum") && <label>URLs de forums, une par ligne<textarea rows={4} value={forumUrls} onChange={(event) => setForumUrls(event.target.value)} /><small>Chaque URL est utilisée via des recherches Google ciblées site:domaine.</small></label>}
         {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} placeholder="https://www.trustpilot.com/review/pairidaiza.eu" /><small>La marque renseignée ci-dessus sera écrite dans les exports, pas Decathlon.</small></label>}
-        {sources.includes("facebook") && <label>Pages/posts Facebook, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial"} /><small>Collector Bright Data Facebook : posts et commentaires publics selon le dataset configuré.</small></label>}
+        {sources.includes("facebook") && <label>Posts/reels Facebook précis, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial/posts/…"} /><small>Les URLs de pages sont refusées : leur dataset peut facturer tout l’historique. Fournis uniquement des posts ou reels précis.</small></label>}
         {sources.includes("instagram") && <label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label>}
         {sources.includes("linkedin") && <label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label>}
         {sources.includes("x") && <label>Comptes/posts X, une URL par ligne<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} placeholder={"https://x.com/pairidaiza"} /><small>Collector Bright Data X/Twitter : posts et commentaires publics selon le dataset configuré.</small></label>}

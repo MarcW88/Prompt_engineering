@@ -258,7 +258,8 @@ class CollectionWorker:
 
         def bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
             try:
-                value = int(source_config.get(name) or default)
+                raw_value = source_config.get(name)
+                value = int(default if raw_value is None or raw_value == "" else raw_value)
             except (TypeError, ValueError):
                 value = default
             return max(minimum, min(maximum, value))
@@ -305,7 +306,7 @@ class CollectionWorker:
             social_limits = {
                 "targets": bounded_int("social_target_limit", min(budget, 20), 1, 50),
                 "posts": bounded_int("social_post_limit", 10, 1, 50),
-                "comments": bounded_int("social_comment_limit", 5, 0, 20),
+                "comments": bounded_int("social_comment_limit", 0, 0, 20),
             }
             config.sources["social"] = {
                 "limits": social_limits,

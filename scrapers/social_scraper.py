@@ -62,7 +62,7 @@ class SocialScraper(BaseScraper):
         for platform_index, platform in enumerate(self.platforms, start=1):
             configured = self.config.sources.get("social", {}).get(platform, {})
             dataset_id = configured.get("dataset_id") or os.getenv(self.dataset_env[platform], "")
-            targets = self._targets(platform)[:self.target_limit]
+            targets = self._valid_targets(platform, self._targets(platform))[:self.target_limit]
             if not dataset_id:
                 self.skipped[platform] = f"{self.dataset_env[platform]} manquant"
                 self.logger.warning(f"Bright Data dataset ID missing for {platform}")
@@ -111,11 +111,20 @@ class SocialScraper(BaseScraper):
             return [{"url": f"https://www.reddit.com/r/{subreddit}/search/?q={seed}&restrict_sr=1", "label": f"r/{subreddit} · {seed}", "query": seed, "subreddit": subreddit} for subreddit in subreddits for seed in seeds]
         return [{"url": url, "label": url} for url in urls]
 
+    def _valid_targets(self, platform: str, targets: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        if platform != "facebook":
+            return targets
+        valid = [target for target in targets if self._is_commentable_url("facebook", target.get("url", ""))]
+        rejected = len(targets) - len(valid)
+        if rejected:
+            self.skipped[platform] = f"{rejected} URL(s) de page refusée(s) pour protéger le budget; fournissez des URLs de posts/reels précis"
+        return valid
+
     def _payload(self, platform: str, target: Dict[str, str]) -> List[Dict[str, Any]]:
         if platform == "reddit" and target.get("query"):
             return [{"keyword": target["query"], "date": "Past month", "num_of_posts": self.post_limit}]
         payload: Dict[str, Any] = {"url": target["url"]}
-        if platform in {"facebook", "instagram"}:
+        if platform == "instagram":
             payload["num_of_posts"] = self.post_limit
         return [payload]
 
