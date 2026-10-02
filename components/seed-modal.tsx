@@ -27,7 +27,7 @@ function seedFileValues(text: string) {
   });
 }
 
-export function SeedModal({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
+export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: string | null; onClose: () => void; onSubmitted?: () => void }) {
   const [text, setText] = useState("");
   const [seedType, setSeedType] = useState<SeedType>("keyword");
   const [priority, setPriority] = useState(70);
@@ -107,6 +107,7 @@ export function SeedModal({ projectId, onClose }: { projectId: string | null; on
       const jobData = await jobResponse.json();
       if (!jobResponse.ok) throw new Error(jobData.error ?? "Job impossible.");
       setStatus(`${seeds.length} seeds enregistrés. Collecte mise en file pour ${sources.map((source) => sourceLabels[source]).join(", ")}.`);
+      onSubmitted?.();
     } catch (reason) {
       setStatus(reason instanceof Error ? reason.message : "Opération impossible.");
     } finally {

@@ -3,7 +3,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Sequence
+from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
 import requests
 
@@ -51,10 +51,11 @@ class OpenAIProcessor:
         return result
 
 
-def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Callable[[str, str, str], List[str]]) -> List[QuestionRecord]:
+def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Callable[[str, str, str], List[str]], progress_callback: Optional[Callable[[int, int], None]] = None) -> List[QuestionRecord]:
+    signals = list(signals)
     questions = []
     seen = set()
-    for signal in signals:
+    for index, signal in enumerate(signals, start=1):
         source_type = signal.get("source_type", "")
         text = str(signal.get("raw_text", "")).strip()
         title = str(signal.get("title") or "").strip()
@@ -71,6 +72,8 @@ def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Ca
                 language=language, confidence=1.0 if observed else 0.7,
                 metadata={"platform": signal.get("platform"), "source_type": source_type, "source_url": signal.get("url")},
             ))
+        if progress_callback:
+            progress_callback(index, len(signals))
     return questions
 
 

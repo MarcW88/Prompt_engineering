@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, BookOpen, ChevronDown, CircleDollarSign, CircleHelp,
   Database, Download, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
@@ -75,7 +75,7 @@ export function Dashboard() {
     return { title: "Valider et revoir", text: "Lancez la validation, le reverse engineering, puis approuvez les prompts exportables.", action: () => setPipelineModal(true), button: "Continuer" };
   }, [activeJob, metrics, projectId]);
 
-  async function loadDashboard(selectedProjectId?: string) {
+  const loadDashboard = useCallback(async (selectedProjectId?: string) => {
     const suffix = selectedProjectId ? `?projectId=${encodeURIComponent(selectedProjectId)}` : "";
     const response = await fetch(`/api/dashboard${suffix}`);
     if (!response.ok) throw new Error("Dashboard indisponible");
@@ -90,7 +90,7 @@ export function Dashboard() {
       id: item.id.slice(0, 8), prompt: item.text, provenance: item.provenance, confidence: Math.round(Number(item.confidence) * 100), status: item.status,
       engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0,
     })));
-  }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -103,7 +103,13 @@ export function Dashboard() {
       setProjects(data?.projects?.map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })) ?? []);
     }).catch(() => setProjects([]));
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const interval = window.setInterval(() => void loadDashboard(projectId).catch(() => undefined), 15000);
+    return () => window.clearInterval(interval);
+  }, [loadDashboard, projectId]);
 
   const workflowValues = [metrics.questions, metrics.clusters, metrics.prompts, `${metrics.stability}%`];
 
@@ -237,7 +243,7 @@ export function Dashboard() {
       </main>
       {sidebar && <button className="backdrop" onClick={() => setSidebar(false)} aria-label="Fermer le menu" />}
       {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={reloadAfterPromptTest} />}
-      {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} />}
+      {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} onSubmitted={() => void loadDashboard(projectId ?? undefined)} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
       {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} onOpenCollection={() => { setPipelineModal(false); setSeedModal(true); }} onOpenDataset={() => { setPipelineModal(false); setDatasetModal(true); }} onOpenReview={() => { setPipelineModal(false); setReviewModal(true); }} onOpenExports={() => { setPipelineModal(false); setExportsModal(true); }} />}
       {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}

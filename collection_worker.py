@@ -163,6 +163,13 @@ class CollectionWorker:
         pending = any(row.get("cost_status") in {"usage_only", "pending_reconciliation", "unavailable"} for row in rows)
         return round(actual, 6), "partial" if pending else "reconciled"
 
+    def _report(self, job: Dict, progress: int, stage: str, extra=None):
+        self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {
+            "progress": max(0, min(99, progress)),
+            "output": {"stage": stage, **(extra or {})},
+            "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+        }, "return=minimal")
+
     def claim(self, job_id: str = ""):
         function = "claim_job" if job_id else "claim_next_job"
         body = {"p_worker_id": self.worker_id, "p_cloud_execution_id": self.cloud_execution_id}
@@ -214,11 +221,7 @@ class CollectionWorker:
         seed_filter = f"&id=in.({','.join(seed_ids)})" if seed_ids else ""
 
         def report(progress: int, stage: str, extra=None):
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {
-                "progress": max(0, min(99, progress)),
-                "output": {"stage": stage, **(extra or {})},
-                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
-            }, "return=minimal")
+            self._report(job, progress, stage, extra)
 
         report(3, "Chargement des seeds")
         seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true{seed_filter}&order=priority.desc")
@@ -303,11 +306,13 @@ class CollectionWorker:
 
     def _transform_signals(self, job: Dict) -> Dict:
         project_id = job["project_id"]
+        self._report(job, 3, "Chargement des signaux")
         project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
         signals = self.db.request("GET", "signals", f"select=*&project_id=eq.{project_id}&order=collected_at.asc")
         existing = self.db.request("GET", "questions", f"select=signal_id&project_id=eq.{project_id}&signal_id=not.is.null")
         processed_ids = {row["signal_id"] for row in existing}
         pending = [signal for signal in signals if signal["id"] not in processed_ids]
+        self._report(job, 8, f"{len(pending)}/{len(signals)} signaux à transformer")
         processor = None
 
         def transform(text, title, language):
@@ -315,29 +320,44 @@ class CollectionWorker:
             processor = processor or OpenAIProcessor()
             return processor.transform(text, title, language)
 
-        questions = signals_to_questions(pending, project.get("language", "fr"), transform)
+        questions = signals_to_questions(
+            pending,
+            project.get("language", "fr"),
+            transform,
+            lambda processed, total: self._report(job, 10 + int(55 * processed / max(total, 1)), f"Transformation des signaux · {processed}/{total}"),
+        )
+        self._report(job, 68, f"Enregistrement de {len(questions)} questions")
         rows = [{
             "project_id": project_id, "signal_id": question.signal_id, "text": question.text,
             "provenance": question.provenance, "language": question.language,
             "confidence": question.confidence, "metadata": question.metadata,
         } for question in questions]
         saved = self.db.request("POST", "questions", "on_conflict=project_id,signal_id,text", rows, "resolution=ignore-duplicates,return=representation") if rows else []
+        self._report(job, 72, f"{len(saved or [])} questions enregistrées")
         result = {"signals": len(signals), "pending": len(pending), "questions": len(saved or [])}
         if job.get("input", {}).get("chain_cluster"):
-            result["clustering"] = self._cluster_questions({**job, "input": job["input"].get("cluster_config", {})})
+            self._report(job, 75, "Clustering des questions")
+            result["clustering"] = self._cluster_questions({**job, "input": job["input"].get("cluster_config", {}), "progress_start": 75, "progress_end": 98})
         return result
 
     def _cluster_questions(self, job: Dict) -> Dict:
         project_id = job["project_id"]
+        progress_start = int(job.get("input", {}).get("progress_start", 5))
+        progress_end = int(job.get("input", {}).get("progress_end", 98))
+        self._report(job, progress_start, "Chargement des questions")
         rows = self.db.request("GET", "questions", f"select=*&project_id=eq.{project_id}&order=created_at.asc")
         if not rows:
             return {"questions": 0, "clusters": 0}
+        span = max(1, progress_end - progress_start)
+        self._report(job, progress_start + int(span * 0.25), f"Embeddings de {len(rows)} questions")
         processor = OpenAIProcessor()
         embeddings = processor.embeddings([row["text"] for row in rows])
         input_config = job.get("input", {})
+        self._report(job, progress_start + int(span * 0.55), "Calcul des clusters sémantiques")
         clusters = cluster_questions(rows, embeddings, float(input_config.get("similarity_threshold", 0.82)), int(input_config.get("min_cluster_size", 2)))
         saved_count = 0
-        for cluster in clusters:
+        for index, cluster in enumerate(clusters, start=1):
+            self._report(job, progress_start + int(span * (0.55 + 0.4 * index / max(len(clusters), 1))), f"Enregistrement des clusters · {index}/{len(clusters)}")
             cluster_rows = self.db.request("POST", "clusters", "on_conflict=project_id,fingerprint", [{
                 "project_id": project_id, "label": cluster["label"],
                 "representative_question": cluster["representative_question"],
