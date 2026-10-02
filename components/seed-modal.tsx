@@ -51,11 +51,6 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [instagramUrls, setInstagramUrls] = useState("");
   const [linkedinUrls, setLinkedinUrls] = useState("");
   const [xUrls, setXUrls] = useState("");
-  const [redditDatasetId, setRedditDatasetId] = useState("");
-  const [facebookDatasetId, setFacebookDatasetId] = useState("");
-  const [instagramDatasetId, setInstagramDatasetId] = useState("");
-  const [linkedinDatasetId, setLinkedinDatasetId] = useState("");
-  const [xDatasetId, setXDatasetId] = useState("");
   const [serpTemplates, setSerpTemplates] = useState("{theme} {brand} avis\n{theme} {brand} qualité\nmeilleur {theme} {brand}\n{brand} vs {competitor}\nproblème {brand}\nalternative {brand} {theme}");
   const [gscPattern, setGscPattern] = useState(defaultGscPattern);
   const [status, setStatus] = useState("");
@@ -153,11 +148,6 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         instagram_urls: lines(instagramUrls),
         linkedin_urls: lines(linkedinUrls),
         x_urls: lines(xUrls),
-        reddit_dataset_id: redditDatasetId.trim(),
-        facebook_dataset_id: facebookDatasetId.trim(),
-        instagram_dataset_id: instagramDatasetId.trim(),
-        linkedin_dataset_id: linkedinDatasetId.trim(),
-        x_dataset_id: xDatasetId.trim(),
         serp_templates: lines(serpTemplates),
       };
       const jobResponse = await fetch("/api/jobs/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sources, queryBudget, sourceConfig }) });
@@ -211,17 +201,17 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select><small>Le même type est appliqué à toutes les lignes importées.</small></label>
           <label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><small>Les seeds les plus prioritaires sont planifiés en premier.</small></label>
         </div>
-        <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Maximum de requêtes planifiées par subreddit, forum ou URL sociale. SERP/PAA utilise ce budget en total. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
+        <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Recommandé : 5–10 pour un test, 20–50 pour un corpus réaliste, au-delà seulement si le secteur est très discuté. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
 
-        <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram et LinkedIn utilisent Bright Data ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
+        <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram, LinkedIn et X utilisent les datasets Bright Data configurés côté worker ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
 
-        {sources.includes("reddit") && <><label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"belgique\nzoos\nPlanetZoo"} /><small>Noms sans `r/`. Chaque subreddit peut planifier jusqu’au budget indiqué via Bright Data.</small></label><label>Dataset Bright Data Reddit<input value={redditDatasetId} onChange={(event) => setRedditDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /><small>Laisser vide si BRIGHTDATA_REDDIT_DATASET_ID est défini côté Cloud Run.</small></label></>}
+        {sources.includes("reddit") && <label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"belgique\nzoos\nPlanetZoo"} /><small>Noms sans `r/`. Chaque subreddit peut planifier jusqu’au budget indiqué via Bright Data.</small></label>}
         {sources.includes("forum") && <label>URLs de forums, une par ligne<textarea rows={4} value={forumUrls} onChange={(event) => setForumUrls(event.target.value)} /><small>Chaque URL est utilisée via des recherches Google ciblées site:domaine.</small></label>}
         {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} placeholder="https://www.trustpilot.com/review/pairidaiza.eu" /><small>La marque renseignée ci-dessus sera écrite dans les exports, pas Decathlon.</small></label>}
-        {sources.includes("facebook") && <><label>Pages/posts Facebook, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial"} /><small>Collector Bright Data Facebook : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Facebook<input value={facebookDatasetId} onChange={(event) => setFacebookDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
-        {sources.includes("instagram") && <><label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Instagram<input value={instagramDatasetId} onChange={(event) => setInstagramDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
-        {sources.includes("linkedin") && <><label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data LinkedIn<input value={linkedinDatasetId} onChange={(event) => setLinkedinDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
-        {sources.includes("x") && <><label>Comptes/posts X, une URL par ligne<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} placeholder={"https://x.com/pairidaiza"} /><small>Collector Bright Data X/Twitter : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data X<input value={xDatasetId} onChange={(event) => setXDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
+        {sources.includes("facebook") && <label>Pages/posts Facebook, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial"} /><small>Collector Bright Data Facebook : posts et commentaires publics selon le dataset configuré.</small></label>}
+        {sources.includes("instagram") && <label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label>}
+        {sources.includes("linkedin") && <label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label>}
+        {sources.includes("x") && <label>Comptes/posts X, une URL par ligne<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} placeholder={"https://x.com/pairidaiza"} /><small>Collector Bright Data X/Twitter : posts et commentaires publics selon le dataset configuré.</small></label>}
         {sources.includes("serp") && <label>Templates SERP, un par ligne<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables disponibles : {"{theme}"}, {"{seed}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
 
         <div className="gsc-box">
