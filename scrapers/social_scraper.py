@@ -21,6 +21,10 @@ class SocialScraper(BaseScraper):
         "linkedin": "BRIGHTDATA_LINKEDIN_DATASET_ID",
         "x": "BRIGHTDATA_X_DATASET_ID",
     }
+    comments_dataset_env = {
+        "facebook": "BRIGHTDATA_FACEBOOK_COMMENTS_DATASET_ID",
+        "instagram": "BRIGHTDATA_INSTAGRAM_COMMENTS_DATASET_ID",
+    }
 
     def __init__(self, config: Config, platforms: List[str]):
         super().__init__(config)
@@ -32,6 +36,7 @@ class SocialScraper(BaseScraper):
         self.target_limit = int(limits.get("targets") or os.getenv("BRIGHTDATA_SOCIAL_TARGET_LIMIT", "20"))
         self.post_limit = int(limits.get("posts") or os.getenv("BRIGHTDATA_SOCIAL_POST_LIMIT", "10"))
         self.comment_limit = int(limits.get("comments") if limits.get("comments") is not None else os.getenv("BRIGHTDATA_SOCIAL_COMMENT_LIMIT", "5"))
+        self.comment_target_limit = int(limits.get("comment_targets") or os.getenv("BRIGHTDATA_SOCIAL_COMMENT_TARGET_LIMIT", "5"))
         self.api_cost_usd = 0.0
         self.skipped: Dict[str, str] = {}
         self._progress_processed = 0
@@ -76,6 +81,7 @@ class SocialScraper(BaseScraper):
                     records = self._collect_dataset(dataset_id, payload)
                     records = records[:len(batch) * self.post_limit]
                     parsed = [self._record_to_item(platform, record, self._record_target(record, batch)) for record in records]
+                    parsed.extend(self._collect_comment_items(platform, records, batch))
                     items.extend(item for item in parsed if item)
                     processed = min(start + len(batch), len(targets))
                     self._progress_processed = processed
@@ -153,6 +159,57 @@ class SocialScraper(BaseScraper):
                 raise RuntimeError(f"Bright Data snapshot {snapshot_id} ended with status {status}")
             time.sleep(5)
         raise RuntimeError(f"Bright Data snapshot {snapshot_id} timed out after {self.timeout}s")
+
+    def _collect_comment_items(self, platform: str, records: List[Dict[str, Any]], targets: List[Dict[str, str]]) -> List[RawItem]:
+        env_name = self.comments_dataset_env.get(platform)
+        dataset_id = os.getenv(env_name, "") if env_name else ""
+        if not dataset_id or self.comment_limit <= 0:
+            return []
+        post_urls = []
+        for index, record in enumerate(records):
+            url = str(record.get("post_url") or record.get("url") or targets[min(index, len(targets) - 1)].get("url") or "")
+            if url and self._is_commentable_url(platform, url) and url not in post_urls:
+                post_urls.append(url)
+            if len(post_urls) >= self.comment_target_limit:
+                break
+        if not post_urls:
+            return []
+        self._progress_label = f"{platform} · commentaires"
+        self._report_progress(self._progress_processed, self._progress_total, f"{platform} · commentaires sur {len(post_urls)} post(s)")
+        try:
+            comments = self._collect_dataset(dataset_id, [{"url": url} for url in post_urls])
+        except Exception as error:
+            self.errors_count += 1
+            self.skipped[platform] = f"commentaires: {str(error)[:180]}"
+            self.logger.error(f"Bright Data {platform} comments error: {error}")
+            return []
+        return [item for item in (self._comment_to_item(platform, record, post_urls[0]) for record in comments[:len(post_urls) * self.comment_limit]) if item]
+
+    @staticmethod
+    def _is_commentable_url(platform: str, url: str) -> bool:
+        if platform == "instagram":
+            return "/p/" in url or "/reel/" in url
+        if platform == "facebook":
+            return "/posts/" in url or "/reel/" in url or "story.php" in url or "story_fbid" in url
+        return True
+
+    def _comment_to_item(self, platform: str, record: Dict[str, Any], post_url: str) -> Optional[RawItem]:
+        text = str(record.get("comment_text") or record.get("text") or record.get("comment") or record.get("content") or record.get("message") or "")
+        if len(text.strip()) < 10:
+            return None
+        post_url = str(record.get("post_url") or record.get("source_url") or post_url)
+        url = str(record.get("comment_url") or record.get("url") or post_url)
+        return RawItem(
+            source_type=SourceType.SOCIAL,
+            platform=platform,
+            raw_text=text.strip(),
+            url=url,
+            title="Commentaire",
+            brand=self._detect_brand(text) or self.config.client.name,
+            theme=self._detect_theme(text),
+            metadata={"provider": "brightdata", "signal_kind": "comment", "post_url": post_url, "raw_record_keys": sorted(record.keys())[:30]},
+            client_slug=self.config.client.slug,
+        )
 
     def _record_target(self, record: Dict[str, Any], targets: List[Dict[str, str]]) -> Dict[str, str]:
         input_value = record.get("input")
