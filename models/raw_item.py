@@ -10,6 +10,7 @@ class SourceType(Enum):
     REVIEW = "review"
     SERP = "serp"
     QA = "qa"
+    SOCIAL = "social"
     GSC_CONVERSATION = "gsc_conversation"
 
 

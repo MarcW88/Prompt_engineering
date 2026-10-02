@@ -80,8 +80,18 @@ function details(output: Record<string, unknown> | undefined) {
     ["candidates", "candidats"],
     ["reconstructed", "reconstruits"],
     ["completed_runs", "runs"],
+    ["language_rejected", "langues filtrées"],
   ];
   return parts.filter(([key]) => typeof output[key] === "number").map(([key, label]) => `${output[key]} ${label}`).join(" · ");
+}
+
+function sourceDetails(output: Record<string, unknown> | undefined) {
+  const report = output?.source_report;
+  if (!report || typeof report !== "object") return "";
+  return Object.entries(report as Record<string, { collected?: number; errors?: number; skipped?: unknown }>).map(([source, value]) => {
+    const skipped = typeof value.skipped === "string" ? ` · ${value.skipped}` : typeof value.skipped === "object" && value.skipped ? ` · ${Object.values(value.skipped).join(" · ")}` : "";
+    return `${source}: ${value.collected ?? 0} collecté(s), ${value.errors ?? 0} erreur(s)${skipped}`;
+  }).join(" | ");
 }
 
 export function ExecutionCenterModal({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
@@ -195,6 +205,7 @@ export function ExecutionCenterModal({ projectId, onClose }: { projectId: string
               </div>
               {typeof job.output?.stage === "string" && <small className="execution-stage">{job.output.stage}</small>}
               {details(job.output) && <small className="execution-output">{details(job.output)}</small>}
+              {sourceDetails(job.output) && <small className="execution-output">{sourceDetails(job.output)}</small>}
               {job.error && <p className="form-error">{job.error}</p>}
             </article>
           ))}

@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import os
+import re
 import socket
 import threading
 import time
@@ -22,7 +23,7 @@ from analysis.providers import BrightDataProvider, OpenAIWebSearchExtractor, Oxy
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
-from scrapers import ForumScraper, ReviewScraper, SerpScraper
+from scrapers import ForumScraper, ReviewScraper, SerpScraper, SocialScraper
 from utils.config_loader import load_config
 
 
@@ -34,6 +35,19 @@ def clamp_collection_budget(value) -> int:
         return max(1, min(200, int(value)))
     except (TypeError, ValueError):
         return 10
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    return slug or "client"
+
+
+def detect_language(text: str) -> str:
+    try:
+        from langdetect import detect
+        return detect(text[:2000])
+    except Exception:
+        return ""
 
 
 class SupabaseRest:
@@ -242,14 +256,26 @@ class CollectionWorker:
                 return []
             return [str(item).strip() for item in value if str(item).strip()]
 
+        client_name = str(source_config.get("client_name") or "").strip()
+        if client_name:
+            config.client.name = client_name
+            config.client.slug = slugify(client_name)
+            domain = str(source_config.get("domain") or "").strip()
+            if domain:
+                config.client.website = domain
+            variants = clean_list("brand_variants")
+            config.brand_variants = list(dict.fromkeys([client_name, *variants]))
+            config.themes = clean_list("themes") or config.themes
+            config.competitors = clean_list("competitors") or config.competitors
+            market = str(source_config.get("market") or "").strip().upper()
+            config.markets = [market] if market else config.markets
+            accepted_languages = [item.lower() for item in clean_list("languages")]
+            config.languages = accepted_languages or config.languages
+            config.filters.accepted_languages = config.languages
+
         forum_config = config.sources.get("forums", {})
         configured_platforms = forum_config.get("platforms", [])
         platforms = []
-        if "reddit" in requested:
-            reddit_platform = next((dict(platform) for platform in configured_platforms if platform.get("name") == "reddit"), {"name": "reddit", "search_method": "api"})
-            if "subreddits" in source_config:
-                reddit_platform["subreddits"] = clean_list("subreddits")
-            platforms.append(reddit_platform)
         if "forum" in requested:
             if "forum_urls" in source_config:
                 platforms.extend({
@@ -267,13 +293,24 @@ class CollectionWorker:
         if "serp_templates" in source_config:
             config.sources.setdefault("serp", {})["query_templates"] = clean_list("serp_templates")
 
+        social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin") if platform in requested]
+        if social_platforms:
+            config.sources["social"] = {
+                "reddit": {"subreddits": clean_list("subreddits"), "dataset_id": str(source_config.get("reddit_dataset_id") or "").strip()},
+                "facebook": {"urls": clean_list("facebook_urls"), "dataset_id": str(source_config.get("facebook_dataset_id") or "").strip()},
+                "instagram": {"urls": clean_list("instagram_urls"), "dataset_id": str(source_config.get("instagram_dataset_id") or "").strip()},
+                "linkedin": {"urls": clean_list("linkedin_urls"), "dataset_id": str(source_config.get("linkedin_dataset_id") or "").strip()},
+            }
+
         scrapers = []
-        if requested & {"reddit", "forum"}:
+        if "forum" in requested:
             scrapers.append(ForumScraper(config))
         if "serp" in requested:
             scrapers.append(SerpScraper(config))
         if "review" in requested:
             scrapers.append(ReviewScraper(config))
+        if social_platforms:
+            scrapers.append(SocialScraper(config, social_platforms))
 
         fractions = {id(scraper): 0.0 for scraper in scrapers}
 
@@ -283,17 +320,38 @@ class CollectionWorker:
             report(percent, detail, {"source_progress": round(processed / max(total, 1), 3)})
 
         items = []
+        source_report = {}
         for scraper in scrapers:
             scraper.progress_callback = lambda processed, total, detail, current=scraper: scraper_progress(current, processed, total, detail)
+            before = len(items)
             items.extend(scraper.run())
-        report(94, f"Import de {len(items)} signaux collectés")
+            if isinstance(scraper, SocialScraper):
+                for platform in scraper.platforms:
+                    count = sum(1 for item in items[before:] if item.platform == platform)
+                    source_report[platform] = {"collected": count, "errors": scraper.errors_count}
+                    if scraper.skipped.get(platform):
+                        source_report[platform]["skipped"] = scraper.skipped[platform]
+            else:
+                source_report[scraper.source_type] = {"collected": len(items) - before, "errors": scraper.errors_count}
+        accepted_languages = {language.lower() for language in config.filters.accepted_languages}
+        filtered_items = []
+        rejected_languages = 0
+        for item in items:
+            language = str(item.metadata.get("language") or detect_language(f"{item.title or ''}\n{item.raw_text}") or "").lower()
+            item.metadata["language"] = language or None
+            if accepted_languages and language and language not in accepted_languages:
+                rejected_languages += 1
+                continue
+            filtered_items.append(item)
+        items = filtered_items
+        report(94, f"Import de {len(items)} signaux collectés", {"language_rejected": rejected_languages})
         dataforseo_cost = sum(float(getattr(scraper, "api_cost_usd", 0)) for scraper in scrapers)
         if dataforseo_cost:
             self._record_cost(job, "dataforseo", "serp_api", amount=dataforseo_cost, quantity=budget, unit="queries", cost_status="actual")
         rows = [{
             "project_id": project_id, "source_type": item.source_type.value, "platform": item.platform,
             "raw_text": item.raw_text, "title": item.title, "url": item.url, "theme": item.theme,
-            "brand": item.brand, "metadata": item.metadata,
+            "brand": item.brand, "language": item.metadata.get("language"), "metadata": item.metadata,
             "content_hash": hashlib.sha256(f"{item.platform}:{item.raw_text.casefold()}".encode()).hexdigest(),
         } for item in items]
         imported = 0
@@ -302,7 +360,7 @@ class CollectionWorker:
             saved = self.db.request("POST", "signals", "on_conflict=project_id,content_hash", batch, "resolution=ignore-duplicates,return=representation")
             imported += len(saved or [])
             report(94 + min(5, int(5 * min(start + len(batch), len(rows)) / max(len(rows), 1))), f"Import des signaux · {min(start + len(batch), len(rows))}/{len(rows)}", {"imported": imported})
-        return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds), "query_budget": budget}
+        return {"collected": len(rows), "imported": imported, "sources": sorted(requested), "seeds": len(config.seeds), "query_budget": budget, "source_report": source_report, "language_rejected": rejected_languages, "client": config.client.name, "accepted_languages": sorted(accepted_languages)}
 
     def _transform_signals(self, job: Dict) -> Dict:
         project_id = job["project_id"]

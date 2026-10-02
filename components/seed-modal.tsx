@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Database, FileUp, Play, Upload, X } from "lucide-react";
 import readExcelFile from "read-excel-file";
 import { parseSeedText, type SeedType } from "@/lib/data/seeds";
@@ -10,6 +10,9 @@ const sourceLabels: Record<string, string> = {
   forum: "Forums",
   serp: "PAA & suggestions",
   review: "Trustpilot & avis",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
 };
 
 const defaultGscPattern = "^(?:\\S+\\s+){9,}\\S+$";
@@ -33,9 +36,23 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [priority, setPriority] = useState(70);
   const [sources, setSources] = useState(["reddit", "forum", "serp", "review"]);
   const [queryBudget, setQueryBudget] = useState(10);
-  const [subreddits, setSubreddits] = useState("running\ncycling\nCampingGear\nFitness\nfrance\nAskFrance");
-  const [forumUrls, setForumUrls] = useState("https://www.randonner-leger.org/forum/\nhttps://www.skipass.com/forums/\nhttps://forum.velotaf.com/\nhttps://forum.hardware.fr/hfr/Discussions/Sports/");
-  const [trustpilotUrl, setTrustpilotUrl] = useState("https://fr.trustpilot.com/review/www.decathlon.fr");
+  const [brandName, setBrandName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [market, setMarket] = useState("BE");
+  const [languages, setLanguages] = useState("fr");
+  const [brandVariants, setBrandVariants] = useState("");
+  const [themes, setThemes] = useState("");
+  const [competitors, setCompetitors] = useState("");
+  const [subreddits, setSubreddits] = useState("");
+  const [forumUrls, setForumUrls] = useState("");
+  const [trustpilotUrl, setTrustpilotUrl] = useState("");
+  const [facebookUrls, setFacebookUrls] = useState("");
+  const [instagramUrls, setInstagramUrls] = useState("");
+  const [linkedinUrls, setLinkedinUrls] = useState("");
+  const [redditDatasetId, setRedditDatasetId] = useState("");
+  const [facebookDatasetId, setFacebookDatasetId] = useState("");
+  const [instagramDatasetId, setInstagramDatasetId] = useState("");
+  const [linkedinDatasetId, setLinkedinDatasetId] = useState("");
   const [serpTemplates, setSerpTemplates] = useState("{theme} {brand} avis\n{theme} {brand} qualité\nmeilleur {theme} {brand}\n{brand} vs {competitor}\nproblème {brand}\nalternative {brand} {theme}");
   const [gscPattern, setGscPattern] = useState(defaultGscPattern);
   const [status, setStatus] = useState("");
@@ -46,6 +63,24 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   function toggleSource(source: string) {
     setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
   }
+
+  const plannedRequests = useMemo(() => {
+    const platformCounts = {
+      reddit: lines(subreddits).length,
+      forum: lines(forumUrls).length,
+      facebook: lines(facebookUrls).length,
+      instagram: lines(instagramUrls).length,
+      linkedin: lines(linkedinUrls).length,
+    };
+    const requests =
+      (sources.includes("reddit") ? queryBudget * Math.max(1, platformCounts.reddit) : 0) +
+      (sources.includes("forum") ? queryBudget * Math.max(1, platformCounts.forum) : 0) +
+      (sources.includes("serp") ? queryBudget : 0) +
+      (sources.includes("facebook") ? queryBudget * Math.max(1, platformCounts.facebook) : 0) +
+      (sources.includes("instagram") ? queryBudget * Math.max(1, platformCounts.instagram) : 0) +
+      (sources.includes("linkedin") ? queryBudget * Math.max(1, platformCounts.linkedin) : 0);
+    return requests + (sources.includes("review") ? Math.min(10, queryBudget) : 0);
+  }, [facebookUrls, forumUrls, instagramUrls, linkedinUrls, queryBudget, sources, subreddits]);
 
   async function importSeedFile(file: File) {
     setFileStatus("Lecture du fichier…");
@@ -90,6 +125,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     if (!projectId) { setStatus("Créez et connectez d'abord un workspace Supabase."); return; }
     const seeds = parseSeedText(text, { seedType, priority, source: "dashboard" });
     if (!seeds.length) { setStatus("Ajoutez au moins un mot-clé ou importez un fichier."); return; }
+    if (!brandName.trim()) { setStatus("Indique la marque analysée avant de lancer la collecte."); return; }
     setLoading(true);
     setStatus("Enregistrement des seeds…");
     try {
@@ -98,9 +134,23 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
       if (!seedResponse.ok) throw new Error(seedData.error ?? "Import impossible.");
       setStatus("Création du job de collecte…");
       const sourceConfig = {
+        client_name: brandName.trim(),
+        domain: domain.trim(),
+        market: market.trim().toUpperCase(),
+        languages: lines(languages).map((item) => item.toLowerCase()),
+        brand_variants: lines(brandVariants),
+        themes: lines(themes),
+        competitors: lines(competitors),
         subreddits: lines(subreddits),
         forum_urls: lines(forumUrls),
         trustpilot_url: trustpilotUrl.trim(),
+        facebook_urls: lines(facebookUrls),
+        instagram_urls: lines(instagramUrls),
+        linkedin_urls: lines(linkedinUrls),
+        reddit_dataset_id: redditDatasetId.trim(),
+        facebook_dataset_id: facebookDatasetId.trim(),
+        instagram_dataset_id: instagramDatasetId.trim(),
+        linkedin_dataset_id: linkedinDatasetId.trim(),
         serp_templates: lines(serpTemplates),
       };
       const jobResponse = await fetch("/api/jobs/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, sources, queryBudget, sourceConfig }) });
@@ -126,14 +176,27 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         <div className="builder-guide">
           <strong>Sur quoi repose la collecte ?</strong>
           <ol>
-            <li>Les seeds servent à générer les recherches Reddit, forums et SERP.</li>
-            <li>Les URL/subreddits ci-dessous remplacent la configuration par défaut pour ce job.</li>
-            <li>GSC importe directement les requêtes filtrées par la regex.</li>
-            <li>Trustpilot utilise DataForSEO avec l’URL de page avis fournie.</li>
+            <li>Les seeds servent à générer les recherches Reddit, forums, réseaux sociaux et SERP.</li>
+            <li>Le budget limite les requêtes par plateforme : Reddit = subreddits × budget ; forums = URLs × budget ; SERP = budget total ; Trustpilot = maximum {Math.min(10, queryBudget)} pages.</li>
+            <li>Estimation actuelle : <b>{plannedRequests.toLocaleString("fr-FR")} requêtes/planifications</b> avant déduplication et résultats vides.</li>
+            <li>Les réseaux sociaux utilisent les datasets Bright Data configurés côté worker.</li>
           </ol>
         </div>
 
-        <label>Mots-clés, un par ligne<textarea autoFocus rows={5} value={text} onChange={(event) => setText(event.target.value)} placeholder={"chaussures trail débutant\nveste randonnée imperméable\nmal au genou après running"} /><small>Colle une liste ou importe un fichier CSV/Excel ; la première colonne est utilisée.</small></label>
+        <div className="form-row">
+          <label>Marque analysée<input value={brandName} onChange={(event) => setBrandName(event.target.value)} placeholder="Pairi Daiza" /><small>Utilisée dans les templates SERP et les métadonnées.</small></label>
+          <label>Domaine<input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="pairidaiza.eu" /><small>Domaine principal de la marque.</small></label>
+        </div>
+        <div className="form-row">
+          <label>Variantes de marque<textarea rows={2} value={brandVariants} onChange={(event) => setBrandVariants(event.target.value)} placeholder={"Pairi Daiza\npairidaiza"} /><small>Une variante par ligne.</small></label>
+          <label>Thèmes<textarea rows={2} value={themes} onChange={(event) => setThemes(event.target.value)} placeholder={"zoo\nparc animalier\nbillet d'entrée"} /><small>Utilisés pour la détection et les templates.</small></label>
+        </div>
+        <div className="form-row">
+          <label>Concurrents<textarea rows={2} value={competitors} onChange={(event) => setCompetitors(event.target.value)} placeholder={"Zoo de Beauval\nPlanckendael"} /><small>Optionnel, utile pour les comparaisons.</small></label>
+          <div className="form-row compact"><label>Marché<input value={market} onChange={(event) => setMarket(event.target.value)} placeholder="BE" /><small>Code pays.</small></label><label>Langues acceptées<input value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="fr,nl" /><small>Séparées par virgule ; les autres langues sont exclues.</small></label></div>
+        </div>
+
+        <label>Mots-clés, un par ligne<textarea autoFocus rows={5} value={text} onChange={(event) => setText(event.target.value)} placeholder={"prix pairi daiza\npairi daiza hôtel\naccès fauteuil roulant parc"} /><small>Colle une liste ou importe un fichier CSV/Excel ; la première colonne est utilisée.</small></label>
         <label className="upload-zone"><FileUp size={19} /><span>Importer des mots-clés CSV, TXT ou Excel</span><input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importSeedFile(file); }} /></label>
         {fileStatus && <p className="import-status">{fileStatus}</p>}
 
@@ -141,14 +204,17 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select><small>Le même type est appliqué à toutes les lignes importées.</small></label>
           <label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><small>Les seeds les plus prioritaires sont planifiés en premier.</small></label>
         </div>
-        <label>Budget max de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Limite les recherches planifiées sur chaque source sélectionnée.</small></label>
+        <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Maximum de requêtes planifiées par subreddit, forum ou URL sociale. SERP/PAA utilise ce budget en total. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
 
-        <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Seules les sources cochées seront interrogées par le worker.</small></fieldset>
+        <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram et LinkedIn utilisent Bright Data ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
 
-        {sources.includes("reddit") && <label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} /><small>Noms sans `r/`. Ces valeurs remplacent la liste par défaut du job.</small></label>}
+        {sources.includes("reddit") && <><label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"belgique\nzoos\nPlanetZoo"} /><small>Noms sans `r/`. Chaque subreddit peut planifier jusqu’au budget indiqué via Bright Data.</small></label><label>Dataset Bright Data Reddit<input value={redditDatasetId} onChange={(event) => setRedditDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /><small>Laisser vide si BRIGHTDATA_REDDIT_DATASET_ID est défini côté Cloud Run.</small></label></>}
         {sources.includes("forum") && <label>URLs de forums, une par ligne<textarea rows={4} value={forumUrls} onChange={(event) => setForumUrls(event.target.value)} /><small>Chaque URL est utilisée via des recherches Google ciblées site:domaine.</small></label>}
-        {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} /><small>Exemple : https://fr.trustpilot.com/review/www.decathlon.fr</small></label>}
-        {sources.includes("serp") && <label>Templates SERP, un par ligne<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables disponibles : {"{theme}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
+        {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} placeholder="https://www.trustpilot.com/review/pairidaiza.eu" /><small>La marque renseignée ci-dessus sera écrite dans les exports, pas Decathlon.</small></label>}
+        {sources.includes("facebook") && <><label>Pages/posts Facebook, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial"} /><small>Collector Bright Data Facebook : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Facebook<input value={facebookDatasetId} onChange={(event) => setFacebookDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
+        {sources.includes("instagram") && <><label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data Instagram<input value={instagramDatasetId} onChange={(event) => setInstagramDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
+        {sources.includes("linkedin") && <><label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label><label>Dataset Bright Data LinkedIn<input value={linkedinDatasetId} onChange={(event) => setLinkedinDatasetId(event.target.value)} placeholder="Optionnel si configuré sur le worker" /></label></>}
+        {sources.includes("serp") && <label>Templates SERP, un par ligne<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables disponibles : {"{theme}"}, {"{seed}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
 
         <div className="gsc-box">
           <label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /><small>Regex préremplie pour garder les requêtes conversationnelles. Tu peux la modifier.</small></label>
@@ -157,7 +223,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         </div>
 
         {status && <p className="import-status">{status}</p>}
-        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Fermer</button><button className="primary" disabled={loading || !text.trim() || !sources.length}><Database size={17} />{loading ? "Préparation…" : "Enregistrer & collecter"}<Play size={14} /></button></div>
+        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Fermer</button><button className="primary" disabled={loading || !text.trim() || !sources.length || !brandName.trim()}><Database size={17} />{loading ? "Préparation…" : "Enregistrer & collecter"}<Play size={14} /></button></div>
       </form>
     </div>
   );

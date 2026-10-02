@@ -100,7 +100,7 @@ class SerpScraper(BaseScraper):
     def _generate_queries(self, templates: List[str]):
         """Génère les requêtes à partir des seeds prioritaires et des templates"""
         budget = int(self.config.scraping.serp.get("query_budget", 50))
-        return expand_serp_templates(self.config.seeds, templates, budget)
+        return expand_serp_templates(self.config.seeds, templates, budget, self.config.client.name)
     
     def _scrape_paa_dataforseo(self, query: str) -> List[RawItem]:
         """Scrape les People Also Ask via DataForSEO"""
@@ -126,11 +126,11 @@ class SerpScraper(BaseScraper):
             if not tasks:
                 return items
             
-            task_result = tasks[0].get("result", [])
-            if not task_result:
+            task_result = tasks[0].get("result") or []
+            if not task_result or not isinstance(task_result[0], dict):
                 return items
             
-            serp_items = task_result[0].get("items", [])
+            serp_items = task_result[0].get("items") or []
             
             for serp_item in serp_items:
                 if not isinstance(serp_item, dict):
@@ -230,11 +230,11 @@ class SerpScraper(BaseScraper):
             if not tasks:
                 return items
             
-            task_result = tasks[0].get("result", [])
-            if not task_result:
+            task_result = tasks[0].get("result") or []
+            if not task_result or not isinstance(task_result[0], dict):
                 return items
             
-            suggestions = task_result[0].get("items", [])
+            suggestions = task_result[0].get("items") or []
             
             for i, suggestion in enumerate(suggestions[:max_suggestions]):
                 s_text = suggestion.get("title", "") or suggestion.get("suggestion", "")

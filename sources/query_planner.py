@@ -37,7 +37,7 @@ def plan_queries(seeds: Iterable[Seed], source: str, budget: int, domain: str = 
     return planned
 
 
-def expand_serp_templates(seeds: Iterable[Seed], templates: Iterable[str], budget: int) -> List[PlannedQuery]:
+def expand_serp_templates(seeds: Iterable[Seed], templates: Iterable[str], budget: int, brand_name: str = "") -> List[PlannedQuery]:
     selected = deduplicate_seeds(seed for seed in seeds if seed.enabled)
     by_type = {seed_type: [seed for seed in selected if seed.seed_type == seed_type] for seed_type in SeedType}
     planned = []
@@ -50,6 +50,7 @@ def expand_serp_templates(seeds: Iterable[Seed], templates: Iterable[str], budge
             for brand in brands:
                 for competitor in competitors:
                     query = template.replace("{seed}", base.value).replace("{theme}", base.value)
+                    query = query.replace("{brand}", brand_name or (brand.value if brand else ""))
                     query = query.replace("{brand_variant}", brand.value if brand else "").replace("{competitor}", competitor.value if competitor else "")
                     query = " ".join(query.split()).strip()
                     if not query or "{" in query or query.casefold() in seen:

@@ -241,11 +241,11 @@ class ForumScraper(BaseScraper):
             if not tasks:
                 return items
             
-            task_result = tasks[0].get("result", [])
-            if not task_result:
+            task_result = tasks[0].get("result") or []
+            if not task_result or not isinstance(task_result[0], dict):
                 return items
             
-            serp_items = task_result[0].get("items", [])
+            serp_items = task_result[0].get("items") or []
             
             for serp_item in serp_items[:limit]:
                 if serp_item.get("type") == "organic":
