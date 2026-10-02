@@ -54,6 +54,16 @@ async function fetchInBatches<RowType extends Row>(table: string, ids: string[],
   return rows;
 }
 
+async function countRows(table: string, query: string) {
+  const rows = await supabaseRest<Array<{ id: string }>>(table, { query: `select=id&${query}&limit=50000` });
+  return rows.length;
+}
+
+async function countLinkedRows(table: string, ids: string[], column: string) {
+  const rows = await fetchInBatches<{ id: string }>(table, ids, column, "id");
+  return rows.length;
+}
+
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const projectId = params.get("projectId");
@@ -61,10 +71,33 @@ export async function GET(request: Request) {
   const requestedFormat = params.get("format") ?? "csv";
   const format = ["csv", "json", "xlsx"].includes(requestedFormat) ? requestedFormat : "csv";
   if (!projectId) return NextResponse.json({ error: "projectId est requis." }, { status: 400 });
-  if (!stages.has(stage)) return NextResponse.json({ error: "stage invalide." }, { status: 400 });
   if (!isSupabaseConfigured()) return NextResponse.json({ error: "Supabase n'est pas configuré." }, { status: 503 });
 
   const project = encodeURIComponent(projectId);
+  if (stage === "summary") {
+    try {
+      const promptIds = (await supabaseRest<Array<{ id: string }>>("prompts", { query: `select=id&project_id=eq.${project}&limit=50000` })).map((row) => row.id);
+      const datasetIds = (await supabaseRest<Array<{ id: string }>>("datasets", { query: `select=id&project_id=eq.${project}&limit=50000` })).map((row) => row.id);
+      const observationIds = (await fetchInBatches<{ id: string }>("observations", promptIds, "prompt_id", "id")).map((row) => row.id);
+      const counts = {
+        seeds: await countRows("seeds", `project_id=eq.${project}`),
+        signals: await countRows("signals", `project_id=eq.${project}`),
+        questions: await countRows("questions", `project_id=eq.${project}`),
+        clusters: await countRows("clusters", `project_id=eq.${project}`),
+        dataset: await countLinkedRows("dataset_examples", datasetIds, "dataset_id"),
+        prompts: promptIds.length,
+        observations: observationIds.length,
+        fanouts: await countLinkedRows("fan_outs", observationIds, "observation_id"),
+        citations: await countLinkedRows("citations", observationIds, "observation_id"),
+        validations: await countLinkedRows("validations", promptIds, "prompt_id"),
+      };
+      return NextResponse.json({ counts });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Résumé impossible." }, { status: 502 });
+    }
+  }
+  if (!stages.has(stage)) return NextResponse.json({ error: "stage invalide." }, { status: 400 });
+
   try {
     if (stage === "seeds") {
       const rows = await supabaseRest<Row[]>("seeds", { query: `select=id,value,seed_type,priority,language,market,enabled,created_at&project_id=eq.${project}&order=priority.desc` });

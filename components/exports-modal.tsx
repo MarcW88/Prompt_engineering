@@ -22,6 +22,7 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
   const [datasets, setDatasets] = useState<DatasetOption[]>([]);
   const [datasetId, setDatasetId] = useState("");
   const [tier, setTier] = useState(3);
+  const [counts, setCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!projectId) return;
@@ -31,6 +32,9 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
         setDatasets(data.datasets ?? []);
         setDatasetId((current) => current || data.datasets?.[0]?.id || "");
       });
+    fetch(`/api/exports?projectId=${encodeURIComponent(projectId)}&stage=summary&format=json`)
+      .then((response) => response.ok ? response.json() : { counts: {} })
+      .then((data) => setCounts(data.counts ?? {}));
   }, [projectId]);
 
   function url(stage: string, format = "csv") {
@@ -46,12 +50,16 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
         </div>
         <p className="export-intro">Chaque ligne correspond au moment du workflow où l’export devient utile. CSV et XLSX s’ouvrent dans Excel/Sheets ; JSON conserve les données techniques.</p>
         <div className="export-grid">
-          {exports.map((item) => (
-            <article key={item.stage} className="export-item">
-              <div><FileSpreadsheet size={18} /><div><span className="export-step">Étape {item.step} · {item.phase}</span><strong>{item.title}</strong><p>{item.text}</p></div></div>
-              <span><a className="secondary mini" href={url(item.stage)}>CSV</a><a className="secondary mini" href={url(item.stage, "xlsx")}>Excel</a><a className="secondary mini" href={url(item.stage, "json")}>JSON</a></span>
-            </article>
-          ))}
+          {exports.map((item) => {
+            const count = counts[item.stage] ?? 0;
+            const ready = count > 0;
+            return (
+              <article key={item.stage} className={ready ? "export-item ready" : "export-item pending"}>
+                <div><FileSpreadsheet size={18} /><div><span className="export-step">Étape {item.step} · {item.phase}</span><strong>{item.title}</strong><p>{item.text}</p><em className={ready ? "export-status ready" : "export-status"}>{ready ? `Disponible · ${count.toLocaleString("fr-FR")} ligne${count > 1 ? "s" : ""}` : "En attente · aucune donnée"}</em></div></div>
+                <span>{["csv", "xlsx", "json"].map((format) => ready ? <a key={format} className="secondary mini" href={url(item.stage, format)}>{format === "xlsx" ? "Excel" : format.toUpperCase()}</a> : <i key={format} className="secondary mini export-disabled">{format === "xlsx" ? "Excel" : format.toUpperCase()}</i>)}</span>
+              </article>
+            );
+          })}
         </div>
         <div className="semactic-export">
           <div>
