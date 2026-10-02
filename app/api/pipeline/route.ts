@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
+import { confirmedCostEur } from "@/lib/data/budget";
 
 const stages = new Set(["prepare_questions", "transform_signals", "cluster_questions", "reverse_engineer"]);
 
@@ -27,6 +28,18 @@ export async function POST(request: Request) {
     input = { ...input, chain_cluster: true, cluster_config: { similarity_threshold: Number(body.similarityThreshold ?? 0.82), min_cluster_size: Number(body.minClusterSize ?? 2) } };
   }
   try {
+    if (kind === "reverse_engineer") {
+      const encoded = encodeURIComponent(body.projectId);
+      const [projects, costs] = await Promise.all([
+        supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encoded}&limit=1` }),
+        supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encoded}` }),
+      ]);
+      const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
+      const spentEur = confirmedCostEur(costs);
+      const reserveEur = Math.max(0.25, Math.round(totalBudgetEur * 0.1 * 100) / 100);
+      if (spentEur + reserveEur > totalBudgetEur) return NextResponse.json({ error: `Réserve reverse engineering insuffisante : ${reserveEur.toFixed(2)} € requis, ${Math.max(0, totalBudgetEur - spentEur).toFixed(2)} € restant.` }, { status: 422 });
+      input = { ...input, reserved_cost_eur: reserveEur };
+    }
     const result = await createAndTriggerJob({ project_id: body.projectId, kind, status: "pending", input });
     return NextResponse.json(result, { status: 202 });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
+import { confirmedCostEur } from "@/lib/data/budget";
 
 const allowedSources = new Set(["reddit", "forum", "serp", "review", "facebook", "instagram", "linkedin", "x"]);
 
@@ -13,13 +14,18 @@ export async function POST(request: Request) {
   const sourceConfig = body.sourceConfig && typeof body.sourceConfig === "object" ? body.sourceConfig : {};
   if (!isSupabaseConfigured()) return NextResponse.json({ configured: false, job: null, plannedSources: sources });
   try {
-    const [seeds, activeJobs] = await Promise.all([
+    const [seeds, activeJobs, projects, costs] = await Promise.all([
       supabaseRest<Array<{ id: string }>>("seeds", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&enabled=eq.true&order=priority.desc` }),
       supabaseRest<Array<{ id: string }>>("jobs", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&kind=eq.collect_sources&status=in.(pending,running)&limit=1` }),
+      supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encodeURIComponent(body.projectId)}&limit=1` }),
+      supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encodeURIComponent(body.projectId)}` }),
     ]);
     if (!seeds.length) return NextResponse.json({ error: "Ajoutez au moins un seed actif avant de lancer la collecte." }, { status: 409 });
     if (activeJobs.length) return NextResponse.json({ error: "Une collecte est déjà en cours dans ce workspace.", jobId: activeJobs[0].id }, { status: 409 });
-    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "collect_sources", status: "pending", input: { sources, query_budget: queryBudget, source_config: sourceConfig } });
+    const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
+    const spentEur = confirmedCostEur(costs);
+    if (spentEur >= totalBudgetEur) return NextResponse.json({ error: `Budget global atteint (${spentEur.toFixed(2)} € / ${totalBudgetEur.toFixed(2)} €). Augmentez le plafond ou segmentez l’audit.` }, { status: 422 });
+    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "collect_sources", status: "pending", input: { sources, query_budget: queryBudget, source_config: sourceConfig, budget_snapshot: { total_eur: totalBudgetEur, spent_eur: spentEur, remaining_eur: Math.max(0, totalBudgetEur - spentEur) } } });
     return NextResponse.json(result, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Création du job impossible." }, { status: 502 });
