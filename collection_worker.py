@@ -342,7 +342,7 @@ class CollectionWorker:
             if isinstance(scraper, SocialScraper):
                 for platform in scraper.platforms:
                     count = sum(1 for item in items[before:] if item.platform == platform)
-                    source_report[platform] = {"collected": count, "errors": scraper.errors_count}
+                    source_report[platform] = {"collected": count, "errors": scraper.platform_errors.get(platform, 0)}
                     if scraper.skipped.get(platform):
                         source_report[platform]["skipped"] = scraper.skipped[platform]
             else:

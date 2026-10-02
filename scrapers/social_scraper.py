@@ -39,6 +39,7 @@ class SocialScraper(BaseScraper):
         self.comment_target_limit = int(limits.get("comment_targets") or os.getenv("BRIGHTDATA_SOCIAL_COMMENT_TARGET_LIMIT", "5"))
         self.api_cost_usd = 0.0
         self.skipped: Dict[str, str] = {}
+        self.platform_errors: Dict[str, int] = {platform: 0 for platform in platforms}
         self._progress_processed = 0
         self._progress_total = 1
         self._progress_label = "social"
@@ -78,8 +79,9 @@ class SocialScraper(BaseScraper):
                 self._report_progress(start, len(targets), f"{platform} · batch {start // self.batch_size + 1} · {len(batch)} cible(s)")
                 try:
                     payload = [item for target in batch for item in self._payload(platform, target)]
-                    records = self._collect_dataset(dataset_id, payload)
-                    records = records[:len(batch) * self.post_limit]
+                    request_params = self._discovery_params(platform, batch)
+                    records = self._collect_dataset(dataset_id, payload, request_params, wrap_input=bool(request_params))
+                    records = self._expand_records(platform, records)[:len(batch) * self.post_limit]
                     parsed = [self._record_to_item(platform, record, self._record_target(record, batch)) for record in records]
                     parsed.extend(self._collect_comment_items(platform, records, batch))
                     items.extend(item for item in parsed if item)
@@ -88,7 +90,8 @@ class SocialScraper(BaseScraper):
                     self._report_progress(processed, len(targets), f"{platform} · {len(parsed)} signaux · batch {start // self.batch_size + 1}")
                 except Exception as error:
                     self.errors_count += 1
-                    self.skipped[platform] = str(error)[:200]
+                    self.platform_errors[platform] += 1
+                    self.skipped[platform] = str(error)[:500]
                     self.logger.error(f"Bright Data {platform} error for batch starting at {label}: {error}")
                     processed = min(start + len(batch), len(targets))
                     self._progress_processed = processed
@@ -109,24 +112,38 @@ class SocialScraper(BaseScraper):
         return [{"url": url, "label": url} for url in urls]
 
     def _payload(self, platform: str, target: Dict[str, str]) -> List[Dict[str, Any]]:
+        if platform == "reddit" and target.get("query"):
+            return [{"keyword": target["query"], "date": "Past month", "num_of_posts": self.post_limit}]
         payload: Dict[str, Any] = {"url": target["url"]}
-        if platform in {"facebook", "instagram", "reddit"}:
+        if platform in {"facebook", "instagram"}:
             payload["num_of_posts"] = self.post_limit
-        if target.get("query"):
-            payload["query"] = target["query"]
-        if platform == "reddit" and target.get("subreddit"):
-            payload["subreddit"] = target["subreddit"]
         return [payload]
 
-    def _collect_dataset(self, dataset_id: str, payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _discovery_params(platform: str, targets: List[Dict[str, str]]) -> Dict[str, str]:
+        if platform == "reddit":
+            return {"type": "discover_new", "discover_by": "keyword"}
+        if platform == "instagram":
+            return {"type": "discover_new", "discover_by": "url"}
+        if platform == "linkedin":
+            discover_by = "company_url" if any("/company/" in target.get("url", "") for target in targets) else "profile_url"
+            return {"type": "discover_new", "discover_by": discover_by}
+        if platform == "x" and any("/status/" not in target.get("url", "") for target in targets):
+            return {"type": "discover_new", "discover_by": "profile_url"}
+        return {}
+
+    def _collect_dataset(self, dataset_id: str, payload: List[Dict[str, Any]], extra_params: Optional[Dict[str, str]] = None, wrap_input: bool = False) -> List[Dict[str, Any]]:
+        params = {"dataset_id": dataset_id, "format": "json", "include_errors": "true", **(extra_params or {})}
+        body: Any = {"input": payload, "limit_per_input": self.post_limit} if wrap_input else payload
         response = requests.post(
             self.endpoint,
-            params={"dataset_id": dataset_id, "format": "json", "include_errors": "true"},
+            params=params,
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json=payload,
+            json=body,
             timeout=min(120, self.timeout),
         )
-        response.raise_for_status()
+        if not response.ok:
+            raise RuntimeError(f"Bright Data HTTP {response.status_code}: {response.text[:500]}")
         raw = response.json()
         if response.status_code == 202 or isinstance(raw, dict) and raw.get("snapshot_id"):
             snapshot_id = raw.get("snapshot_id") if isinstance(raw, dict) else None
@@ -141,6 +158,24 @@ class SocialScraper(BaseScraper):
                     return [record for record in raw[key] if isinstance(record, dict)]
             return [raw]
         return []
+
+    def _expand_records(self, platform: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if platform != "instagram":
+            return records
+        expanded = []
+        for record in records:
+            posts = record.get("posts")
+            if not isinstance(posts, list):
+                expanded.append(record)
+                continue
+            for post in posts[:self.post_limit]:
+                if not isinstance(post, dict):
+                    continue
+                item = dict(post)
+                item.setdefault("user_posted", record.get("account") or record.get("user_name"))
+                item.setdefault("url", post.get("url") or post.get("post_url"))
+                expanded.append(item)
+        return expanded
 
     def _wait_snapshot(self, snapshot_id: str) -> List[Dict[str, Any]]:
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -180,7 +215,8 @@ class SocialScraper(BaseScraper):
             comments = self._collect_dataset(dataset_id, [{"url": url} for url in post_urls])
         except Exception as error:
             self.errors_count += 1
-            self.skipped[platform] = f"commentaires: {str(error)[:180]}"
+            self.platform_errors[platform] += 1
+            self.skipped[platform] = f"commentaires: {str(error)[:400]}"
             self.logger.error(f"Bright Data {platform} comments error: {error}")
             return []
         return [item for item in (self._comment_to_item(platform, record, post_urls[0]) for record in comments[:len(post_urls) * self.comment_limit]) if item]
@@ -234,7 +270,7 @@ class SocialScraper(BaseScraper):
                     if value:
                         comment_texts.append(str(value))
         title = str(record.get("title") or record.get("headline") or record.get("post_title") or "")
-        body = str(record.get("text") or record.get("content") or record.get("post_text") or record.get("description") or "")
+        body = str(record.get("text") or record.get("content") or record.get("post_text") or record.get("description") or record.get("caption") or "")
         raw_text = "\n\n".join(part for part in [title, body, *comment_texts] if part).strip()
         if len(raw_text) < 20:
             return None
