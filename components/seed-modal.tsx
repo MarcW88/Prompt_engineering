@@ -60,6 +60,18 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [fileStatus, setFileStatus] = useState("");
   const [gscStatus, setGscStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+
+  const tierLabels = { light: "Collecte ciblée", standard: "Collecte standard", extended: "Collecte approfondie", segmented: "Audit à segmenter" };
+  const stepLabels = ["Compte", "Corpus & budget", "Sources", "Vérification"];
+
+  function nextStep() {
+    if (step === 1 && !brandName.trim()) { setStatus("Indique la marque analysée pour continuer."); return; }
+    if (step === 2 && !text.trim()) { setStatus("Ajoute ou importe au moins un mot-clé pour continuer."); return; }
+    if (step === 3 && !sources.length) { setStatus("Sélectionne au moins une source pour continuer."); return; }
+    setStatus("");
+    setStep((current) => Math.min(4, current + 1));
+  }
 
   function toggleSource(source: string) {
     setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
@@ -183,70 +195,53 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <form className="modal seed-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <form className="modal seed-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (step < 4) nextStep(); else void submit(); }}>
         <div className="modal-head">
-          <div><span className="eyebrow">COLLECTE CONFIGURÉE</span><h2>Nouvelle collecte</h2></div>
+          <div><span className="eyebrow">COLLECTE · ÉTAPE {step}/4</span><h2>{stepLabels[step - 1]}</h2></div>
           <button type="button" className="icon-button" onClick={onClose}><X size={19} /></button>
         </div>
 
-        <div className="builder-guide">
-          <strong>Sur quoi repose la collecte ?</strong>
-          <ol>
-            <li>Les seeds servent à générer les recherches Reddit, forums, réseaux sociaux et SERP.</li>
-            <li>Le budget limite les requêtes par plateforme : Reddit = subreddits × budget ; forums = URLs × budget ; SERP = budget total ; Trustpilot = maximum {Math.min(10, queryBudget)} pages.</li>
-            <li>Estimation actuelle : <b>{plannedRequests.toLocaleString("fr-FR")} requêtes/planifications</b> avant déduplication et résultats vides.</li>
-            <li>Les réseaux sociaux utilisent les datasets Bright Data configurés côté worker, avec au maximum {socialPostLimit} posts et {socialCommentLimit} commentaires importés par post.</li>
-          </ol>
-          <p><strong>Profil recommandé : {collectionRecommendation.tier}</strong> · corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux · budget global indicatif {collectionRecommendation.totalEur.toFixed(2)} €.</p>
-          <p>Budget de requêtes conseillé pour cette première passe : {recommendedQueryBudget}. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer</button></p>
-        </div>
+        <div className="workflow-track collect-wizard">{stepLabels.map((label, index) => <button type="button" key={label} className={`workflow-step ${index + 1 < step ? "done" : index + 1 === step ? "current" : ""}`} onClick={() => index + 1 < step && setStep(index + 1)}><span>{index + 1}</span><strong>{label}</strong></button>)}</div>
 
-        <div className="form-row">
-          <label>Marque analysée<input value={brandName} onChange={(event) => setBrandName(event.target.value)} placeholder="Pairi Daiza" /><small>Utilisée dans les templates SERP et les métadonnées.</small></label>
-          <label>Domaine<input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="pairidaiza.eu" /><small>Domaine principal de la marque.</small></label>
-        </div>
-        <div className="form-row">
-          <label>Variantes de marque<textarea rows={2} value={brandVariants} onChange={(event) => setBrandVariants(event.target.value)} placeholder={"Pairi Daiza\npairidaiza"} /><small>Une variante par ligne.</small></label>
-          <label>Thèmes<textarea rows={2} value={themes} onChange={(event) => setThemes(event.target.value)} placeholder={"zoo\nparc animalier\nbillet d'entrée"} /><small>Utilisés pour la détection et les templates.</small></label>
-        </div>
-        <div className="form-row">
-          <label>Concurrents<textarea rows={2} value={competitors} onChange={(event) => setCompetitors(event.target.value)} placeholder={"Zoo de Beauval\nPlanckendael"} /><small>Optionnel, utile pour les comparaisons.</small></label>
-          <div className="form-row compact"><label>Marché<input value={market} onChange={(event) => setMarket(event.target.value)} placeholder="BE" /><small>Code pays.</small></label><label>Langues acceptées<input value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="fr,nl" /><small>Séparées par virgule ; les autres langues sont exclues.</small></label></div>
-        </div>
+        {step === 1 && <>
+          <div className="builder-guide"><strong>Définir le périmètre</strong><p>Ces informations adaptent les recherches à la marque, au marché et aux langues réellement utiles.</p></div>
+          <div className="form-row"><label>Marque analysée<input autoFocus value={brandName} onChange={(event) => setBrandName(event.target.value)} placeholder="Nom de la marque" /><small>Obligatoire. Utilisée dans les recherches et les exports.</small></label><label>Domaine<input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="client.com" /><small>Domaine principal de la marque.</small></label></div>
+          <div className="form-row"><label>Variantes de marque<textarea rows={3} value={brandVariants} onChange={(event) => setBrandVariants(event.target.value)} placeholder={"Nom alternatif\nAncienne marque"} /><small>Ne répète pas la marque principale.</small></label><label>Thèmes<textarea rows={3} value={themes} onChange={(event) => setThemes(event.target.value)} placeholder={"produit\nservice\nproblème client"} /><small>Une ligne par sujet à couvrir.</small></label></div>
+          <div className="form-row"><label>Concurrents<textarea rows={3} value={competitors} onChange={(event) => setCompetitors(event.target.value)} placeholder={"Concurrent A\nConcurrent B"} /><small>Optionnel, utile pour les comparaisons.</small></label><div className="form-row compact"><label>Marché<input value={market} onChange={(event) => setMarket(event.target.value)} placeholder="BE" /></label><label>Langues acceptées<input value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="fr,nl" /><small>Les autres langues seront exclues.</small></label></div></div>
+        </>}
 
-        <label>Mots-clés, un par ligne<textarea autoFocus rows={5} value={text} onChange={(event) => setText(event.target.value)} placeholder={"prix pairi daiza\npairi daiza hôtel\naccès fauteuil roulant parc"} /><small>Colle une liste ou importe un fichier CSV/Excel ; la première colonne est utilisée.</small></label>
-        <label className="upload-zone"><FileUp size={19} /><span>Importer des mots-clés CSV, TXT ou Excel</span><input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importSeedFile(file); }} /></label>
-        {fileStatus && <p className="import-status">{fileStatus}</p>}
+        {step === 2 && <>
+          <div className="builder-guide"><strong>Constituer le point de départ</strong><p>Les seeds alimentent les recherches externes. La recommandation évolue automatiquement avec le volume et la complexité du compte.</p></div>
+          <label>Mots-clés, un par ligne<textarea autoFocus rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={"question client\nproduit recherché\nproblème rencontré"} /><small>Colle une liste ou importe la première colonne d’un CSV/Excel.</small></label>
+          <label className="upload-zone"><FileUp size={19} /><span>Importer des mots-clés CSV, TXT ou Excel</span><input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importSeedFile(file); }} /></label>
+          {fileStatus && <p className="import-status">{fileStatus}</p>}
+          <div className="form-row"><label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select></label><label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label></div>
+          <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents sur l’ensemble de la collecte, pas lancer ce nombre d’appels.</p><p>Enveloppe globale indicative pour tout le workflow : <strong>{collectionRecommendation.totalEur.toFixed(2)} €</strong>, incluant collecte, exécutions IA, validation, reverse engineering et cloud.</p></div>
+          <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications, avant résultats vides et déduplication. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>
+          <div className="form-row compact"><label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /></label><label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé pour protéger le budget.</small></label></div>
+          <div className="gsc-box"><label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /></label><label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{gscStatus && <p className="import-status">{gscStatus}</p>}</div>
+        </>}
 
-        <div className="form-row">
-          <label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select><small>Le même type est appliqué à toutes les lignes importées.</small></label>
-          <label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><small>Les seeds les plus prioritaires sont planifiés en premier.</small></label>
-        </div>
-        <label>Budget max par plateforme<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Recommandé : 5–10 pour un test, 20–50 pour un corpus réaliste, au-delà seulement si le secteur est très discuté. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications.</small></label>
-        <div className="form-row compact">
-          <label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /><small>Demandé à Bright Data quand le dataset l’accepte.</small></label>
-          <label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé : le dataset peut facturer tous les commentaires avant filtrage. Active uniquement pour un test contrôlé.</small></label>
-        </div>
+        {step === 3 && <>
+          <div className="builder-guide"><strong>Choisir les sources</strong><p>Sélectionne uniquement les plateformes réellement pertinentes pour ce compte. Les champs apparaissent selon tes choix.</p></div>
+          <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}</fieldset>
+          {sources.includes("reddit") && <label>Subreddits<textarea rows={3} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"communaute1\ncommunaute2"} /><small>Noms sans `r/`.</small></label>}
+          {sources.includes("forum") && <label>URLs de forums<textarea rows={3} value={forumUrls} onChange={(event) => setForumUrls(event.target.value)} /></label>}
+          {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} placeholder="https://www.trustpilot.com/review/client.com" /></label>}
+          {sources.includes("facebook") && <label>Posts/reels Facebook précis<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} /><small>Les pages entières sont refusées pour éviter une collecte non bornée.</small></label>}
+          {sources.includes("instagram") && <label>Profils/posts Instagram<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} /></label>}
+          {sources.includes("linkedin") && <label>Pages/posts LinkedIn<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} /></label>}
+          {sources.includes("x") && <label>Comptes/posts X<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} /></label>}
+          {sources.includes("serp") && <label>Templates SERP<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables : {"{theme}"}, {"{seed}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
+        </>}
 
-        <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}<small>Reddit, Facebook, Instagram, LinkedIn et X utilisent les datasets Bright Data configurés côté worker ; forums, SERP et avis utilisent DataForSEO.</small></fieldset>
-
-        {sources.includes("reddit") && <label>Subreddits, un par ligne<textarea rows={4} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"belgique\nzoos\nPlanetZoo"} /><small>Noms sans `r/`. Chaque subreddit peut planifier jusqu’au budget indiqué via Bright Data.</small></label>}
-        {sources.includes("forum") && <label>URLs de forums, une par ligne<textarea rows={4} value={forumUrls} onChange={(event) => setForumUrls(event.target.value)} /><small>Chaque URL est utilisée via des recherches Google ciblées site:domaine.</small></label>}
-        {sources.includes("review") && <label>URL Trustpilot<input value={trustpilotUrl} onChange={(event) => setTrustpilotUrl(event.target.value)} placeholder="https://www.trustpilot.com/review/pairidaiza.eu" /><small>La marque renseignée ci-dessus sera écrite dans les exports, pas Decathlon.</small></label>}
-        {sources.includes("facebook") && <label>Posts/reels Facebook précis, une URL par ligne<textarea rows={3} value={facebookUrls} onChange={(event) => setFacebookUrls(event.target.value)} placeholder={"https://www.facebook.com/pairidaizaofficial/posts/…"} /><small>Les URLs de pages sont refusées : leur dataset peut facturer tout l’historique. Fournis uniquement des posts ou reels précis.</small></label>}
-        {sources.includes("instagram") && <label>Profils/posts Instagram, une URL par ligne<textarea rows={3} value={instagramUrls} onChange={(event) => setInstagramUrls(event.target.value)} placeholder={"https://www.instagram.com/pairidaizaofficial/"} /><small>Collector Bright Data Instagram : posts et commentaires publics selon le dataset configuré.</small></label>}
-        {sources.includes("linkedin") && <label>Pages/posts LinkedIn, une URL par ligne<textarea rows={3} value={linkedinUrls} onChange={(event) => setLinkedinUrls(event.target.value)} placeholder={"https://www.linkedin.com/company/pairi-daiza/"} /><small>Collector Bright Data LinkedIn : posts et commentaires publics selon le dataset configuré.</small></label>}
-        {sources.includes("x") && <label>Comptes/posts X, une URL par ligne<textarea rows={3} value={xUrls} onChange={(event) => setXUrls(event.target.value)} placeholder={"https://x.com/pairidaiza"} /><small>Collector Bright Data X/Twitter : posts et commentaires publics selon le dataset configuré.</small></label>}
-        {sources.includes("serp") && <label>Templates SERP, un par ligne<textarea rows={4} value={serpTemplates} onChange={(event) => setSerpTemplates(event.target.value)} /><small>Variables disponibles : {"{theme}"}, {"{seed}"}, {"{brand}"}, {"{brand_variant}"}, {"{competitor}"}.</small></label>}
-
-        <div className="gsc-box">
-          <label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /><small>Regex préremplie pour garder les requêtes conversationnelles. Tu peux la modifier.</small></label>
-          <label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>
-          {gscStatus && <p className="import-status">{gscStatus}</p>}
-        </div>
+        {step === 4 && <>
+          <div className="builder-guide"><strong>Vérifier avant le lancement</strong><p>Cette collecte constitue une première passe. Tu pourras étendre uniquement les sources qui produisent des signaux pertinents.</p></div>
+          <div className="dataset-estimate good"><p><strong>{brandName}</strong> · marché {market.toUpperCase()} · langues {lines(languages).join(", ") || "fr"}</p><p>{parseSeedText(text, { seedType, priority, source: "dashboard" }).length.toLocaleString("fr-FR")} seeds · {sources.map((source) => sourceLabels[source]).join(", ")}</p><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> : corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents.</p><p>Première passe : {plannedRequests.toLocaleString("fr-FR")} planifications maximum · {socialPostLimit} posts par cible · {socialCommentLimit} commentaire(s) par post.</p><p>Budget global indicatif : {collectionRecommendation.totalEur.toFixed(2)} €. Les coûts réels restent contrôlés dans le centre Budget.</p></div>
+        </>}
 
         {status && <p className="import-status">{status}</p>}
-        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Fermer</button><button className="primary" disabled={loading || !text.trim() || !sources.length || !brandName.trim()}><Database size={17} />{loading ? "Préparation…" : "Enregistrer & collecter"}<Play size={14} /></button></div>
+        <div className="modal-actions"><button type="button" className="secondary" onClick={() => step === 1 ? onClose() : setStep((current) => current - 1)}>{step === 1 ? "Fermer" : "Retour"}</button>{step < 4 ? <button type="button" className="primary" onClick={nextStep}>Continuer<Play size={14} /></button> : <button className="primary" disabled={loading || !text.trim() || !sources.length || !brandName.trim()}><Database size={17} />{loading ? "Préparation…" : "Confirmer & collecter"}<Play size={14} /></button>}</div>
       </form>
     </div>
   );
