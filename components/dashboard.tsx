@@ -28,13 +28,6 @@ const nav = [
   { label: "Analyses", icon: FlaskConical },
 ];
 
-const steps = [
-  { n: "01", title: "Collecter", text: "Questions réelles depuis GSC, Reddit, forums, avis et SERP.", value: "1 248", label: "signaux", icon: Database },
-  { n: "02", title: "Structurer", text: "Dédupliquer et regrouper les intentions par proximité.", value: "86", label: "clusters", icon: Layers3 },
-  { n: "03", title: "Reconstruire", text: "Inverser les signatures de fan-out en prompts plausibles.", value: "487", label: "prompts", icon: Sparkles },
-  { n: "04", title: "Valider", text: "Réexécuter et mesurer la stabilité des réponses.", value: "88%", label: "stabilité", icon: ShieldCheck },
-];
-
 const provenanceLabel: Record<Provenance, string> = {
   observed: "Observé",
   reverse_engineered: "Reconstruit",
@@ -57,7 +50,7 @@ export function Dashboard() {
   const [workspaceModal, setWorkspaceModal] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
-  const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, stability: 0 });
+  const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, datasets: 0, observations: 0, validations: 0, approved: 0, stability: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
   const [jobs, setJobs] = useState<Array<{ kind: string; status: string }>>([]);
   const [configured, setConfigured] = useState(false);
@@ -111,7 +104,27 @@ export function Dashboard() {
     return () => window.clearInterval(interval);
   }, [loadDashboard, projectId]);
 
-  const workflowValues = [metrics.questions, metrics.clusters, metrics.prompts, `${metrics.stability}%`];
+  function latestJob(kind: string) {
+    return jobs.find((job) => job.kind === kind);
+  }
+
+  function stepState(kind: string, done: boolean, ready = true) {
+    const job = latestJob(kind);
+    if (job?.status === "running" || job?.status === "pending") return "En cours";
+    if (done || job?.status === "completed") return "Terminé";
+    return ready ? "Prêt" : "À faire";
+  }
+
+  const workflowSteps = [
+    { n: "01", title: "Collecte", text: "Reddit, forums, PAA, Trustpilot et GSC.", value: metrics.signals, label: "signaux", icon: Database, status: stepState("collect_sources", metrics.signals > 0, metrics.seeds > 0), action: () => setSeedModal(true) },
+    { n: "02", title: "Questions", text: "Signaux nettoyés et transformés en questions.", value: metrics.questions, label: "questions", icon: CircleHelp, status: stepState("transform_signals", metrics.questions > 0, metrics.signals > 0), action: () => setPipelineModal(true) },
+    { n: "03", title: "Clusters", text: "Intentions regroupées par similarité.", value: metrics.clusters, label: "clusters", icon: Layers3, status: stepState("cluster_questions", metrics.clusters > 0, metrics.questions > 0), action: () => setPipelineModal(true) },
+    { n: "04", title: "Dataset + exécution", text: "Échantillon contrôlé et premières réponses moteurs.", value: metrics.observations, label: "observations", icon: FlaskConical, status: stepState("build_dataset", metrics.observations > 0, metrics.clusters > 0), action: () => setDatasetModal(true) },
+    { n: "05", title: "Validation", text: "Runs répétés, reproduction et stabilité.", value: metrics.validations, label: "validations", icon: ShieldCheck, status: stepState("validate_dataset", metrics.validations > 0, metrics.observations > 0), action: () => setPipelineModal(true) },
+    { n: "06", title: "Reverse engineering", text: "Prompts plausibles reconstruits depuis les fan-outs.", value: metrics.prompts, label: "prompts", icon: Sparkles, status: stepState("reverse_engineer", false, metrics.validations > 0 || metrics.observations > 0), action: () => setPipelineModal(true) },
+    { n: "07", title: "Revue humaine", text: "Approbation, modification ou rejet avant export.", value: metrics.approved, label: "approuvés", icon: FileSearch, status: metrics.approved > 0 ? "Terminé" : metrics.datasets > 0 ? "Prêt" : "À faire", action: () => setReviewModal(true) },
+    { n: "08", title: "Export Semactic", text: "Export final des prompts acceptés et approuvés.", value: metrics.approved, label: "exportables", icon: Download, status: metrics.approved > 0 ? "Prêt" : "À faire", action: () => setExportsModal(true) },
+  ];
 
   async function switchWorkspace(id: string) {
     await loadDashboard(id).catch(() => setRecords([]));
@@ -209,13 +222,13 @@ export function Dashboard() {
           </section>
 
           <section className="workflow-section">
-            <div className="section-heading"><div><span className="eyebrow">MÉTHODE</span><h2>Un signal réel, une preuve mesurable</h2></div></div>
-            <div className="workflow-grid">
-              {steps.map(({ n, title, text, label, icon: Icon }, index) => (
-                <article key={title}>
-                  <div className="step-line"><span>{n}</span>{index < steps.length - 1 && <i />}</div>
-                  <div className="step-icon"><Icon size={20} /></div><h3>{title}</h3><p>{text}</p><strong>{typeof workflowValues[index] === "number" ? Number(workflowValues[index]).toLocaleString("fr-FR") : workflowValues[index]}</strong><small>{label}</small>
-                </article>
+            <div className="section-heading"><div><span className="eyebrow">WORKFLOW COMPLET</span><h2>Où en est le projet ?</h2></div><button className="text-button" onClick={() => setPipelineModal(true)}>Piloter les jobs <ArrowRight size={15} /></button></div>
+            <div className="workflow-track">
+              {workflowSteps.map(({ n, title, text, label, value, icon: Icon, status, action }, index) => (
+                <button type="button" key={title} className={`workflow-step ${status === "Terminé" ? "done" : status === "En cours" ? "current" : status === "Prêt" ? "ready" : ""}`} onClick={action}>
+                  <div className="step-line"><span>{n}</span>{index < workflowSteps.length - 1 && <i />}</div>
+                  <div className="step-icon"><Icon size={20} /></div><h3>{title}</h3><p>{text}</p><strong>{Number(value).toLocaleString("fr-FR")}</strong><small>{label}</small><em>{status}</em>
+                </button>
               ))}
             </div>
           </section>
