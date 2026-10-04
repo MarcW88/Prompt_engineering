@@ -1,13 +1,17 @@
 export type BudgetStage = "collection" | "execution" | "validation" | "reverse_engineering" | "cloud" | "reserve";
 
 export interface BudgetRecommendationInput {
-  seeds: number;
-  signals: number;
-  themes: number;
-  competitors: number;
-  socialTargets: number;
-  languages: number;
-  markets: number;
+  seeds?: number;
+  signals?: number;
+  themes?: number;
+  competitors?: number;
+  socialTargets?: number;
+  languages?: number;
+  markets?: number;
+  plannedRequests?: number;
+  sources?: string[];
+  socialPostLimit?: number;
+  socialCommentLimit?: number;
 }
 
 export interface BudgetRecommendation {
@@ -28,28 +32,54 @@ const shares: Record<BudgetStage, number> = {
   reserve: 0.1,
 };
 
+const sourceWeights: Record<string, number> = {
+  serp: 1,
+  review: 1,
+  forum: 2,
+  reddit: 3,
+  facebook: 4,
+  instagram: 4,
+  linkedin: 4,
+  x: 4,
+};
+
 export function recommendBudget(input: BudgetRecommendationInput): BudgetRecommendation {
-  const score = Math.min(100,
-    Math.min(30, input.seeds / 40) +
-    Math.min(15, input.themes * 2) +
-    Math.min(10, input.competitors * 1.5) +
-    Math.min(15, input.socialTargets * 2) +
-    Math.min(12, Math.max(0, input.languages - 1) * 6) +
-    Math.min(10, Math.max(0, input.markets - 1) * 5) +
-    Math.min(8, input.signals / 100)
+  const sources = input.sources ?? [];
+  const plannedRequests = Math.max(0, input.plannedRequests ?? 0);
+  const socialTargets = input.socialTargets ?? 0;
+  const socialPostLimit = Math.max(1, input.socialPostLimit ?? 10);
+  const socialCommentLimit = Math.max(0, input.socialCommentLimit ?? 0);
+
+  // The real cost drivers are the selected sources, the number of external calls
+  // planned, and the social amplification (targets × posts × comments).
+  // Seeds themselves do not increase cost: they are only stored locally until used
+  // in templates or passed as inputs.
+  const sourceScore = sources.reduce((sum, source) => sum + (sourceWeights[source] ?? 2), 0);
+  const volumeScore = Math.min(40, plannedRequests / 10);
+  const socialAmplification = socialTargets * socialPostLimit * (1 + socialCommentLimit * 0.4);
+  const socialScore = Math.min(35, socialAmplification / 8);
+  const diversityScore = Math.min(15,
+    Math.max(0, (input.languages ?? 1) - 1) * 4 +
+    Math.max(0, (input.markets ?? 1) - 1) * 3 +
+    Math.min(6, (input.themes ?? 0) * 1.5) +
+    Math.min(5, (input.competitors ?? 0) * 1.5)
   );
-  const tier = score < 20 ? "light" : score < 45 ? "standard" : score < 70 ? "extended" : "segmented";
-  const totalEur = { light: 4, standard: 8, extended: 12, segmented: 15 }[tier];
+
+  const score = Math.min(100, Math.round(sourceScore + volumeScore + socialScore + diversityScore));
+  const tier = score < 15 ? "light" : score < 35 ? "standard" : score < 60 ? "extended" : "segmented";
+  const totalEur = { light: 2, standard: 4, extended: 8, segmented: 12 }[tier];
   const corpusTarget: [number, number] = {
-    light: [100, 300], standard: [400, 1000], extended: [800, 2000], segmented: [1500, 4000],
+    light: [50, 200], standard: [150, 500], extended: [400, 1200], segmented: [800, 2500],
   }[tier] as [number, number];
   const reasons = [
-    `${input.seeds.toLocaleString("fr-FR")} seeds`,
-    `${input.themes} thèmes`,
-    `${Math.max(1, input.languages)} langue(s)`,
-    `${input.socialTargets} cible(s) sociale(s)`,
+    `${sources.length} source(s) sélectionnée(s)`,
+    `${plannedRequests.toLocaleString("fr-FR")} planification(s) estimée(s)`,
   ];
-  if (tier === "segmented") reasons.push("Périmètre complexe : segmentation recommandée avant extension");
+  if (socialTargets) reasons.push(`${socialTargets} cible(s) sociale(s)`);
+  if (socialCommentLimit) reasons.push(`${socialCommentLimit} commentaire(s) par post`);
+  if ((input.languages ?? 1) > 1) reasons.push(`${input.languages} langues`);
+  if ((input.markets ?? 1) > 1) reasons.push(`${input.markets} marchés`);
+  if (tier === "segmented") reasons.push("Périmètre large : découper l’audit en plusieurs collectes");
   const allocations = Object.fromEntries(Object.entries(shares).map(([stage, share]) => [stage, Math.round(totalEur * share * 100) / 100])) as Record<BudgetStage, number>;
   return { tier, score: Math.round(score), totalEur, corpusTarget, reasons, allocations };
 }

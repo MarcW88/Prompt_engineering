@@ -61,6 +61,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [gscStatus, setGscStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
+  const [budgetMode, setBudgetMode] = useState<"automatic" | "manual">("automatic");
+  const [customBudgetTotalEur, setCustomBudgetTotalEur] = useState<number | null>(null);
 
   const tierLabels = { light: "Collecte ciblée", standard: "Collecte standard", extended: "Collecte approfondie", segmented: "Audit à segmenter" };
   const stepLabels = ["Compte", "Corpus & budget", "Sources", "Vérification"];
@@ -77,26 +79,16 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
   }
 
-  const collectionRecommendation = useMemo(() => recommendBudget({
-    seeds: parseSeedText(text, { seedType, priority, source: "dashboard" }).length,
-    signals: 0,
-    themes: lines(themes).length,
-    competitors: lines(competitors).length,
-    socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length,
-    languages: Math.max(1, lines(languages).length),
-    markets: 1,
-  }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, priority, seedType, subreddits, text, themes, xUrls]);
-  const recommendedQueryBudget = { light: 5, standard: 15, extended: 30, segmented: 40 }[collectionRecommendation.tier];
+  const platformCounts = useMemo(() => ({
+    reddit: lines(subreddits).length,
+    forum: lines(forumUrls).length,
+    facebook: lines(facebookUrls).length,
+    instagram: lines(instagramUrls).length,
+    linkedin: lines(linkedinUrls).length,
+    x: lines(xUrls).length,
+  }), [facebookUrls, forumUrls, instagramUrls, linkedinUrls, subreddits, xUrls]);
 
   const plannedRequests = useMemo(() => {
-    const platformCounts = {
-      reddit: lines(subreddits).length,
-      forum: lines(forumUrls).length,
-      facebook: lines(facebookUrls).length,
-      instagram: lines(instagramUrls).length,
-      linkedin: lines(linkedinUrls).length,
-      x: lines(xUrls).length,
-    };
     const requests =
       (sources.includes("reddit") ? queryBudget * Math.max(1, platformCounts.reddit) : 0) +
       (sources.includes("forum") ? queryBudget * Math.max(1, platformCounts.forum) : 0) +
@@ -106,7 +98,23 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
       (sources.includes("linkedin") ? queryBudget * Math.max(1, platformCounts.linkedin) : 0) +
       (sources.includes("x") ? queryBudget * Math.max(1, platformCounts.x) : 0);
     return requests + (sources.includes("review") ? Math.min(10, queryBudget) : 0);
-  }, [facebookUrls, forumUrls, instagramUrls, linkedinUrls, queryBudget, sources, subreddits, xUrls]);
+  }, [platformCounts, queryBudget, sources]);
+
+  const collectionRecommendation = useMemo(() => recommendBudget({
+    seeds: parseSeedText(text, { seedType, priority, source: "dashboard" }).length,
+    signals: 0,
+    themes: lines(themes).length,
+    competitors: lines(competitors).length,
+    socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length,
+    languages: Math.max(1, lines(languages).length),
+    markets: 1,
+    plannedRequests,
+    sources,
+    socialPostLimit,
+    socialCommentLimit,
+  }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, plannedRequests, priority, seedType, socialCommentLimit, socialPostLimit, sources, subreddits, text, themes, xUrls]);
+  const recommendedQueryBudget = { light: 3, standard: 5, extended: 10, segmented: 15 }[collectionRecommendation.tier];
+  const displayBudgetTotalEur = customBudgetTotalEur ?? collectionRecommendation.totalEur;
 
   async function importSeedFile(file: File) {
     setFileStatus("Lecture du fichier…");
@@ -177,7 +185,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         social_target_limit: Math.max(1, Math.min(50, queryBudget)),
         social_post_limit: Math.max(1, Math.min(50, socialPostLimit)),
         social_comment_limit: Math.max(0, Math.min(20, socialCommentLimit)),
-        recommended_budget_total_eur: collectionRecommendation.totalEur,
+        budget_total_eur: displayBudgetTotalEur,
+        budget_mode: budgetMode,
         budget_profile: { tier: collectionRecommendation.tier, score: collectionRecommendation.score, corpus_target: collectionRecommendation.corpusTarget, allocations: collectionRecommendation.allocations },
         serp_templates: lines(serpTemplates),
       };
@@ -211,12 +220,12 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         </>}
 
         {step === 2 && <>
-          <div className="builder-guide"><strong>Constituer le point de départ</strong><p>Les seeds alimentent les recherches externes. La recommandation évolue automatiquement avec le volume et la complexité du compte.</p></div>
+          <div className="builder-guide"><strong>Constituer le point de départ</strong><p>Les seeds alimentent les recherches externes. Leur nombre n’influe pas directement sur le coût : il dépend des sources activées et du nombre de cibles.</p></div>
           <label>Mots-clés, un par ligne<textarea autoFocus rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={"question client\nproduit recherché\nproblème rencontré"} /><small>Colle une liste ou importe la première colonne d’un CSV/Excel.</small></label>
           <label className="upload-zone"><FileUp size={19} /><span>Importer des mots-clés CSV, TXT ou Excel</span><input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importSeedFile(file); }} /></label>
           {fileStatus && <p className="import-status">{fileStatus}</p>}
           <div className="form-row"><label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select></label><label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label></div>
-          <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents sur l’ensemble de la collecte, pas lancer ce nombre d’appels.</p><p>Enveloppe globale indicative pour tout le workflow : <strong>{collectionRecommendation.totalEur.toFixed(2)} €</strong>, incluant collecte, exécutions IA, validation, reverse engineering et cloud.</p></div>
+          <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents au final. Le coût dépend des sources et cibles choisies, pas de ce nombre de seeds.</p><p><strong>Le budget repose sur les leviers payants :</strong> sources actives, cibles par source, budget de requêtes, posts et commentaires sociaux. Par exemple, 1 000 mots-clés avec SERP uniquement génèrent seulement <strong>{plannedRequests.toLocaleString("fr-FR")} planification(s)</strong> payante(s) au maximum.</p><div className="form-row compact"><label>Plafond global indicatif (€)<input type="number" min="1" max="30" step="1" value={displayBudgetTotalEur} onChange={(event) => { setCustomBudgetTotalEur(Number(event.target.value)); setBudgetMode("manual"); }} /><small>Recommandation automatique : {collectionRecommendation.totalEur.toFixed(2)} €. Au-delà de 30 €, segmentez l’audit. <button type="button" className="text-button" onClick={() => { setCustomBudgetTotalEur(null); setBudgetMode("automatic"); }}>Réinitialiser</button></small></label></div><p>Enveloppe globale indicative pour tout le workflow : <strong>{displayBudgetTotalEur.toFixed(2)} €</strong>, incluant collecte, exécutions IA, validation, reverse engineering et cloud.</p></div>
           <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications, avant résultats vides et déduplication. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>
           <div className="form-row compact"><label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /></label><label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé pour protéger le budget.</small></label></div>
           <div className="gsc-box"><label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /></label><label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{gscStatus && <p className="import-status">{gscStatus}</p>}</div>
@@ -237,7 +246,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
 
         {step === 4 && <>
           <div className="builder-guide"><strong>Vérifier avant le lancement</strong><p>Cette collecte constitue une première passe. Tu pourras étendre uniquement les sources qui produisent des signaux pertinents.</p></div>
-          <div className="dataset-estimate good"><p><strong>{brandName}</strong> · marché {market.toUpperCase()} · langues {lines(languages).join(", ") || "fr"}</p><p>{parseSeedText(text, { seedType, priority, source: "dashboard" }).length.toLocaleString("fr-FR")} seeds · {sources.map((source) => sourceLabels[source]).join(", ")}</p><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> : corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents.</p><p>Première passe : {plannedRequests.toLocaleString("fr-FR")} planifications maximum · {socialPostLimit} posts par cible · {socialCommentLimit} commentaire(s) par post.</p><p>Budget global indicatif : {collectionRecommendation.totalEur.toFixed(2)} €. Les coûts réels restent contrôlés dans le centre Budget.</p></div>
+          <div className="dataset-estimate good"><p><strong>{brandName}</strong> · marché {market.toUpperCase()} · langues {lines(languages).join(", ") || "fr"}</p><p>{parseSeedText(text, { seedType, priority, source: "dashboard" }).length.toLocaleString("fr-FR")} seeds · {sources.map((source) => sourceLabels[source]).join(", ")}</p><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> : corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents.</p><p>Première passe : {plannedRequests.toLocaleString("fr-FR")} planifications maximum · {socialPostLimit} posts par cible · {socialCommentLimit} commentaire(s) par post.</p><p>Plafond global : <strong>{displayBudgetTotalEur.toFixed(2)} €</strong> · estimation automatique {collectionRecommendation.totalEur.toFixed(2)} €. Les coûts réels restent contrôlés dans le centre Budget.</p></div>
         </>}
 
         {status && <p className="import-status">{status}</p>}
