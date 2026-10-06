@@ -237,7 +237,7 @@ class CollectionWorker:
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
             self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "cpu": 2, "memory_gib": 2})
             actual_cost, cost_status = self._job_cost_summary(job["id"])
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result, "actual_cost_usd": actual_cost, "cost_status": cost_status, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result if result is not None else {}, "actual_cost_usd": actual_cost, "cost_status": cost_status, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         except Exception as error:
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
             try:
@@ -245,7 +245,7 @@ class CollectionWorker:
             except Exception:
                 pass
             can_retry = int(job.get("attempt_count", 1)) < int(job.get("max_attempts", 3))
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "output": {}, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
             raise
         finally:
             heartbeat.stop()
@@ -669,8 +669,6 @@ class CollectionWorker:
                         self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                         self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                     self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
-        return {"openai_search_calls": openai_search_calls, "completed": completed, "accepted": accepted, "rejected": rejected}
-
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
         bright_delta = None
