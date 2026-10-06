@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, Database, Download, X } from "lucide-react";
 import { estimateDatasetExecutions } from "@/lib/data/datasets";
 
@@ -25,8 +25,23 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
   const [costPerExecutionEur, setCostPerExecutionEur] = useState(0.02);
   const [maxBudgetEur, setMaxBudgetEur] = useState(1);
   const [datasetId, setDatasetId] = useState("");
+  const [existingDatasets, setExistingDatasets] = useState<Array<{ id: string; name: string; status: string; statistics?: Record<string, unknown> }>>([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetch(`/api/datasets?projectId=${encodeURIComponent(projectId)}`)
+      .then((response) => response.ok ? response.json() : { datasets: [] })
+      .then((data) => {
+        const datasets = data.datasets ?? [];
+        setExistingDatasets(datasets);
+        if (datasets.length && !datasetId) {
+          setDatasetId(datasets[0].id);
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const executions = useMemo(() => estimateDatasetExecutions({ executionSampleSize, repetitions, engines }), [executionSampleSize, repetitions, engines]);
   const estimatedCost = executions * costPerExecutionEur;
@@ -163,6 +178,14 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
             <strong>Étape 3 — Vérification avant lancement</strong>
             <p>Vérifie les paramètres, puis clique sur Construire & échantillonner.</p>
           </div>
+          {existingDatasets.length > 0 && (
+            <div className="builder-guide">
+              <strong>Datasets existants</strong>
+              <select value={datasetId} onChange={(event) => setDatasetId(event.target.value)}>
+                {existingDatasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.status}</option>)}
+              </select>
+            </div>
+          )}
           <div className={`dataset-estimate ${highCost ? "warn" : realism.tone}`}>
             <p className="estimate-title">{executions.toLocaleString("fr-FR")} observations prévues</p>
             <p><strong>{candidatePoolSize.toLocaleString("fr-FR")}</strong> candidats · <strong>{executionSampleSize.toLocaleString("fr-FR")}</strong> exécutés · <strong>{candidatesPerCluster}</strong> variants/cluster · seuil <strong>{qualityThreshold}</strong></p>

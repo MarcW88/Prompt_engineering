@@ -64,8 +64,11 @@ export function Dashboard() {
     if (activeJob) return { title: "Exécution en cours", text: "Suivez sa progression ou annulez-la si elle est en doublon.", action: () => setExecutionModal(true), button: "Voir la progression" };
     if (!metrics.seeds) return { title: "Nouvelle collecte", text: "Ajoutez vos seeds et choisissez Reddit, forums, PAA, Trustpilot ou GSC.", action: () => setSeedModal(true), button: "Collecter" };
     if (!metrics.signals || !metrics.questions || !metrics.clusters) return { title: "Préparer les questions", text: "Transforme les signaux en questions, puis lance automatiquement le clustering.", action: () => setPipelineModal(true), button: "Ouvrir le workflow" };
-    if (!metrics.prompts) return { title: "Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir" };
-    return { title: "Valider et revoir", text: "Lancez la validation, le reverse engineering, puis approuvez les prompts exportables.", action: () => setPipelineModal(true), button: "Continuer" };
+    if (!metrics.observations) return { title: "Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir" };
+    if (!metrics.validations) return { title: "Valider le dataset", text: "Relancez les prompts acceptés sur 3 runs pour mesurer la stabilité.", action: () => setDatasetModal(true), button: "Valider" };
+    if (!metrics.prompts) return { title: "Reverse engineering", text: "Reconstruisez des prompts plausibles depuis les fan-outs observés.", action: () => setPipelineModal(true), button: "Reconstruire" };
+    if (!metrics.approved) return { title: "Revue manuelle", text: "Approuvez, modifiez ou rejetez les prompts avant l’export final.", action: () => setReviewModal(true), button: "Réviser" };
+    return { title: "Exporter", text: "Téléchargez les prompts approuvés au format Semactic.", action: () => setExportsModal(true), button: "Exporter" };
   }, [activeJob, metrics, projectId]);
 
   const loadDashboard = useCallback(async (selectedProjectId?: string) => {
