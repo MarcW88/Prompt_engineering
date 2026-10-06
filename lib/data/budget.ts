@@ -69,6 +69,7 @@ export interface CostEstimateInput {
 
 export interface TargetPromptConfig {
   targetPrompts: number;
+  sampleMode: boolean;
   estimatedClusters: number;
   estimatedSignals: number;
   queryBudget: number;
@@ -93,7 +94,7 @@ export function estimateCollectionCostEur(input: CostEstimateInput): number {
   return Math.round(cost * 100) / 100;
 }
 
-export function recommendConfigForTargetPrompts(targetPrompts: number): TargetPromptConfig {
+export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMode = true): TargetPromptConfig {
   // Conservative funnel assumptions:
   // - 1 approved prompt needs ~1.5 executed candidates (validation/approval drop-off)
   // - 1 executed candidate needs ~1 cluster
@@ -107,17 +108,23 @@ export function recommendConfigForTargetPrompts(targetPrompts: number): TargetPr
   const estimatedSignals = Math.ceil(estimatedClusters * signalsPerCluster);
   const estimatedRequests = Math.ceil(estimatedSignals * requestsPerSignal);
   const sourceCount = targetPrompts < 100 ? 3 : 5;
-  const queryBudget = Math.max(5, Math.min(50, Math.ceil(estimatedRequests / sourceCount / 2)));
-  const collectionCostEur = Math.round(estimatedRequests * 0.06 * 100) / 100;
+  // In sample mode the per-source budget is split across sources; in full audit
+  // each active source receives the full query budget, so we keep it lower.
+  const queryBudget = sampleMode
+    ? Math.max(5, Math.min(50, Math.ceil(estimatedRequests / sourceCount / 2)))
+    : Math.max(3, Math.min(25, Math.ceil(estimatedRequests / sourceCount / 4)));
+  const collectionCostEur = Math.round(estimatedRequests * 0.06 * (sampleMode ? 1 : sourceCount * 0.7) * 100) / 100;
+  const totalBudgetEur = Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5)));
   return {
     targetPrompts,
+    sampleMode,
     estimatedClusters,
     estimatedSignals,
     queryBudget,
     minimumSourceSignals: Math.max(3, Math.min(20, Math.ceil(estimatedSignals / sourceCount / 2))),
     sources: targetPrompts < 100 ? ["serp", "review", "reddit"] : ["serp", "review", "reddit", "forum", "linkedin"],
     collectionCostEur,
-    totalBudgetEur: Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5))),
+    totalBudgetEur,
   };
 }
 
