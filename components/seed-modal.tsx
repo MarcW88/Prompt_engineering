@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Database, FileUp, Play, Upload, X } from "lucide-react";
+import { AlertTriangle, Database, FileUp, Play, Upload, X } from "lucide-react";
 import readExcelFile from "read-excel-file";
 import { parseSeedText, type SeedType } from "@/lib/data/seeds";
-import { recommendBudget } from "@/lib/data/budget";
+import { recommendBudget, estimateCollectionCostEur } from "@/lib/data/budget";
 
 const sourceLabels: Record<string, string> = {
   reddit: "Reddit",
@@ -118,6 +118,9 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, plannedRequests, priority, sampleMode, seedType, socialCommentLimit, socialPostLimit, sources, subreddits, text, themes, xUrls]);
   const socialPlatformsSelected = sources.some((source) => ["facebook", "instagram", "linkedin", "x", "reddit"].includes(source));
   const recommendedQueryBudget = { light: 3, standard: 5, extended: 10, segmented: 15 }[collectionRecommendation.tier];
+  const estimatedCollectionCostEur = useMemo(() => estimateCollectionCostEur({
+    sources, plannedRequests, queryBudget, sampleMode, socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length, socialPostLimit, socialCommentLimit,
+  }), [sources, plannedRequests, queryBudget, sampleMode, subreddits, facebookUrls, instagramUrls, linkedinUrls, xUrls, socialPostLimit, socialCommentLimit]);
   const displayBudgetTotalEur = customBudgetTotalEur ?? collectionRecommendation.totalEur;
 
   async function importSeedFile(file: File) {
@@ -239,6 +242,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <div className="builder-guide"><strong>Choisir les sources et leurs limites</strong><p>Sélectionne les plateformes pertinentes. Le budget de requêtes définit le volume d’appels externes. En mode échantillon, il est réparti entre les sources.</p></div>
           <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}</fieldset>
           {sources.length > 0 && <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>{sampleMode ? "Mode échantillon activé : ce budget sera réparti entre les sources sélectionnées pour toucher un peu de chacune." : "Mode échantillon désactivé : ce budget sera appliqué à chaque source active. Le coût peut vite grimper."} Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications payantes maximum. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>}
+          {sources.length > 0 && <div className={`dataset-estimate ${estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 ? "warn" : "good"}`}><p><strong>Estimation de coût de cette collecte : {estimatedCollectionCostEur.toFixed(2)} €</strong></p><p>Ce montant est indicatif. Les sources sociales coûtent plus cher que SERP/Trustpilot. Le plafond global actuel est de {displayBudgetTotalEur.toFixed(2)} €.</p>{estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 && <p className="warning"><AlertTriangle size={14} /> L’estimation dépasse 50 % du plafond global. Réduis les cibles sociales ou le budget de requêtes.</p>}</div>}
           {sources.length > 0 && <label>Minimum de signaux bruts par source<input type="number" min="1" max="50" value={minimumSourceSignals} onChange={(event) => setMinimumSourceSignals(Number(event.target.value))} /><small>Chaque source active essaiera de produire au moins ce nombre de signaux. Peut augmenter légèrement le coût.</small></label>}
           {socialPlatformsSelected && <div className="form-row compact"><label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /></label><label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé pour protéger le budget.</small></label></div>}
           {sources.includes("reddit") && <label>Subreddits<textarea rows={3} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"communaute1\ncommunaute2"} /><small>Noms sans `r/`.</small></label>}
@@ -253,7 +257,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
 
         {step === 4 && <>
           <div className="builder-guide"><strong>Vérifier avant le lancement</strong><p>Cette collecte constitue une première passe. Tu pourras étendre uniquement les sources qui produisent des signaux pertinents.</p></div>
-          <div className="dataset-estimate good"><p><strong>{brandName}</strong> · marché {market.toUpperCase()} · langues {lines(languages).join(", ") || "fr"}</p><p>{parseSeedText(text, { seedType, priority, source: "dashboard" }).length.toLocaleString("fr-FR")} seeds · {sources.map((source) => sourceLabels[source]).join(", ")}</p><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> : corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents.</p><p>Première passe : {plannedRequests.toLocaleString("fr-FR")} planifications maximum · minimum {minimumSourceSignals} signaux bruts par source · {socialPostLimit} posts par cible · {socialCommentLimit} commentaire(s) par post.</p><p>Plafond global : <strong>{displayBudgetTotalEur.toFixed(2)} €</strong> · estimation automatique {collectionRecommendation.totalEur.toFixed(2)} €. Les coûts réels restent contrôlés dans le centre Budget.</p></div>
+          <div className="dataset-estimate good"><p><strong>{brandName}</strong> · marché {market.toUpperCase()} · langues {lines(languages).join(", ") || "fr"}</p><p>{parseSeedText(text, { seedType, priority, source: "dashboard" }).length.toLocaleString("fr-FR")} seeds · {sources.map((source) => sourceLabels[source]).join(", ")}</p><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> : corpus cible {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")}–{collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents.</p><p>Première passe : {plannedRequests.toLocaleString("fr-FR")} planifications maximum · minimum {minimumSourceSignals} signaux bruts par source · {socialPostLimit} posts par cible · {socialCommentLimit} commentaire(s) par post.</p><p>Coût collecte estimé : <strong>{estimatedCollectionCostEur.toFixed(2)} €</strong> · plafond global : {displayBudgetTotalEur.toFixed(2)} € · estimation automatique {collectionRecommendation.totalEur.toFixed(2)} €. Les coûts réels restent contrôlés dans le centre Budget.</p></div>
         </>}
 
         {status && <p className="import-status">{status}</p>}

@@ -246,6 +246,7 @@ class CollectionWorker:
         input_config = job.get("input", {})
         budget = clamp_collection_budget(input_config.get("query_budget", 10))
         sample_mode = bool(input_config.get("source_config", {}).get("sample_mode"))
+        display_budget_total_eur = float(input_config.get("budget_total_eur") or input_config.get("budget_snapshot", {}).get("total_eur") or 8)
         seed_ids = [str(seed_id) for seed_id in input_config.get("seed_ids", []) if seed_id]
         seed_filter = f"&id=in.({','.join(seed_ids)})" if seed_ids else ""
 
@@ -359,6 +360,8 @@ class CollectionWorker:
 
         items = []
         source_report = {}
+        # Cap each source at ~25% of the total workflow budget for collection.
+        source_budget_eur = {source: (display_budget_total_eur * 0.25) / max(len(requested), 1) for source in requested} if display_budget_total_eur else {}
         for scraper in scrapers:
             scraper.progress_callback = lambda processed, total, detail, current=scraper: scraper_progress(current, processed, total, detail)
             before = len(items)
@@ -366,11 +369,11 @@ class CollectionWorker:
             if isinstance(scraper, SocialScraper):
                 for platform in scraper.platforms:
                     count = sum(1 for item in items[before:] if item.platform == platform)
-                    source_report[platform] = {"collected": count, "errors": scraper.platform_errors.get(platform, 0)}
+                    source_report[platform] = {"collected": count, "errors": scraper.platform_errors.get(platform, 0), "budget_eur": round(source_budget_eur.get(platform, 0), 2)}
                     if scraper.skipped.get(platform):
                         source_report[platform]["skipped"] = scraper.skipped[platform]
             else:
-                source_report[scraper.source_type] = {"collected": len(items) - before, "errors": scraper.errors_count}
+                source_report[scraper.source_type] = {"collected": len(items) - before, "errors": scraper.errors_count, "budget_eur": round(source_budget_eur.get(scraper.source_type, 0), 2)}
         accepted_languages = {language.lower() for language in config.filters.accepted_languages}
         filtered_items = []
         rejected_languages = 0

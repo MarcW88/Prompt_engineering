@@ -44,6 +44,44 @@ const sourceWeights: Record<string, number> = {
   x: 4,
 };
 
+// Indicative cost per source in EUR for a small sample run. Used for pre-flight
+// warnings only; real costs depend on provider billing.
+const sourceCostHints: Record<string, number> = {
+  serp: 0.05,
+  review: 0.10,
+  forum: 0.10,
+  reddit: 0.30,
+  facebook: 0.60,
+  instagram: 0.60,
+  linkedin: 0.60,
+  x: 0.60,
+};
+
+export interface CostEstimateInput {
+  sources: string[];
+  plannedRequests: number;
+  queryBudget: number;
+  sampleMode: boolean;
+  socialTargets: number;
+  socialPostLimit: number;
+  socialCommentLimit: number;
+}
+
+export function estimateCollectionCostEur(input: CostEstimateInput): number {
+  const sourceCount = Math.max(1, input.sources.length);
+  const requestBudget = input.sampleMode ? Math.max(1, input.queryBudget) : Math.max(1, input.queryBudget) * sourceCount;
+  let cost = 0;
+  for (const source of input.sources) {
+    const base = sourceCostHints[source] ?? 0.3;
+    cost += base + (requestBudget / sourceCount) * (base / 10);
+  }
+  const socialSources = input.sources.filter((source) => ["reddit", "facebook", "instagram", "linkedin", "x"].includes(source));
+  if (socialSources.length && input.socialTargets) {
+    cost += socialSources.length * input.socialTargets * input.socialPostLimit * (1 + input.socialCommentLimit * 0.4) * 0.02;
+  }
+  return Math.round(cost * 100) / 100;
+}
+
 export function recommendBudget(input: BudgetRecommendationInput): BudgetRecommendation {
   const sources = input.sources ?? [];
   const sampleMode = input.sampleMode ?? true;
