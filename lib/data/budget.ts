@@ -75,6 +75,8 @@ export interface TargetPromptConfig {
   queryBudget: number;
   minimumSourceSignals: number;
   sources: string[];
+  socialSources: string[];
+  socialSharePercent: number;
   collectionCostEur: number;
   totalBudgetEur: number;
 }
@@ -100,8 +102,6 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
   // - 1 cluster generates up to 9 candidates by default (persona × stage × specificity)
   // - 1 cluster needs ~2-3 signals (questions)
   // - 1 signal needs ~1 external request
-  // Social sources are much more expensive per result, so in sample/full audit
-  // we prefer cheap sources (SERP, reviews, forums) and keep social optional.
   const candidatesPerApprovedPrompt = 4;
   const candidatesPerCluster = 9;
   const signalsPerCluster = 2.5;
@@ -110,23 +110,29 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
   const estimatedClusters = Math.ceil(estimatedCandidates / candidatesPerCluster);
   const estimatedSignals = Math.ceil(estimatedClusters * signalsPerCluster);
   const estimatedRequests = Math.ceil(estimatedSignals * requestsPerSignal);
-  // Prefer cheap, high-volume sources. Add social only for larger audits.
-  const sources = targetPrompts <= 100
-    ? ["serp", "review", "forum"]
-    : ["serp", "review", "forum", "reddit"];
+  // Always include at least one social source (Reddit is the cheapest and most
+  // text-rich). Cap the social budget share to roughly 30% by limiting the number
+  // of social platforms and using tight post/target limits in the worker.
+  const coreSources = ["serp", "review", "forum", "reddit"];
+  const extraSocial = targetPrompts >= 200 ? ["linkedin"] : [];
+  const socialSources = [...extraSocial];
+  const sources = [...coreSources, ...extraSocial];
   const sourceCount = sources.length;
   // In sample mode the per-source budget is split across sources; in full audit
   // each active source receives the full query budget, so we keep it lower.
   const queryBudget = sampleMode
     ? Math.max(5, Math.min(50, Math.ceil(estimatedRequests / sourceCount / 2)))
     : Math.max(3, Math.min(25, Math.ceil(estimatedRequests / sourceCount / 3)));
-  // Weighted cost per request: SERP/reviews/forums are cheap, social is expensive.
-  // In full audit the same budget applies to each source, but the average cost is
-  // driven by the mix of sources chosen (mostly cheap ones here).
+  // Weighted cost per request: SERP/reviews/forums are cheap, social is more
+  // expensive. In full audit the same budget applies to each source, but the
+  // average cost is driven by the mix of sources chosen.
   const averageCostPerRequest = 0.015;
   const fullAuditMultiplier = sampleMode ? 1 : 1.4;
   const collectionCostEur = Math.round(estimatedRequests * averageCostPerRequest * fullAuditMultiplier * 100) / 100;
   const totalBudgetEur = Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5)));
+  // Social share is kept under ~30% by including only 1 cheap social source for
+  // small audits, and adding a second only for larger audits.
+  const socialSharePercent = Math.round((socialSources.length + 1) / sourceCount * 100);
   return {
     targetPrompts,
     sampleMode,
@@ -135,6 +141,8 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
     queryBudget,
     minimumSourceSignals: Math.max(3, Math.min(20, Math.ceil(estimatedSignals / sourceCount / 2))),
     sources,
+    socialSources,
+    socialSharePercent,
     collectionCostEur,
     totalBudgetEur,
   };
