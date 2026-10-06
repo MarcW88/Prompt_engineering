@@ -101,7 +101,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Construction impossible.");
       setDatasetId(data.dataset.id);
-      setStatus(`${candidatePoolSize.toLocaleString("fr-FR")} candidats à construire, ${executions.toLocaleString("fr-FR")} observations de screening planifiées.`);
+      setStatus(`${candidatePoolSize.toLocaleString("fr-FR")} candidats à construire, ${executions.toLocaleString("fr-FR")} observations de screening planifiées. Le job apparaît dans Piloter les jobs.`);
     } catch (reason) {
       setStatus(reason instanceof Error ? reason.message : "Construction impossible.");
     } finally {

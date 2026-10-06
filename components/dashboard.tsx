@@ -66,11 +66,15 @@ export function Dashboard() {
     if (activeJob) return { title: "Exécution en cours", text: "Suivez sa progression ou annulez-la si elle est en doublon.", action: () => setExecutionModal(true), button: "Voir la progression" };
     if (!metrics.seeds) return { title: "Nouvelle collecte", text: "Ajoutez vos seeds et choisissez Reddit, forums, PAA, Trustpilot ou GSC.", action: () => setSeedModal(true), button: "Collecter" };
     if (!metrics.signals || !metrics.questions || !metrics.clusters) return { title: "Préparer les questions", text: "Transforme les signaux en questions, puis lance automatiquement le clustering.", action: () => setPipelineModal(true), button: "Ouvrir le workflow" };
-    if (!metrics.observations) return { title: "1. Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir Dataset Builder" };
-    if (!metrics.validations) return { title: "2. Valider le dataset", text: "Relancez les prompts acceptés sur 3 runs pour mesurer la stabilité.", action: () => setValidationModal(true), button: "Ouvrir Validation" };
+    const buildJob = jobs.find((job) => job.kind === "build_dataset");
+    const validateJob = jobs.find((job) => job.kind === "validate_dataset");
+    if (!metrics.observations && buildJob?.status !== "completed") return { title: "1. Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir Dataset Builder" };
+    if (!metrics.observations && buildJob?.status === "completed") return { title: "1b. Problème de build", text: "Le dataset s’est terminé mais aucune observation n’a été créée. Vérifiez Piloter les jobs pour l’erreur.", action: () => setExecutionModal(true), button: "Voir l’erreur" };
+    if (!metrics.validations && validateJob?.status !== "completed") return { title: "2. Valider le dataset", text: "Relancez les prompts acceptés sur 3 runs pour mesurer la stabilité.", action: () => setValidationModal(true), button: "Ouvrir Validation" };
     if (!metrics.prompts) return { title: "3. Reverse engineering", text: "Reconstruisez des prompts plausibles depuis les fan-outs observés.", action: () => setPipelineModal(true), button: "Reconstruire" };
     if (!metrics.approved) return { title: "4. Revue manuelle", text: "Approuvez, modifiez ou rejetez les prompts avant l’export final.", action: () => setReviewModal(true), button: "Réviser" };
     return { title: "5. Exporter", text: "Téléchargez les prompts approuvés au format Semactic.", action: () => setExportsModal(true), button: "Exporter" };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJob, metrics, projectId]);
 
   const loadDashboard = useCallback(async (selectedProjectId?: string) => {

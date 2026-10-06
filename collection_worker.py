@@ -518,7 +518,10 @@ class CollectionWorker:
         dataset_id = job["input"]["dataset_id"]
         dataset = self.db.request("GET", "datasets", f"select=*&id=eq.{dataset_id}&limit=1")[0]
         project_id = dataset["project_id"]
+        self._report(job, 2, "Chargement des clusters")
         cluster_rows = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true&order=question_count.desc")
+        if not cluster_rows:
+            raise RuntimeError("Aucun cluster GEO exploitable. Lancez d'abord le clustering.")
         links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text)")
         questions_by_cluster = {}
         cluster_ids = {row["id"] for row in cluster_rows}
@@ -533,19 +536,27 @@ class CollectionWorker:
             question_count=row.get("question_count", 0), source_count=row.get("source_count", 0)
         ) for row in cluster_rows]
         project = self.db.request("GET", "projects", f"select=name&id=eq.{project_id}&limit=1")[0]
+        self._report(job, 5, f"Construction des candidats depuis {len(clusters)} clusters")
         candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
             brand_name=project.get("name", ""),
         ))[:dataset.get("candidate_pool_size", dataset["target_size"])])
-        selected = stratified_sample(candidates, int(dataset.get("execution_sample_size", len(candidates))), int(build_config.get("max_per_cluster", 5)))
+        if not candidates:
+            raise RuntimeError("Aucun candidat généré. Vérifiez le nom du projet / marque ou les clusters.")
+        sample_size = int(dataset.get("execution_sample_size", len(candidates)))
+        max_per_cluster = int(build_config.get("max_per_cluster", 5))
+        selected = stratified_sample(candidates, sample_size, max_per_cluster)
         selected_ids = {candidate.id for candidate in selected}
+        if not selected_ids:
+            raise RuntimeError("Aucun candidat sélectionné pour l'exécution. Vérifiez la taille de l'échantillon.")
         repetitions = int(dataset["repetitions"])
         engines = dataset.get("engines", ["chatgpt"])
         cost = estimate_cost(len(selected), repetitions, len(engines), float(dataset.get("cost_per_execution_eur", 0)))
         if cost["estimated_cost_eur"] > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Estimated cost {cost['estimated_cost_eur']:.2f} EUR exceeds budget")
+        self._report(job, 8, f"{len(candidates)} candidats · {len(selected)} sélectionnés · {cost['executions']} exécutions prévues")
         prompt_payload = [{
             "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
             "provenance": candidate.provenance.value, "confidence": candidate.confidence,
@@ -572,6 +583,7 @@ class CollectionWorker:
         examples = self.db.request("GET", "dataset_examples", f"select=*&dataset_id=eq.{dataset_id}")
         examples_by_prompt = {example["prompt_id"]: example for example in examples}
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
+        self._report(job, 10, "Démarrage des exécutions moteur")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
         if provider_name == "openai":
             provider = OpenAILLMProvider()

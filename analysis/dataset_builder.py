@@ -36,9 +36,22 @@ class DatasetBuildConfig:
 
 class DatasetBuilder:
     def build(self, clusters: Iterable[ClusterInput], config: DatasetBuildConfig) -> List[PromptCandidate]:
+        clusters = list(clusters)
         candidates = []
         for cluster in clusters:
-            candidates.extend(self.build_cluster(cluster, config))
+            cluster_candidates = self.build_cluster(cluster, config)
+            if cluster_candidates:
+                candidates.extend(cluster_candidates)
+        # If the brand filter removed every cluster, fall back to all clusters
+        # to avoid a silent empty dataset.
+        if not candidates and config.brand_name:
+            for cluster in clusters:
+                candidates.extend(self.build_cluster(cluster, DatasetBuildConfig(
+                    personas=config.personas, stages=config.stages,
+                    specificity_levels=config.specificity_levels,
+                    candidates_per_cluster=config.candidates_per_cluster,
+                    brand_name="",
+                )))
         return candidates
 
     def build_cluster(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:
