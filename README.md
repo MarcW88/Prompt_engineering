@@ -98,7 +98,7 @@ Le volume d'observations est calculé ainsi :
 prompts candidats × répétitions × moteurs
 ```
 
-Le worker traite les jobs `build_dataset` avec Bright Data par défaut. Utilisez `DATASET_PROVIDER=oxylabs` pour basculer sur Oxylabs lorsque le moteur demandé est pris en charge.
+Le worker traite les jobs `build_dataset` avec Bright Data par défaut. Utilisez `DATASET_PROVIDER=oxylabs` pour basculer sur Oxylabs, ou `DATASET_PROVIDER=openai` pour une exécution rapide directe via l'API OpenAI (sans scraping de pages).
 
 Pour une exécution Cloud Run isolée, chaque instance reçoit explicitement son job :
 

@@ -19,7 +19,7 @@ from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBu
 from analysis.dataset_quality import score_dataset_example
 from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
-from analysis.providers import BrightDataProvider, OpenAIWebSearchExtractor, OxylabsProvider
+from analysis.providers import BrightDataProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
@@ -548,7 +548,12 @@ class CollectionWorker:
         examples_by_prompt = {example["prompt_id"]: example for example in examples}
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
-        provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
+        if provider_name == "openai":
+            provider = OpenAILLMProvider()
+        elif provider_name == "oxylabs":
+            provider = OxylabsProvider()
+        else:
+            provider = BrightDataProvider()
         bright_cost_before = self._brightdata_account_cost() if provider_name == "brightdata" else None
         threshold = float(build_config.get("quality_threshold", 0.65))
         records = []
@@ -645,7 +650,12 @@ class CollectionWorker:
         if projected_cost > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Projected cost {projected_cost:.2f} EUR exceeds budget")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
-        provider = OxylabsProvider() if provider_name == "oxylabs" else BrightDataProvider()
+        if provider_name == "openai":
+            provider = OpenAILLMProvider()
+        elif provider_name == "oxylabs":
+            provider = OxylabsProvider()
+        else:
+            provider = BrightDataProvider()
         bright_cost_before = self._brightdata_account_cost() if provider_name == "brightdata" else None
         completed = openai_search_calls = 0
         openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}

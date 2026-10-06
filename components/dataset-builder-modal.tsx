@@ -32,8 +32,12 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
   const estimatedCost = executions * costPerExecutionEur;
   const highCost = estimatedCost >= 10;
   const waves = Math.ceil(executions / 5);
-  const minMinutes = waves * 1;
-  const maxMinutes = waves * 3;
+  // Worker provider hint: the UI cannot know DATASET_PROVIDER, but brightdata is the default.
+  const isBrightDataProvider = true;
+  const waveMinMinutes = isBrightDataProvider ? 5 : 1;
+  const waveMaxMinutes = isBrightDataProvider ? 15 : 3;
+  const minMinutes = waves * waveMinMinutes;
+  const maxMinutes = waves * waveMaxMinutes;
   const realism = executions <= 5
     ? { label: "Micro-test recommandé", tone: "good", text: "Idéal pour vérifier le workflow et les exports sans attendre trop longtemps." }
     : executions <= 20
@@ -138,7 +142,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
         {step === 2 && <>
           <div className="builder-guide">
             <strong>Étape 2 — Moteurs et budget</strong>
-            <p>Commence par ChatGPT seul. Chaque moteur coché multiplie les exécutions payantes.</p>
+            <p>Commence par ChatGPT seul. Chaque moteur coché multiplie les exécutions payantes. La vitesse réelle dépend du provider configuré côté worker (Bright Data est lent, OpenAI direct est rapide).</p>
           </div>
           <fieldset>
             <legend>Moteurs d&rsquo;exécution</legend>
