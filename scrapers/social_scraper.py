@@ -118,9 +118,12 @@ class SocialScraper(BaseScraper):
         urls = configured.get("urls", [])
         if platform == "reddit" and not urls:
             subreddits = configured.get("subreddits", [])
-            budget = int(self.config.scraping.forum.get("max_threads", 10))
-            seeds = [seed.value for seed in self.config.seeds if seed.enabled][:budget]
-            return [{"url": f"https://www.reddit.com/r/{subreddit}/search/?q={seed}&restrict_sr=1", "label": f"r/{subreddit} · {seed}", "query": seed, "subreddit": subreddit} for subreddit in subreddits for seed in seeds]
+            # Cap combinations so adding many subreddits/keywords does not explode cost.
+            max_reddit_combinations = int(self.config.scraping.forum.get("max_threads", 10))
+            seeds = [seed.value for seed in self.config.seeds if seed.enabled]
+            combinations = [{"url": f"https://www.reddit.com/r/{subreddit}/search/?q={seed}&restrict_sr=1", "label": f"r/{subreddit} · {seed}", "query": seed, "subreddit": subreddit} for subreddit in subreddits for seed in seeds]
+            # Prefer high-priority seeds and keep variety across subreddits.
+            return combinations[:max_reddit_combinations]
         seen = set()
         targets = []
         for url in urls:

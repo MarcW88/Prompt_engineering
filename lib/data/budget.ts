@@ -77,6 +77,7 @@ export interface TargetPromptConfig {
   sources: string[];
   socialSources: string[];
   socialSharePercent: number;
+  maxSocialTargets: number;
   collectionCostEur: number;
   totalBudgetEur: number;
 }
@@ -126,13 +127,15 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
   // expensive. In full audit the same budget applies to each source, but the
   // average cost is driven by the mix of sources chosen. The social pool cap in
   // the worker keeps social spend bounded even when all platforms are selected.
-  const averageCostPerRequest = 0.015;
+  // Use a weighted average assuming ~35% social budget share spread thinly.
+  const averageCostPerRequest = 0.025;
   const fullAuditMultiplier = sampleMode ? 1 : 1.4;
   const collectionCostEur = Math.round(estimatedRequests * averageCostPerRequest * fullAuditMultiplier * 100) / 100;
   const totalBudgetEur = Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5)));
   // The worker caps the combined social budget pool at ~35% of the total query
   // budget when several social platforms are active.
   const socialSharePercent = Math.round(0.35 * 100);
+  const maxSocialTargets = Math.max(socialSources.length, Math.ceil(queryBudget * 0.35));
   return {
     targetPrompts,
     sampleMode,
@@ -145,6 +148,7 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
     socialSharePercent,
     collectionCostEur,
     totalBudgetEur,
+    maxSocialTargets,
   };
 }
 

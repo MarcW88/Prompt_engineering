@@ -339,9 +339,14 @@ class CollectionWorker:
         if social_platforms:
             social_post_limit = bounded_int("social_post_limit", 10, 1, 50)
             social_minimum_factor = max(1, minimum_source_signals // max(1, social_post_limit))
-            max_social_targets = max(social_minimum_factor, min(budget, 20, min(source_budgets.get(platform, 50) for platform in social_platforms))) if source_budgets else min(budget, 20)
+            # Hard cap: total social targets across all platforms is bounded by the
+            # shared social budget pool. Each platform gets at least 1 target.
+            social_pool_budget = min(source_budgets.get(social_platforms[0], budget), 20) if source_budgets else min(budget, 20)
+            max_total_social_targets = max(len(social_platforms), min(social_pool_budget, 20))
+            max_per_platform = max(1, max_total_social_targets // len(social_platforms))
+            max_social_targets = max(social_minimum_factor, max_per_platform)
             social_limits = {
-                "targets": bounded_int("social_target_limit", max_social_targets, 1, 50),
+                "targets": bounded_int("social_target_limit", max_social_targets, 1, 20),
                 "posts": social_post_limit,
                 "comments": bounded_int("social_comment_limit", 0, 0, 20),
             }
