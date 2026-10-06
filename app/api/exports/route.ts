@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
 
 type Row = Record<string, unknown>;
 
-const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts"]);
+const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved"]);
 
 function csvCell(value: unknown) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -118,6 +118,22 @@ export async function GET(request: Request) {
     if (stage === "prompts") {
       const rows = await supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,confidence,status,expected_fan_outs,created_at&project_id=eq.${project}&order=created_at.desc` });
       return download(rows.map((row) => ({ ...row, expected_fan_outs: JSON.stringify(row.expected_fan_outs ?? []) })), ["id", "cluster_id", "text", "provenance", "confidence", "status", "expected_fan_outs", "created_at"], stage, format);
+    }
+    if (stage === "approved") {
+      const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}&order=created_at.desc` });
+      const datasetIds = datasets.map((row) => String(row.id));
+      const examples = await fetchInBatches<Row>("dataset_examples", datasetIds, "dataset_id", "id,prompt_id,status,manual_review_status,edited_prompt_text,persona,journey_stage,specificity_level,pre_execution_score,quality_score,stability_score,reproduction_score,validation_tier,target_runs,completed_runs,created_at");
+      const approvedExamples = examples.filter((row) => row.status === "accepted" && row.manual_review_status === "approved");
+      const promptIds = approvedExamples.map((row) => String(row.prompt_id));
+      const prompts = await fetchInBatches<{ id: string; text: string; provenance: string; confidence: number }>("prompts", promptIds, "id", "id,text,provenance,confidence");
+      const promptById = new Map(prompts.map((row) => [String(row.id), row]));
+      const rows = approvedExamples.map((example) => ({
+        ...example,
+        prompt_text: example.edited_prompt_text || promptById.get(String(example.prompt_id))?.text || "",
+        provenance: promptById.get(String(example.prompt_id))?.provenance || "",
+        confidence: promptById.get(String(example.prompt_id))?.confidence || 0,
+      }));
+      return download(rows, ["id", "prompt_text", "provenance", "confidence", "persona", "journey_stage", "specificity_level", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "validation_tier", "target_runs", "completed_runs", "created_at"], stage, format);
     }
 
     const prompts = await supabaseRest<Row[]>("prompts", { query: `select=id,text,provenance&project_id=eq.${project}&limit=20000` });

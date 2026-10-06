@@ -14,6 +14,7 @@ const exports = [
   { step: "05", phase: "Après exécution", stage: "citations", title: "Citations", text: "URLs, titres et extraits cités par les moteurs." },
   { step: "06", phase: "Après validation", stage: "validations", title: "Validations", text: "Scores de reproduction, stabilité et qualité." },
   { step: "07", phase: "Après reverse engineering", stage: "prompts", title: "Prompts reconstruits", text: "Prompts observés, synthétiques et reconstruits." },
+  { step: "08", phase: "Après revue manuelle", stage: "approved", title: "Prompts approuvés", text: "Prompts acceptés et approuvés pour l’export Semactic." },
 ];
 
 interface DatasetOption { id: string; name: string; status: string }
