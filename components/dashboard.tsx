@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BarChart3, BookOpen, ChevronDown, CircleDollarSign, CircleHelp,
   Database, Download, FileSearch, FlaskConical, Layers3, Menu, MoreHorizontal, Plus,
-  RotateCcw, Search, Settings, ShieldCheck, Sparkles, X,
+  RotateCcw, Search, Settings, ShieldCheck, Sparkles, Trash2, X,
 } from "lucide-react";
 
 import type { PromptRecord, Provenance } from "@/lib/types";
@@ -153,6 +153,24 @@ export function Dashboard() {
     }
   }
 
+  async function deleteWorkspace() {
+    if (!projectId || resetting) return;
+    const typed = window.prompt(`Tapez le nom du workspace « ${projectName} » pour confirmer la suppression définitive. Toutes les données seront perdues.`);
+    if (typed !== projectName) return;
+    setResetting(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Suppression impossible.");
+      setProjects((current) => current.filter((project) => project.id !== projectId));
+      await loadDashboard();
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Suppression impossible.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function reloadAfterPromptTest() {
     setModal(false);
     window.location.reload();
@@ -169,6 +187,7 @@ export function Dashboard() {
           <span className="workspace-avatar">{projectName.slice(0, 1).toUpperCase()}</span>
           <div><small>Workspace</small>{projects.length > 1 ? <select className="workspace-select" value={projectId ?? ""} onChange={(event) => void switchWorkspace(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select> : <strong>{projectName}</strong>}</div>
           <button type="button" className="workspace-add danger" onClick={() => void resetWorkspace()} disabled={!projectId || resetting} aria-label="Réinitialiser le workspace"><RotateCcw size={15} className={resetting ? "spin" : ""} /></button>
+          <button type="button" className="workspace-add danger" onClick={() => void deleteWorkspace()} disabled={!projectId || resetting || projects.length < 2} aria-label="Supprimer le workspace"><Trash2 size={15} /></button>
           <button type="button" className="workspace-add" onClick={() => setWorkspaceModal(true)} aria-label="Créer un workspace"><Plus size={15} /></button>
         </div>
         <nav>
