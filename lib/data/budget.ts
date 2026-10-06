@@ -67,6 +67,17 @@ export interface CostEstimateInput {
   socialCommentLimit: number;
 }
 
+export interface TargetPromptConfig {
+  targetPrompts: number;
+  estimatedClusters: number;
+  estimatedSignals: number;
+  queryBudget: number;
+  minimumSourceSignals: number;
+  sources: string[];
+  collectionCostEur: number;
+  totalBudgetEur: number;
+}
+
 export function estimateCollectionCostEur(input: CostEstimateInput): number {
   const sourceCount = Math.max(1, input.sources.length);
   const requestBudget = input.sampleMode ? Math.max(1, input.queryBudget) : Math.max(1, input.queryBudget) * sourceCount;
@@ -80,6 +91,34 @@ export function estimateCollectionCostEur(input: CostEstimateInput): number {
     cost += socialSources.length * input.socialTargets * input.socialPostLimit * (1 + input.socialCommentLimit * 0.4) * 0.02;
   }
   return Math.round(cost * 100) / 100;
+}
+
+export function recommendConfigForTargetPrompts(targetPrompts: number): TargetPromptConfig {
+  // Conservative funnel assumptions:
+  // - 1 approved prompt needs ~1.5 executed candidates (validation/approval drop-off)
+  // - 1 executed candidate needs ~1 cluster
+  // - 1 cluster needs ~3 signals (questions)
+  // - 1 signal needs ~1 external request (varies by source)
+  const approvedToCandidateRatio = 1.5;
+  const candidateToClusterRatio = 1.0;
+  const signalsPerCluster = 3;
+  const requestsPerSignal = 1.2;
+  const estimatedClusters = Math.ceil(targetPrompts * approvedToCandidateRatio * candidateToClusterRatio);
+  const estimatedSignals = Math.ceil(estimatedClusters * signalsPerCluster);
+  const estimatedRequests = Math.ceil(estimatedSignals * requestsPerSignal);
+  const sourceCount = targetPrompts < 100 ? 3 : 5;
+  const queryBudget = Math.max(5, Math.min(50, Math.ceil(estimatedRequests / sourceCount / 2)));
+  const collectionCostEur = Math.round(estimatedRequests * 0.06 * 100) / 100;
+  return {
+    targetPrompts,
+    estimatedClusters,
+    estimatedSignals,
+    queryBudget,
+    minimumSourceSignals: Math.max(3, Math.min(20, Math.ceil(estimatedSignals / sourceCount / 2))),
+    sources: targetPrompts < 100 ? ["serp", "review", "reddit"] : ["serp", "review", "reddit", "forum", "linkedin"],
+    collectionCostEur,
+    totalBudgetEur: Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5))),
+  };
 }
 
 export function recommendBudget(input: BudgetRecommendationInput): BudgetRecommendation {

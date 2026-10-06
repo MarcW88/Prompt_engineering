@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Database, FileUp, Play, Upload, X } from "lucide-react";
+import { AlertTriangle, Database, FileUp, Play, Target, Upload, X } from "lucide-react";
 import readExcelFile from "read-excel-file";
 import { parseSeedText, type SeedType } from "@/lib/data/seeds";
-import { recommendBudget, estimateCollectionCostEur } from "@/lib/data/budget";
+import { recommendBudget, estimateCollectionCostEur, recommendConfigForTargetPrompts } from "@/lib/data/budget";
 
 const sourceLabels: Record<string, string> = {
   reddit: "Reddit",
@@ -39,6 +39,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [sources, setSources] = useState(["reddit", "forum", "serp", "review"]);
   const [queryBudget, setQueryBudget] = useState(10);
   const [minimumSourceSignals, setMinimumSourceSignals] = useState(5);
+  const [targetPrompts, setTargetPrompts] = useState(100);
   const [socialPostLimit, setSocialPostLimit] = useState(10);
   const [socialCommentLimit, setSocialCommentLimit] = useState(0);
   const [brandName, setBrandName] = useState("");
@@ -236,6 +237,15 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <div className="form-row"><label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select></label><label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label></div>
           <div className="gsc-box"><label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /></label><label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{gscStatus && <p className="import-status">{gscStatus}</p>}</div>
           <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents au final. Le coût dépend des sources et cibles choisies à l’étape suivante.</p><div className="form-row compact"><label>Plafond global indicatif (€)<input type="number" min="1" max="30" step="1" value={displayBudgetTotalEur} onChange={(event) => { setCustomBudgetTotalEur(Number(event.target.value)); setBudgetMode("manual"); }} /><small>Recommandation automatique : {collectionRecommendation.totalEur.toFixed(2)} €. Ce plafond couvre tout le workflow, pas seulement la collecte. <button type="button" className="text-button" onClick={() => { setCustomBudgetTotalEur(null); setBudgetMode("automatic"); }}>Réinitialiser</button></small></label></div><p><label className="check-option"><input type="checkbox" checked={sampleMode} onChange={(event) => setSampleMode(event.target.checked)} /> Mode échantillon : répartir le budget de requêtes entre toutes les sources sélectionnées. Un minimum de signaux par source sera garanti à l’étape suivante.</label></p></div>
+          <div className="builder-guide"><Target size={17} /><strong>Besoin de N prompts finaux ?</strong></div>
+          <div className="form-row compact"><label>Nombre de prompts cibles<input type="number" min="10" max="1000" step="5" value={targetPrompts} onChange={(event) => setTargetPrompts(Number(event.target.value))} /><small>L’estimateur calcule la collecte nécessaire pour aboutir à ce nombre de prompts validés.</small></label><button type="button" className="text-button" onClick={() => {
+            const recommendation = recommendConfigForTargetPrompts(targetPrompts);
+            setSources(recommendation.sources);
+            setQueryBudget(recommendation.queryBudget);
+            setMinimumSourceSignals(recommendation.minimumSourceSignals);
+            setCustomBudgetTotalEur(recommendation.totalBudgetEur);
+            setBudgetMode("manual");
+          }}>Appliquer la config recommandée</button></div>
         </>}
 
         {step === 3 && <>

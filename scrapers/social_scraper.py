@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -100,6 +101,17 @@ class SocialScraper(BaseScraper):
         self.items_scraped = len(items)
         return items
 
+    def _normalize_social_url(self, platform: str, url: str) -> str:
+        if platform == "instagram":
+            match = re.search(r"instagram\.com/([a-zA-Z0-9._-]+)/?", url)
+            if match:
+                return f"https://www.instagram.com/{match.group(1)}/"
+        if platform == "x":
+            match = re.search(r"(?:twitter|x)\.com/([a-zA-Z0-9_]+)(?:/status/\d+)?", url)
+            if match:
+                return f"https://x.com/{match.group(1)}"
+        return url
+
     def _targets(self, platform: str) -> List[Dict[str, str]]:
         social = self.config.sources.get("social", {})
         configured = social.get(platform, {})
@@ -109,7 +121,15 @@ class SocialScraper(BaseScraper):
             budget = int(self.config.scraping.forum.get("max_threads", 10))
             seeds = [seed.value for seed in self.config.seeds if seed.enabled][:budget]
             return [{"url": f"https://www.reddit.com/r/{subreddit}/search/?q={seed}&restrict_sr=1", "label": f"r/{subreddit} · {seed}", "query": seed, "subreddit": subreddit} for subreddit in subreddits for seed in seeds]
-        return [{"url": url, "label": url} for url in urls]
+        seen = set()
+        targets = []
+        for url in urls:
+            normalized = self._normalize_social_url(platform, url)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            targets.append({"url": normalized, "label": normalized})
+        return targets
 
     def _valid_targets(self, platform: str, targets: List[Dict[str, str]]) -> List[Dict[str, str]]:
         if platform != "facebook":
@@ -141,18 +161,27 @@ class SocialScraper(BaseScraper):
             return {"type": "discover_new", "discover_by": "profile_url"}
         return {}
 
+    def _post_with_retry(self, url: str, params: Dict[str, str], body: Any, max_retries: int = 2) -> requests.Response:
+        response = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(url, params=params, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}, json=body, timeout=min(120, self.timeout))
+                if response.status_code not in {502, 503, 504}:
+                    return response
+                self.logger.warning(f"Bright Data transient HTTP {response.status_code}, retry {attempt + 1}/{max_retries}")
+            except requests.Timeout:
+                self.logger.warning(f"Bright Data timeout, retry {attempt + 1}/{max_retries}")
+            if attempt < max_retries:
+                time.sleep(5 * (attempt + 1))
+        return response
+
     def _collect_dataset(self, dataset_id: str, payload: List[Dict[str, Any]], extra_params: Optional[Dict[str, str]] = None, wrap_input: bool = False) -> List[Dict[str, Any]]:
         params = {"dataset_id": dataset_id, "format": "json", "include_errors": "true", **(extra_params or {})}
         body: Any = {"input": payload, "limit_per_input": self.post_limit} if wrap_input else payload
-        response = requests.post(
-            self.endpoint,
-            params=params,
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json=body,
-            timeout=min(120, self.timeout),
-        )
-        if not response.ok:
-            raise RuntimeError(f"Bright Data HTTP {response.status_code}: {response.text[:500]}")
+        response = self._post_with_retry(self.endpoint, params, body)
+        if not response or not response.ok:
+            text = response.text[:500] if response else "no response"
+            raise RuntimeError(f"Bright Data HTTP {getattr(response, 'status_code', 'unknown')}: {text}")
         raw = response.json()
         if response.status_code == 202 or isinstance(raw, dict) and raw.get("snapshot_id"):
             snapshot_id = raw.get("snapshot_id") if isinstance(raw, dict) else None
