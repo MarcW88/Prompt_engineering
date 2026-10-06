@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional
 import time
 import requests
 
@@ -10,7 +10,7 @@ class BrightDataProvider(AnalysisProvider):
     name = "brightdata"
     endpoint = "https://api.brightdata.com/datasets/v3/scrape"
 
-    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 900):
+    def __init__(self, api_key: Optional[str] = None, dataset_ids: Optional[Dict[str, str]] = None, timeout: int = 900, batch_size: int = 10):
         self.api_key = api_key or self.env("BRIGHTDATA_API_KEY")
         self.dataset_ids = dataset_ids or {
             "chatgpt": self.env("BRIGHTDATA_CHATGPT_DATASET_ID"),
@@ -19,25 +19,41 @@ class BrightDataProvider(AnalysisProvider):
             "google_ai_mode": self.env("BRIGHTDATA_GOOGLE_AI_MODE_DATASET_ID"),
         }
         self.timeout = timeout
+        self.batch_size = max(1, min(50, batch_size))
 
     @property
     def is_configured(self) -> bool:
         return bool(self.api_key and any(self.dataset_ids.values()))
 
-    def execute(self, request: AnalysisRequest) -> AnalysisObservation:
-        dataset_id = self.dataset_ids.get(request.engine, "")
+    def execute_many(self, requests: Iterable[AnalysisRequest]) -> List[AnalysisObservation]:
+        # Bright Data supports batched snapshots: send many inputs in one call.
+        # This is much faster than one snapshot per request.
+        items = list(requests)
+        if not items:
+            return []
+        observations = []
+        for index in range(0, len(items), self.batch_size):
+            batch = items[index:index + self.batch_size]
+            observations.extend(self._execute_batch(batch))
+        return observations
+
+    def _execute_batch(self, requests: List[AnalysisRequest]) -> List[AnalysisObservation]:
+        if not requests:
+            return []
+        first = requests[0]
+        dataset_id = self.dataset_ids.get(first.engine, "")
         if not self.api_key or not dataset_id:
             raise MissingCredentialsError(
-                f"Bright Data requires BRIGHTDATA_API_KEY and a dataset ID for {request.engine}"
+                f"Bright Data requires BRIGHTDATA_API_KEY and a dataset ID for {first.engine}"
             )
         payload = [{
-            "url": self._engine_url(request.engine),
+            "url": self._engine_url(first.engine),
             "prompt": request.prompt,
             "country": request.country.upper(),
             "require_sources": True,
             "web_search": request.web_search,
             "additional_prompt": self._language_instruction(request.language),
-        }]
+        } for request in requests]
         response = requests.post(
             self.endpoint,
             params={"dataset_id": dataset_id, "format": "json", "include_errors": "true"},
@@ -54,10 +70,22 @@ class BrightDataProvider(AnalysisProvider):
             if not snapshot_id:
                 raise ProviderError("Bright Data returned a pending response without snapshot_id")
             raw = self._wait_for_snapshot(snapshot_id)
-        observation = self.parse_response(request, raw)
-        if snapshot_id:
-            observation.metadata["brightdata_snapshot_id"] = snapshot_id
-        return observation
+        if isinstance(raw, dict):
+            records = raw.get("data", [raw])
+        elif isinstance(raw, list):
+            records = raw
+        else:
+            records = []
+        results = []
+        for request, record in zip(requests, records):
+            observation = self.parse_response(request, record)
+            if snapshot_id:
+                observation.metadata["brightdata_snapshot_id"] = snapshot_id
+            results.append(observation)
+        return results
+
+    def execute(self, request: AnalysisRequest) -> AnalysisObservation:
+        return self._execute_batch([request])[0]
 
     def _wait_for_snapshot(self, snapshot_id: str):
         headers = {"Authorization": f"Bearer {self.api_key}"}

@@ -32,10 +32,8 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
   const estimatedCost = executions * costPerExecutionEur;
   const highCost = estimatedCost >= 10;
   const waves = Math.ceil(executions / 5);
-  // Worker provider hint: the UI cannot know DATASET_PROVIDER, but brightdata is the default.
-  const isBrightDataProvider = true;
-  const waveMinMinutes = isBrightDataProvider ? 5 : 1;
-  const waveMaxMinutes = isBrightDataProvider ? 15 : 3;
+  const waveMinMinutes = 1;
+  const waveMaxMinutes = 3;
   const minMinutes = waves * waveMinMinutes;
   const maxMinutes = waves * waveMaxMinutes;
   const realism = executions <= 5
@@ -171,7 +169,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
             <p>Moteurs : {engines.map((engine) => engineLabels[engine] ?? engine).join(", ") || "aucun"}</p>
             <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond :</strong> {maxBudgetEur.toFixed(2)} €</p>
             <p><strong>{realism.label}</strong> — {realism.text}</p>
-            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence des moteurs LLM. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
+            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes avec OpenAI direct. Bright Data peut être 5 à 10 fois plus lent selon la file d’attente. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
             {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
             {estimatedCost > maxBudgetEur && <p className="warning"><AlertTriangle size={14} /> Le coût estimé dépasse le budget maximum. Retourne à l’étape 2 pour augmenter le plafond ou réduire les moteurs.</p>}
           </div>
