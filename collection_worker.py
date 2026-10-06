@@ -60,8 +60,10 @@ class SupabaseRest:
 
     def request(self, method: str, table: str, query: str = "", body=None, prefer: str = "return=representation"):
         headers = {**self.headers, "Prefer": prefer}
-        response = requests.request(method, f"{self.url}/rest/v1/{table}{'?' + query if query else ''}", headers=headers, json=body, timeout=60)
-        response.raise_for_status()
+        url = f"{self.url}/rest/v1/{table}{'?' + query if query else ''}"
+        response = requests.request(method, url, headers=headers, json=body, timeout=60)
+        if not response.ok:
+            raise RuntimeError(f"Supabase {response.status_code}: {response.text[:500]} (url: {url[:500]})")
         return response.json() if response.text else None
 
     def rpc(self, function: str, body: Dict):
@@ -98,7 +100,9 @@ class CollectionWorker:
     def __init__(self, config_path: str, worker_id: str = "", cloud_execution_id: str = ""):
         self.db = SupabaseRest()
         self.config_path = config_path
-        self.worker_id = worker_id or os.getenv("WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+        raw_worker_id = worker_id or os.getenv("WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        # Supabase PostgREST can reject colons in equality filters; keep the id URL-safe.
+        self.worker_id = re.sub(r"[^a-zA-Z0-9_-]", "-", raw_worker_id)[:64]
         self.cloud_execution_id = cloud_execution_id or os.getenv("CLOUD_RUN_EXECUTION") or os.getenv("CLOUD_RUN_TASK_ID") or "local"
         self.fanout_extractor = OpenAIWebSearchExtractor() if os.getenv("OPENAI_API_KEY") else None
 
