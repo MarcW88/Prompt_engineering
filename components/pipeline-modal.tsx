@@ -27,7 +27,7 @@ const steps = [
   { kind: "transform_signals", title: "2. Questions", text: "Nettoie les signaux et les transforme en questions utilisateurs.", action: "launch" },
   { kind: "cluster_questions", title: "3. Clusters", text: "Regroupe les questions par intention avec embeddings.", action: "launch" },
   { kind: "build_dataset", title: "4. Dataset", text: "Construit le corpus candidat et exécute l’échantillon choisi.", action: "dataset" },
-  { kind: "validate_dataset", title: "5. Validation", text: "Réexécute les exemples acceptés sur 3 ou 5 runs.", action: "dataset" },
+  { kind: "validate_dataset", title: "5. Validation", text: "Réexécute les exemples acceptés sur 3 ou 5 runs.", action: "validation" },
   { kind: "reverse_engineer", title: "6. Reverse engineering", text: "Reconstruit des prompts à partir des fan-outs observés.", action: "launch" },
   { kind: "manual_review", title: "7. Revue humaine", text: "Approuve, modifie ou rejette les prompts avant export.", action: "review" },
   { kind: "semactic_export", title: "8. Export", text: "Exporte uniquement les prompts acceptés et approuvés.", action: "export" },
@@ -40,11 +40,12 @@ interface PipelineModalProps {
   onClose: () => void;
   onOpenCollection: () => void;
   onOpenDataset: () => void;
+  onOpenValidation: () => void;
   onOpenReview: () => void;
   onOpenExports: () => void;
 }
 
-export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenDataset, onOpenReview, onOpenExports }: PipelineModalProps) {
+export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenDataset, onOpenValidation, onOpenReview, onOpenExports }: PipelineModalProps) {
   const [jobs, setJobs] = useState<PipelineJob[]>([]);
   const [metrics, setMetrics] = useState<WorkflowMetrics>({ signals: 0, questions: 0, clusters: 0, datasets: 0, observations: 0, validations: 0, approved: 0 });
   const [message, setMessage] = useState("");
@@ -82,6 +83,8 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
   }
 
   function isDone(kind: string) {
+    const job = latest(kind);
+    if (job?.status === "completed") return true;
     if (kind === "collect_sources") return metrics.signals > 0;
     if (kind === "transform_signals") return metrics.questions > 0;
     if (kind === "cluster_questions") return metrics.clusters > 0;
@@ -89,7 +92,7 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
     if (kind === "validate_dataset") return metrics.validations > 0;
     if (kind === "manual_review") return metrics.approved > 0;
     if (kind === "semactic_export") return false;
-    return latest(kind)?.status === "completed";
+    return false;
   }
 
   function visibleJob(kind: string) {
@@ -109,6 +112,7 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
   function openAction(action: string) {
     if (action === "collection") onOpenCollection();
     if (action === "dataset") onOpenDataset();
+    if (action === "validation") onOpenValidation();
     if (action === "review") onOpenReview();
     if (action === "export") onOpenExports();
   }

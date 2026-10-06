@@ -11,6 +11,7 @@ export function ValidationModal({ projectId, onClose }: { projectId: string | nu
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [jobs, setJobs] = useState<ValidationJob[]>([]);
   const [message, setMessage] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -28,6 +29,7 @@ export function ValidationModal({ projectId, onClose }: { projectId: string | nu
       setDatasets(list);
       setSelectedDatasetId((current) => current || list[0]?.id || "");
       setJobs((jobsData.jobs ?? []).filter((job: ValidationJob) => job.kind === "validate_dataset"));
+      setHasLoaded(true);
     }
     void loadData();
     const interval = window.setInterval(() => void loadData(), 5000);
@@ -58,7 +60,7 @@ export function ValidationModal({ projectId, onClose }: { projectId: string | nu
           <button type="button" className="icon-button" onClick={onClose}><X size={19} /></button>
         </div>
         <p className="export-intro">Sélectionne le dataset à valider, puis lance une vague de 3 runs. Les prompts acceptés au screening seront ré-exécutés pour mesurer la stabilité.</p>
-        {datasets.length === 0 && <p className="import-status">Aucun dataset disponible. Construis d’abord un dataset depuis le Dataset Builder.</p>}
+        {hasLoaded && datasets.length === 0 && <p className="import-status">Aucun dataset disponible. Construis d’abord un dataset depuis le Dataset Builder.</p>}
         {datasets.length > 0 && (
           <label>Dataset<select value={selectedDatasetId} onChange={(event) => setSelectedDatasetId(event.target.value)}>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.status}</option>)}</select></label>
         )}
