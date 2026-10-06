@@ -17,6 +17,20 @@ const exports = [
   { step: "08", phase: "Après revue manuelle", stage: "approved", title: "Prompts approuvés", text: "Prompts acceptés et approuvés pour l’export Semactic." },
 ];
 
+const emptyReasons: Record<string, string> = {
+  seeds: "Renseigne des seeds et lance une collecte.",
+  signals: "Lance d’abord une collecte de sources.",
+  questions: "Transforme les signaux en questions via le workflow.",
+  clusters: "Lance le clustering depuis le workflow.",
+  dataset: "Construis un dataset avec le Dataset Builder.",
+  observations: "Le Dataset Builder n’a pas encore produit d’observations. Vérifie que le job s’est terminé sans erreur.",
+  fanouts: "Aucune observation avec fan-outs. Attends que les exécutions moteur se terminent.",
+  citations: "Aucune observation avec citations. Dépend du moteur utilisé.",
+  validations: "Valide les prompts acceptés sur 3 runs.",
+  prompts: "Lance le reverse engineering après validation.",
+  approved: "Approuve des prompts dans la revue manuelle.",
+};
+
 interface DatasetOption { id: string; name: string; status: string }
 
 export function ExportsModal({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
@@ -56,7 +70,7 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
             const ready = count > 0;
             return (
               <article key={item.stage} className={ready ? "export-item ready" : "export-item pending"}>
-                <div><FileSpreadsheet size={18} /><div><span className="export-step">Étape {item.step} · {item.phase}</span><strong>{item.title}</strong><p>{item.text}</p><em className={ready ? "export-status ready" : "export-status"}>{ready ? `Disponible · ${count.toLocaleString("fr-FR")} ligne${count > 1 ? "s" : ""}` : "En attente · aucune donnée"}</em></div></div>
+                <div><FileSpreadsheet size={18} /><div><span className="export-step">Étape {item.step} · {item.phase}</span><strong>{item.title}</strong><p>{item.text}</p><em className={ready ? "export-status ready" : "export-status"}>{ready ? `Disponible · ${count.toLocaleString("fr-FR")} ligne${count > 1 ? "s" : ""}` : `${emptyReasons[item.stage] ?? "Aucune donnée"}`}</em></div></div>
                 <span>{["csv", "xlsx", "json"].map((format) => ready ? <a key={format} className="secondary mini" href={url(item.stage, format)}>{format === "xlsx" ? "Excel" : format.toUpperCase()}</a> : <i key={format} className="secondary mini export-disabled">{format === "xlsx" ? "Excel" : format.toUpperCase()}</i>)}</span>
               </article>
             );
