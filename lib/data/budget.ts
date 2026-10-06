@@ -95,25 +95,37 @@ export function estimateCollectionCostEur(input: CostEstimateInput): number {
 }
 
 export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMode = true): TargetPromptConfig {
-  // Conservative funnel assumptions:
-  // - 1 approved prompt needs ~1.5 executed candidates (validation/approval drop-off)
-  // - 1 executed candidate needs ~1 cluster
-  // - 1 cluster needs ~3 signals (questions)
-  // - 1 signal needs ~1 external request (varies by source)
-  const approvedToCandidateRatio = 1.5;
-  const candidateToClusterRatio = 1.0;
-  const signalsPerCluster = 3;
-  const requestsPerSignal = 1.2;
-  const estimatedClusters = Math.ceil(targetPrompts * approvedToCandidateRatio * candidateToClusterRatio);
+  // Realistic funnel assumptions for an efficient GEO pipeline:
+  // - 1 approved prompt needs ~4 generated candidates (validation/approval drop-off)
+  // - 1 cluster generates up to 9 candidates by default (persona × stage × specificity)
+  // - 1 cluster needs ~2-3 signals (questions)
+  // - 1 signal needs ~1 external request
+  // Social sources are much more expensive per result, so in sample/full audit
+  // we prefer cheap sources (SERP, reviews, forums) and keep social optional.
+  const candidatesPerApprovedPrompt = 4;
+  const candidatesPerCluster = 9;
+  const signalsPerCluster = 2.5;
+  const requestsPerSignal = 1.1;
+  const estimatedCandidates = Math.ceil(targetPrompts * candidatesPerApprovedPrompt);
+  const estimatedClusters = Math.ceil(estimatedCandidates / candidatesPerCluster);
   const estimatedSignals = Math.ceil(estimatedClusters * signalsPerCluster);
   const estimatedRequests = Math.ceil(estimatedSignals * requestsPerSignal);
-  const sourceCount = targetPrompts < 100 ? 3 : 5;
+  // Prefer cheap, high-volume sources. Add social only for larger audits.
+  const sources = targetPrompts <= 100
+    ? ["serp", "review", "forum"]
+    : ["serp", "review", "forum", "reddit"];
+  const sourceCount = sources.length;
   // In sample mode the per-source budget is split across sources; in full audit
   // each active source receives the full query budget, so we keep it lower.
   const queryBudget = sampleMode
     ? Math.max(5, Math.min(50, Math.ceil(estimatedRequests / sourceCount / 2)))
-    : Math.max(3, Math.min(25, Math.ceil(estimatedRequests / sourceCount / 4)));
-  const collectionCostEur = Math.round(estimatedRequests * 0.06 * (sampleMode ? 1 : sourceCount * 0.7) * 100) / 100;
+    : Math.max(3, Math.min(25, Math.ceil(estimatedRequests / sourceCount / 3)));
+  // Weighted cost per request: SERP/reviews/forums are cheap, social is expensive.
+  // In full audit the same budget applies to each source, but the average cost is
+  // driven by the mix of sources chosen (mostly cheap ones here).
+  const averageCostPerRequest = 0.015;
+  const fullAuditMultiplier = sampleMode ? 1 : 1.4;
+  const collectionCostEur = Math.round(estimatedRequests * averageCostPerRequest * fullAuditMultiplier * 100) / 100;
   const totalBudgetEur = Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5)));
   return {
     targetPrompts,
@@ -122,7 +134,7 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
     estimatedSignals,
     queryBudget,
     minimumSourceSignals: Math.max(3, Math.min(20, Math.ceil(estimatedSignals / sourceCount / 2))),
-    sources: targetPrompts < 100 ? ["serp", "review", "reddit"] : ["serp", "review", "reddit", "forum", "linkedin"],
+    sources,
     collectionCostEur,
     totalBudgetEur,
   };

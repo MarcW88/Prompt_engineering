@@ -246,7 +246,11 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
             setCustomBudgetTotalEur(recommendation.totalBudgetEur);
             setBudgetMode("manual");
           }}>Appliquer la config recommandée</button></div>
-          <div className="dataset-estimate good"><p><strong>Config estimée :</strong> {recommendConfigForTargetPrompts(targetPrompts, sampleMode).estimatedSignals.toLocaleString("fr-FR")} signaux · {recommendConfigForTargetPrompts(targetPrompts, sampleMode).estimatedClusters.toLocaleString("fr-FR")} clusters · budget requêtes {recommendConfigForTargetPrompts(targetPrompts, sampleMode).queryBudget} · coût collecte ~{recommendConfigForTargetPrompts(targetPrompts, sampleMode).collectionCostEur.toFixed(2)} € · plafond global {recommendConfigForTargetPrompts(targetPrompts, sampleMode).totalBudgetEur.toFixed(2)} €</p><p><small>{sampleMode ? "Mode échantillon : le budget est réparti entre les sources. Idéal pour tester." : "Mode audit complet : chaque source reçoit le budget affiché. Coût plus élevé mais couverture maximale."}</small></p></div>
+          {(() => {
+            const recommendation = recommendConfigForTargetPrompts(targetPrompts, sampleMode);
+            const exceedsCap = recommendation.collectionCostEur > recommendation.totalBudgetEur;
+            return <div className={`dataset-estimate ${exceedsCap ? "warn" : "good"}`}><p><strong>Config estimée :</strong> {recommendation.estimatedSignals.toLocaleString("fr-FR")} signaux · {recommendation.estimatedClusters.toLocaleString("fr-FR")} clusters · budget requêtes {recommendation.queryBudget} · coût collecte ~{recommendation.collectionCostEur.toFixed(2)} € · plafond global {recommendation.totalBudgetEur.toFixed(2)} €</p><p><small>{sampleMode ? "Mode échantillon : le budget est réparti entre les sources. Idéal pour tester." : "Mode audit complet : chaque source reçoit le budget affiché. Coût plus élevé mais couverture maximale."}</small></p>{exceedsCap && <p className="warning"><AlertTriangle size={14} /> L’estimation de collecte dépasse le plafond global affiché. Augmente le plafond ou réduis le nombre de prompts cibles.</p>}</div>;
+          })()}
         </>}
 
         {step === 3 && <>
