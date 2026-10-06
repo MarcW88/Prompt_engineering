@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const costPerExecutionEur = Math.max(0, Number(body.costPerExecutionEur ?? 0));
   const maxBudgetEur = Math.max(0, Number(body.maxBudgetEur ?? 20));
   const estimatedCostEur = Math.round(executionSampleSize * repetitions * engines.length * costPerExecutionEur * 100) / 100;
-  if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €.` }, { status: 422 });
+  if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €. Augmentez le plafond ou réduisez les moteurs/l'échantillon.` }, { status: 422 });
   try {
     const [clusters, projects, costs] = await Promise.all([
       supabaseRest<Array<{ id: string }>>("clusters", { query: `select=id&project_id=eq.${encodeURIComponent(body.projectId)}&is_geo_relevant=eq.true` }),

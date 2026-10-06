@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Database, Download, X } from "lucide-react";
+import { AlertTriangle, Database, Download, X } from "lucide-react";
 import { estimateDatasetExecutions } from "@/lib/data/datasets";
 
 const engineLabels: Record<string, string> = {
@@ -144,11 +144,12 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
         </fieldset>
 
         <div className={`dataset-estimate ${highCost ? "warn" : realism.tone}`}>
-          <div><strong>{executions.toLocaleString("fr-FR")}</strong><span>observations prévues</span></div>
-          <p>{candidatePoolSize.toLocaleString("fr-FR")} candidats → {executionSampleSize.toLocaleString("fr-FR")} exécutés · coût estimé {estimatedCost.toFixed(2)} € / plafond {maxBudgetEur.toFixed(2)} €</p>
-          <p>{realism.label} — {realism.text}</p>
-          <p>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence Bright Data. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</p>
+          <p className="estimate-title">{executions.toLocaleString("fr-FR")} observations prévues</p>
+          <p><strong>{candidatePoolSize.toLocaleString("fr-FR")}</strong> candidats → <strong>{executionSampleSize.toLocaleString("fr-FR")}</strong> exécutés · coût estimé <strong>{estimatedCost.toFixed(2)} €</strong> / plafond <strong>{maxBudgetEur.toFixed(2)} €</strong></p>
+          <p><strong>{realism.label}</strong> — {realism.text}</p>
+          <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence Bright Data. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
           {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
+          {estimatedCost > maxBudgetEur && <p className="warning"><AlertTriangle size={14} /> Le coût estimé dépasse le budget maximum. Augmente le plafond ou réduis les moteurs/l’échantillon.</p>}
         </div>
 
         {status && <p className="import-status">{status}</p>}
