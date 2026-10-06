@@ -226,11 +226,26 @@ class CollectionWorker:
             heartbeat.stop()
         return True
 
+    @staticmethod
+    def _allocate_source_budgets(sources: list, query_budget: int, sample: bool) -> dict:
+        """Répartit un budget maximum par source pour éviter qu'une seule source
+        consomme tout le plafond global, surtout en mode échantillon."""
+        if not sample or not sources:
+            return {}
+        # Les sources payantes plus coûteuses (Bright Data) reçoivent moins de requêtes
+        # que les sources DataForSEO/JSON pour garder un échantillon équilibré.
+        weights = {"serp": 1.0, "review": 0.6, "forum": 0.8, "reddit": 0.7, "facebook": 0.3, "instagram": 0.3, "linkedin": 0.3, "x": 0.3}
+        total_weight = sum(weights.get(source, 0.5) for source in sources)
+        base = max(3, query_budget / max(len(sources), 1))
+        avg_weight = total_weight / max(len(sources), 1)
+        return {source: max(3, int(round(base * weights.get(source, 0.5) / max(avg_weight, 0.01)))) for source in sources}
+
     def _collect(self, job: Dict) -> Dict:
         project_id = job["project_id"]
         config = load_config(self.config_path)
         input_config = job.get("input", {})
         budget = clamp_collection_budget(input_config.get("query_budget", 10))
+        sample_mode = bool(input_config.get("source_config", {}).get("sample_mode"))
         seed_ids = [str(seed_id) for seed_id in input_config.get("seed_ids", []) if seed_id]
         seed_filter = f"&id=in.({','.join(seed_ids)})" if seed_ids else ""
 
@@ -240,14 +255,18 @@ class CollectionWorker:
         report(3, "Chargement des seeds")
         seed_rows = self.db.request("GET", "seeds", f"select=*&project_id=eq.{project_id}&enabled=eq.true{seed_filter}&order=priority.desc")
         report(8, f"{len(seed_rows)} seeds chargés · préparation des sources")
-        config.scraping.serp["query_budget"] = budget
-        config.scraping.forum["max_threads"] = budget
-        config.scraping.reviews["max_pages"] = min(10, budget)
         config.seeds = deduplicate_seeds(Seed(
             value=row["value"], seed_type=SeedType(row["seed_type"]), priority=row["priority"],
             language=row["language"], market=row["market"], enabled=row["enabled"]
         ) for row in seed_rows)
         requested = set(job.get("input", {}).get("sources", []))
+
+        # En mode échantillon, on borne chaque source pour toucher un peu de tout
+        # sans vider le budget dans la première source traitée.
+        source_budgets = self._allocate_source_budgets(sorted(requested), budget, sample_mode)
+        config.scraping.serp["query_budget"] = source_budgets.get("serp", budget)
+        config.scraping.forum["max_threads"] = source_budgets.get("forum", budget)
+        config.scraping.reviews["max_pages"] = min(10, source_budgets.get("review", budget))
         source_config = input_config.get("source_config", {}) if isinstance(input_config.get("source_config"), dict) else {}
 
         def clean_list(key):
@@ -303,8 +322,9 @@ class CollectionWorker:
 
         social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin", "x") if platform in requested]
         if social_platforms:
+            max_social_targets = max(1, min(budget, 20, min(source_budgets.get(platform, 50) for platform in social_platforms))) if source_budgets else min(budget, 20)
             social_limits = {
-                "targets": bounded_int("social_target_limit", min(budget, 20), 1, 50),
+                "targets": bounded_int("social_target_limit", max_social_targets, 1, 50),
                 "posts": bounded_int("social_post_limit", 10, 1, 50),
                 "comments": bounded_int("social_comment_limit", 0, 0, 20),
             }

@@ -12,6 +12,7 @@ export interface BudgetRecommendationInput {
   sources?: string[];
   socialPostLimit?: number;
   socialCommentLimit?: number;
+  sampleMode?: boolean;
 }
 
 export interface BudgetRecommendation {
@@ -45,6 +46,7 @@ const sourceWeights: Record<string, number> = {
 
 export function recommendBudget(input: BudgetRecommendationInput): BudgetRecommendation {
   const sources = input.sources ?? [];
+  const sampleMode = input.sampleMode ?? true;
   const plannedRequests = Math.max(0, input.plannedRequests ?? 0);
   const socialTargets = input.socialTargets ?? 0;
   const socialPostLimit = Math.max(1, input.socialPostLimit ?? 10);
@@ -55,7 +57,10 @@ export function recommendBudget(input: BudgetRecommendationInput): BudgetRecomme
   // Seeds themselves do not increase cost: they are only stored locally until used
   // in templates or passed as inputs.
   const sourceScore = sources.reduce((sum, source) => sum + (sourceWeights[source] ?? 2), 0);
-  const volumeScore = Math.min(40, plannedRequests / 10);
+  // In sample mode the planned requests are split across sources, so the real
+  // paid volume per source is much lower.
+  const effectiveRequests = sampleMode && sources.length > 1 ? plannedRequests / sources.length : plannedRequests;
+  const volumeScore = Math.min(40, effectiveRequests / 10);
   const socialAmplification = socialTargets * socialPostLimit * (1 + socialCommentLimit * 0.4);
   const socialScore = Math.min(35, socialAmplification / 8);
   const diversityScore = Math.min(15,

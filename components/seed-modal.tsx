@@ -63,6 +63,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [step, setStep] = useState(1);
   const [budgetMode, setBudgetMode] = useState<"automatic" | "manual">("automatic");
   const [customBudgetTotalEur, setCustomBudgetTotalEur] = useState<number | null>(null);
+  const [sampleMode, setSampleMode] = useState(true);
 
   const tierLabels = { light: "Collecte ciblée", standard: "Collecte standard", extended: "Collecte approfondie", segmented: "Audit à segmenter" };
   const stepLabels = ["Compte", "Corpus & budget", "Sources", "Vérification"];
@@ -112,7 +113,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     sources,
     socialPostLimit,
     socialCommentLimit,
-  }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, plannedRequests, priority, seedType, socialCommentLimit, socialPostLimit, sources, subreddits, text, themes, xUrls]);
+    sampleMode,
+  }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, plannedRequests, priority, sampleMode, seedType, socialCommentLimit, socialPostLimit, sources, subreddits, text, themes, xUrls]);
   const recommendedQueryBudget = { light: 3, standard: 5, extended: 10, segmented: 15 }[collectionRecommendation.tier];
   const displayBudgetTotalEur = customBudgetTotalEur ?? collectionRecommendation.totalEur;
 
@@ -187,6 +189,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
         social_comment_limit: Math.max(0, Math.min(20, socialCommentLimit)),
         budget_total_eur: displayBudgetTotalEur,
         budget_mode: budgetMode,
+        sample_mode: sampleMode,
         budget_profile: { tier: collectionRecommendation.tier, score: collectionRecommendation.score, corpus_target: collectionRecommendation.corpusTarget, allocations: collectionRecommendation.allocations },
         serp_templates: lines(serpTemplates),
       };
@@ -226,7 +229,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           {fileStatus && <p className="import-status">{fileStatus}</p>}
           <div className="form-row"><label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select></label><label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label></div>
           <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents au final. Le coût dépend des sources et cibles choisies, pas de ce nombre de seeds.</p><p><strong>Le budget repose sur les leviers payants :</strong> sources actives, cibles par source, budget de requêtes, posts et commentaires sociaux. Par exemple, 1 000 mots-clés avec SERP uniquement génèrent seulement <strong>{plannedRequests.toLocaleString("fr-FR")} planification(s)</strong> payante(s) au maximum.</p><div className="form-row compact"><label>Plafond global indicatif (€)<input type="number" min="1" max="30" step="1" value={displayBudgetTotalEur} onChange={(event) => { setCustomBudgetTotalEur(Number(event.target.value)); setBudgetMode("manual"); }} /><small>Recommandation automatique : {collectionRecommendation.totalEur.toFixed(2)} €. Au-delà de 30 €, segmentez l’audit. <button type="button" className="text-button" onClick={() => { setCustomBudgetTotalEur(null); setBudgetMode("automatic"); }}>Réinitialiser</button></small></label></div><p>Enveloppe globale indicative pour tout le workflow : <strong>{displayBudgetTotalEur.toFixed(2)} €</strong>, incluant collecte, exécutions IA, validation, reverse engineering et cloud.</p></div>
-          <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications, avant résultats vides et déduplication. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>
+          <label className="check-option"><input type="checkbox" checked={sampleMode} onChange={(event) => setSampleMode(event.target.checked)} /> Mode échantillon : répartir le budget de requêtes entre toutes les sources sélectionnées (recommandé pour tester)</label>
+          <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>{sampleMode ? "Ce budget sera réparti : chaque source recevra une part limitée pour toucher un peu de tout." : "Ce budget sera appliqué à chaque source active. Attention, le coût peut vite grimper."} Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>
           <div className="form-row compact"><label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /></label><label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé pour protéger le budget.</small></label></div>
           <div className="gsc-box"><label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /></label><label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{gscStatus && <p className="import-status">{gscStatus}</p>}</div>
         </>}
