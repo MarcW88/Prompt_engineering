@@ -31,6 +31,7 @@ class DatasetBuildConfig:
     stages: Sequence[str] = field(default_factory=lambda: DEFAULT_STAGES)
     specificity_levels: Sequence[int] = field(default_factory=lambda: DEFAULT_SPECIFICITY)
     candidates_per_cluster: int = 9
+    brand_name: str = ""
 
 
 class DatasetBuilder:
@@ -46,8 +47,11 @@ class DatasetBuilder:
         expected = self._expected_sub_intents(cluster)
         candidates = []
         seen = set()
+        base_question = cluster.representative_question
         for persona, stage, specificity in combinations:
-            prompt = self._render(cluster.representative_question, persona, stage, specificity, cluster.language, expected)
+            if not self._is_relevant_for_brand(base_question, config.brand_name or ""):
+                continue
+            prompt = self._render(base_question, persona, stage, specificity, cluster.language, expected)
             normalized = " ".join(prompt.casefold().split())
             if normalized in seen:
                 continue
@@ -85,6 +89,14 @@ class DatasetBuilder:
                 seen.add(normalized)
                 result.append(value.strip())
         return result[:8]
+
+    @staticmethod
+    def _is_relevant_for_brand(question: str, brand_name: str) -> bool:
+        if not brand_name:
+            return True
+        normalized = " ".join(question.casefold().split())
+        brand_parts = [part for part in brand_name.casefold().split() if len(part) >= 2]
+        return any(part in normalized for part in brand_parts)
 
     @staticmethod
     def _render(question: str, persona: str, stage: str, specificity: int, language: str, sub_intents: Sequence[str]) -> str:

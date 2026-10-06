@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
 import requests
+from langdetect import detect as detect_language
 
 
 @dataclass(frozen=True)
@@ -28,12 +29,14 @@ class OpenAIProcessor:
         self.headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     def transform(self, text: str, title: str, language: str) -> List[str]:
+        detected = _detect_language(f"{title or ''}\n{text or ''}")
+        target_language = detected if detected else language
         response = requests.post("https://api.openai.com/v1/chat/completions", headers=self.headers, json={
             "model": self.chat_model,
             "temperature": 0.3,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": f"Transforme ce contenu utilisateur en 1 à 3 questions naturelles pour un assistant IA. Conserve le besoin, les contraintes et le niveau de précision. N'ajoute aucun sujet absent. Réponds uniquement en JSON avec la clé questions. Langue: {language}."},
+                {"role": "system", "content": f"Transforme ce contenu utilisateur en 1 à 3 questions naturelles pour un assistant IA. Conserve le besoin, les contraintes et le niveau de précision. N'ajoute aucun sujet absent. Si le contenu original n'est pas en {target_language}, traduis-le d'abord mentalement puis réponds en {target_language}. Réponds uniquement en JSON avec la clé questions. Langue obligatoire de la réponse: {target_language}."},
                 {"role": "user", "content": f"Titre: {title}\n\nContenu: {text}"},
             ],
         }, timeout=90)
@@ -55,11 +58,16 @@ def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Ca
     signals = list(signals)
     questions = []
     seen = set()
+    accepted_languages = {language.lower()} if language else set()
     for index, signal in enumerate(signals, start=1):
         source_type = signal.get("source_type", "")
         text = str(signal.get("raw_text", "")).strip()
         title = str(signal.get("title") or "").strip()
+        detected = _detect_language(f"{title or ''}\n{text or ''}")
+        signal_language = detected if detected else language
         observed = source_type in {"serp", "gsc_conversation"} or _is_question(title or text)
+        if observed and signal_language and accepted_languages and signal_language.lower() not in accepted_languages:
+            continue
         values = [title or text] if observed else transformer(text, title, language)
         for value in values:
             normalized = normalize_text(value)
@@ -69,8 +77,8 @@ def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Ca
             seen.add(key)
             questions.append(QuestionRecord(
                 signal_id=signal["id"], text=value.strip(), provenance="observed" if observed else "transformed",
-                language=language, confidence=1.0 if observed else 0.7,
-                metadata={"platform": signal.get("platform"), "source_type": source_type, "source_url": signal.get("url")},
+                language=signal_language, confidence=1.0 if observed else 0.7,
+                metadata={"platform": signal.get("platform"), "source_type": source_type, "source_url": signal.get("url"), "detected_language": detected},
             ))
         if progress_callback:
             progress_callback(index, len(signals))
@@ -127,6 +135,13 @@ def cluster_questions(question_rows: Sequence[Dict], embeddings: Sequence[Sequen
 
 def _is_question(text: str) -> bool:
     return text.rstrip().endswith("?") or bool(re.match(r"^(comment|pourquoi|quand|où|qui|quel|quelle|quels|quelles|combien|est-ce|how|why|what|which|where|when)\b", text.casefold()))
+
+
+def _detect_language(text: str) -> str:
+    try:
+        return detect_language(text[:200]).split("-")[0].lower()
+    except Exception:
+        return ""
 
 
 def _normalize_vector(vector: Sequence[float]) -> List[float]:

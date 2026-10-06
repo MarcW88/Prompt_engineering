@@ -232,13 +232,13 @@ class CollectionWorker:
         consomme tout le plafond global, surtout en mode échantillon."""
         if not sample or not sources:
             return {}
-        # Les sources payantes plus coûteuses (Bright Data) reçoivent moins de requêtes
-        # que les sources DataForSEO/JSON pour garder un échantillon équilibré.
-        weights = {"serp": 1.0, "review": 0.6, "forum": 0.8, "reddit": 0.7, "facebook": 0.3, "instagram": 0.3, "linkedin": 0.3, "x": 0.3}
+        # Donner plus de poids aux réseaux sociaux pour éviter qu'ils soient noyés
+        # par GSC, SERP et Trustpilot qui génèrent beaucoup de signaux à moindre coût.
+        weights = {"serp": 1.0, "review": 0.7, "forum": 0.8, "reddit": 0.9, "facebook": 0.7, "instagram": 0.7, "linkedin": 0.7, "x": 0.7}
         total_weight = sum(weights.get(source, 0.5) for source in sources)
-        base = max(3, query_budget / max(len(sources), 1))
+        base = max(5, query_budget / max(len(sources), 1))
         avg_weight = total_weight / max(len(sources), 1)
-        return {source: max(3, int(round(base * weights.get(source, 0.5) / max(avg_weight, 0.01)))) for source in sources}
+        return {source: max(5, int(round(base * weights.get(source, 0.5) / max(avg_weight, 0.01)))) for source in sources}
 
     def _collect(self, job: Dict) -> Dict:
         project_id = job["project_id"]
@@ -264,9 +264,10 @@ class CollectionWorker:
         # En mode échantillon, on borne chaque source pour toucher un peu de tout
         # sans vider le budget dans la première source traitée.
         source_budgets = self._allocate_source_budgets(sorted(requested), budget, sample_mode)
-        config.scraping.serp["query_budget"] = source_budgets.get("serp", budget)
-        config.scraping.forum["max_threads"] = source_budgets.get("forum", budget)
-        config.scraping.reviews["max_pages"] = min(10, source_budgets.get("review", budget))
+        minimum_source_signals = int(input_config.get("source_config", {}).get("minimum_source_signals", 5))
+        config.scraping.serp["query_budget"] = max(minimum_source_signals, source_budgets.get("serp", budget))
+        config.scraping.forum["max_threads"] = max(minimum_source_signals, source_budgets.get("forum", budget))
+        config.scraping.reviews["max_pages"] = max(minimum_source_signals // 4, min(10, source_budgets.get("review", budget)))
         source_config = input_config.get("source_config", {}) if isinstance(input_config.get("source_config"), dict) else {}
 
         def clean_list(key):
@@ -322,10 +323,12 @@ class CollectionWorker:
 
         social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin", "x") if platform in requested]
         if social_platforms:
-            max_social_targets = max(1, min(budget, 20, min(source_budgets.get(platform, 50) for platform in social_platforms))) if source_budgets else min(budget, 20)
+            social_post_limit = bounded_int("social_post_limit", 10, 1, 50)
+            social_minimum_factor = max(1, minimum_source_signals // max(1, social_post_limit))
+            max_social_targets = max(social_minimum_factor, min(budget, 20, min(source_budgets.get(platform, 50) for platform in social_platforms))) if source_budgets else min(budget, 20)
             social_limits = {
                 "targets": bounded_int("social_target_limit", max_social_targets, 1, 50),
-                "posts": bounded_int("social_post_limit", 10, 1, 50),
+                "posts": social_post_limit,
                 "comments": bounded_int("social_comment_limit", 0, 0, 20),
             }
             config.sources["social"] = {
@@ -483,10 +486,12 @@ class CollectionWorker:
             questions=questions_by_cluster.get(row["id"], []), language=language.get("language", "fr"),
             question_count=row.get("question_count", 0), source_count=row.get("source_count", 0)
         ) for row in cluster_rows]
+        project = self.db.request("GET", "projects", f"select=name&id=eq.{project_id}&limit=1")[0]
         candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
+            brand_name=project.get("name", ""),
         ))[:dataset.get("candidate_pool_size", dataset["target_size"])])
         selected = stratified_sample(candidates, int(dataset.get("execution_sample_size", len(candidates))), int(build_config.get("max_per_cluster", 5)))
         selected_ids = {candidate.id for candidate in selected}
