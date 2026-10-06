@@ -619,14 +619,43 @@ class CollectionWorker:
         expected = {example["id"]: repetitions * len(engines) for _, _, example, _ in records}
         received = {example["id"]: 0 for _, _, example, _ in records}
         concurrency = max(1, min(20, int(os.getenv("ANALYSIS_CONCURRENCY", "10"))))
+        self._report(job, 12, f"{len(tasks)} exécutions à lancer (provider={provider_name}, concurrency={concurrency})")
+        if not tasks:
+            raise RuntimeError(f"Aucune exécution à lancer. {len(records)} exemples existants déjà complétés ou manquants.")
         # For providers that support batched execution (Bright Data), group tasks
         # by engine to send several prompts in a single snapshot.
         if provider_name == "brightdata":
-            batched = self._execute_tasks_batched(provider, tasks, language, all_prompts, expected, stored_observations, received, threshold, repetitions, job, openai_usage)
-            openai_search_calls += batched["openai_search_calls"]
-            completed += batched["completed"]
-            accepted += batched["accepted"]
-            rejected += batched["rejected"]
+            records_by_engine = {}
+            for candidate, prompt, example, engine, run_index in tasks:
+                records_by_engine.setdefault(engine, []).append((candidate, prompt, example, run_index))
+            batch_size = getattr(provider, "batch_size", 10)
+            for engine, engine_tasks in records_by_engine.items():
+                self._report(job, 15, f"Moteur {engine}: {len(engine_tasks)} tâches, batch size {batch_size}")
+                for start in range(0, len(engine_tasks), batch_size):
+                    batch = engine_tasks[start:start + batch_size]
+                    requests = [AnalysisRequest(prompt=candidate.text, engine=engine, country=language.get("country", "BE"), language=language.get("language", "fr"), metadata={"example_id": example["id"], "run_index": run_index, "phase": "build"}) for candidate, prompt, example, run_index in batch]
+                    self._report(job, 15 + int(75 * completed / total), f"Envoi batch {engine} ({len(requests)} prompts)")
+                    observations = self._execute_analysis_batch(provider, requests)
+                    self._report(job, 15 + int(75 * completed / total), f"Batch {engine} reçu: {len(observations)} observations")
+                    if len(observations) != len(batch):
+                        raise RuntimeError(f"Batch {engine}: {len(observations)} observations pour {len(batch)} requêtes")
+                    for (candidate, prompt, example, run_index), observation in zip(batch, observations):
+                        self._persist_observation(prompt, observation)
+                        stored_observations[example["id"]].append(observation)
+                        received[example["id"]] += 1
+                        usage = observation.metadata.get("fan_out_usage") or {}
+                        openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
+                        for key in openai_usage:
+                            openai_usage[key] += int(usage.get(key) or 0)
+                        completed += 1
+                        if len(stored_observations[example["id"]]) == expected[example["id"]]:
+                            scores = score_dataset_example(candidate, stored_observations[example["id"]], all_prompts)
+                            is_accepted = scores["quality_score"] >= threshold
+                            accepted += int(is_accepted)
+                            rejected += int(not is_accepted)
+                            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                            self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
+                        self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
         else:
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futures = {executor.submit(self._run_once, provider, candidate, example, engine, run_index, language, "build"): (candidate, prompt, example) for candidate, prompt, example, engine, run_index in tasks}
@@ -649,38 +678,8 @@ class CollectionWorker:
                         self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                         self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                     self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
-
-    def _execute_tasks_batched(self, provider, tasks, project, all_prompts, expected, stored_observations, received, threshold, repetitions, job, openai_usage):
-        openai_search_calls = completed = accepted = rejected = 0
-        if not tasks:
-            return {"openai_search_calls": openai_search_calls, "completed": completed, "accepted": accepted, "rejected": rejected}
-        total = max(1, len(tasks))
-        records_by_engine = {}
-        for candidate, prompt, example, engine, run_index in tasks:
-            records_by_engine.setdefault(engine, []).append((candidate, prompt, example, run_index))
-        for engine, engine_tasks in records_by_engine.items():
-            batch_size = getattr(provider, "batch_size", 10)
-            for start in range(0, len(engine_tasks), batch_size):
-                batch = engine_tasks[start:start + batch_size]
-                requests = [AnalysisRequest(prompt=candidate.text, engine=engine, country=project.get("country", "BE"), language=project.get("language", "fr"), metadata={"example_id": example["id"], "run_index": run_index, "phase": "build"}) for candidate, prompt, example, run_index in batch]
-                observations = self._execute_analysis_batch(provider, requests)
-                for (candidate, prompt, example, run_index), observation in zip(batch, observations):
-                    self._persist_observation(prompt, observation)
-                    stored_observations[example["id"]].append(observation)
-                    received[example["id"]] += 1
-                    usage = observation.metadata.get("fan_out_usage") or {}
-                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                    for key in openai_usage:
-                        openai_usage[key] += int(usage.get(key) or 0)
-                    completed += 1
-                    if len(stored_observations[example["id"]]) == expected[example["id"]]:
-                        scores = score_dataset_example(candidate, stored_observations[example["id"]], all_prompts)
-                        is_accepted = scores["quality_score"] >= threshold
-                        accepted += int(is_accepted)
-                        rejected += int(not is_accepted)
-                        self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
-                        self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
-                    self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
+        if completed == 0:
+            raise RuntimeError("Aucune observation n'a été produite. Vérifiez les clés API et le provider.")
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
         bright_delta = None
@@ -694,6 +693,7 @@ class CollectionWorker:
         statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
         confirmed_cost = bright_delta or 0
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "actual_cost_usd": confirmed_cost, "cost_status": "partial" if openai_search_calls else "reconciled", "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+        self._report(job, 99, f"Dataset prêt: {accepted} acceptés, {rejected} rejetés, {completed} exécutions")
         return statistics
 
     def _validate_dataset(self, job: Dict) -> Dict:
