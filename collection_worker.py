@@ -229,16 +229,29 @@ class CollectionWorker:
     @staticmethod
     def _allocate_source_budgets(sources: list, query_budget: int, sample: bool) -> dict:
         """Répartit un budget maximum par source pour éviter qu'une seule source
-        consomme tout le plafond global, surtout en mode échantillon."""
+        consomme tout le plafond global, surtout en mode échantillon.
+
+        Les réseaux sociaux sont regroupés dans un même pool dont la part totale
+        est plafonnée afin d'éviter une explosion du coût lorsque plusieurs
+        plateformes sont activées simultanément."""
         if not sample or not sources:
             return {}
-        # Donner plus de poids aux réseaux sociaux pour éviter qu'ils soient noyés
-        # par GSC, SERP et Trustpilot qui génèrent beaucoup de signaux à moindre coût.
+        social = {"reddit", "facebook", "instagram", "linkedin", "x"}
+        non_social = [source for source in sources if source not in social]
+        social_sources = [source for source in sources if source in social]
+        # Cap social pool at 35% of the total query budget when several platforms are active.
+        social_pool_share = 0.35 if len(social_sources) > 1 else 0.45
+        non_social_budget = int(query_budget * (1 - (social_pool_share if social_sources else 0)))
+        social_pool_budget = int(query_budget * social_pool_share) if social_sources else 0
         weights = {"serp": 1.0, "review": 0.7, "forum": 0.8, "reddit": 0.9, "facebook": 0.7, "instagram": 0.7, "linkedin": 0.7, "x": 0.7}
-        total_weight = sum(weights.get(source, 0.5) for source in sources)
-        base = max(5, query_budget / max(len(sources), 1))
-        avg_weight = total_weight / max(len(sources), 1)
-        return {source: max(5, int(round(base * weights.get(source, 0.5) / max(avg_weight, 0.01)))) for source in sources}
+        non_social_weight = sum(weights.get(source, 0.5) for source in non_social) or 1
+        social_weight = sum(weights.get(source, 0.5) for source in social_sources) or 1
+        result: dict = {}
+        for source in non_social:
+            result[source] = max(3, int(round(non_social_budget * weights.get(source, 0.5) / non_social_weight)))
+        for source in social_sources:
+            result[source] = max(1, int(round(social_pool_budget * weights.get(source, 0.5) / social_weight)))
+        return result
 
     def _collect(self, job: Dict) -> Dict:
         project_id = job["project_id"]

@@ -110,13 +110,12 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
   const estimatedClusters = Math.ceil(estimatedCandidates / candidatesPerCluster);
   const estimatedSignals = Math.ceil(estimatedClusters * signalsPerCluster);
   const estimatedRequests = Math.ceil(estimatedSignals * requestsPerSignal);
-  // Always include at least one social source (Reddit is the cheapest and most
-  // text-rich). Cap the social budget share to roughly 30% by limiting the number
-  // of social platforms and using tight post/target limits in the worker.
-  const coreSources = ["serp", "review", "forum", "reddit"];
-  const extraSocial = targetPrompts >= 200 ? ["linkedin"] : [];
-  const socialSources = [...extraSocial];
-  const sources = [...coreSources, ...extraSocial];
+  // Always include all social families, but keep their combined budget share
+  // capped so they do not dominate the cost. The worker allocates a shared
+  // social budget pool (max ~35%) split across the active social platforms.
+  const coreSources = ["serp", "review", "forum"];
+  const socialSources = ["reddit", "facebook", "instagram", "linkedin", "x"];
+  const sources = [...coreSources, ...socialSources];
   const sourceCount = sources.length;
   // In sample mode the per-source budget is split across sources; in full audit
   // each active source receives the full query budget, so we keep it lower.
@@ -125,14 +124,15 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
     : Math.max(3, Math.min(25, Math.ceil(estimatedRequests / sourceCount / 3)));
   // Weighted cost per request: SERP/reviews/forums are cheap, social is more
   // expensive. In full audit the same budget applies to each source, but the
-  // average cost is driven by the mix of sources chosen.
+  // average cost is driven by the mix of sources chosen. The social pool cap in
+  // the worker keeps social spend bounded even when all platforms are selected.
   const averageCostPerRequest = 0.015;
   const fullAuditMultiplier = sampleMode ? 1 : 1.4;
   const collectionCostEur = Math.round(estimatedRequests * averageCostPerRequest * fullAuditMultiplier * 100) / 100;
   const totalBudgetEur = Math.min(30, Math.max(4, Math.round(collectionCostEur * 2.5)));
-  // Social share is kept under ~30% by including only 1 cheap social source for
-  // small audits, and adding a second only for larger audits.
-  const socialSharePercent = Math.round((socialSources.length + 1) / sourceCount * 100);
+  // The worker caps the combined social budget pool at ~35% of the total query
+  // budget when several social platforms are active.
+  const socialSharePercent = Math.round(0.35 * 100);
   return {
     targetPrompts,
     sampleMode,
