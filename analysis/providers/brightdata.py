@@ -37,10 +37,10 @@ class BrightDataProvider(AnalysisProvider):
             observations.extend(self._execute_batch(batch))
         return observations
 
-    def _execute_batch(self, requests: List[AnalysisRequest]) -> List[AnalysisObservation]:
-        if not requests:
+    def _execute_batch(self, analysis_requests: List[AnalysisRequest]) -> List[AnalysisObservation]:
+        if not analysis_requests:
             return []
-        first = requests[0]
+        first = analysis_requests[0]
         dataset_id = self.dataset_ids.get(first.engine, "")
         if not self.api_key or not dataset_id:
             raise MissingCredentialsError(
@@ -53,7 +53,7 @@ class BrightDataProvider(AnalysisProvider):
             "require_sources": True,
             "web_search": request.web_search,
             "additional_prompt": self._language_instruction(request.language),
-        } for request in requests]
+        } for request in analysis_requests]
         response = requests.post(
             self.endpoint,
             params={"dataset_id": dataset_id, "format": "json", "include_errors": "true"},
@@ -77,7 +77,7 @@ class BrightDataProvider(AnalysisProvider):
         else:
             records = []
         results = []
-        for request, record in zip(requests, records):
+        for request, record in zip(analysis_requests, records):
             observation = self.parse_response(request, record)
             if snapshot_id:
                 observation.metadata["brightdata_snapshot_id"] = snapshot_id
