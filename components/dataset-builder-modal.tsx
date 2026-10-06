@@ -32,8 +32,8 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
   const estimatedCost = executions * costPerExecutionEur;
   const highCost = estimatedCost >= 10;
   const waves = Math.ceil(executions / 5);
-  const minMinutes = waves * 5;
-  const maxMinutes = waves * 15;
+  const minMinutes = waves * 1;
+  const maxMinutes = waves * 3;
   const realism = executions <= 5
     ? { label: "Micro-test recommandé", tone: "good", text: "Idéal pour vérifier le workflow et les exports sans attendre trop longtemps." }
     : executions <= 20
@@ -147,8 +147,9 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
                 <input type="checkbox" checked={engines.includes(engine)} onChange={() => toggleEngine(engine)} /> {label}
               </label>
             ))}
-            <small>Ajouter Perplexity, Gemini ou Google AI Mode multiplie les appels et la durée.</small>
+            <small>Ajouter Perplexity, Gemini ou Google AI Mode multiplie les appels et la durée. Pour un premier test, ne garde que ChatGPT.</small>
           </fieldset>
+          {engines.length > 1 && <p className="warning"><AlertTriangle size={14} /> {engines.length} moteurs sélectionnés. L’échantillon de {executionSampleSize} sera exécuté sur chacun, ce qui multiplie le coût et le temps par {engines.length}.</p>}
           <div className="form-row">
             <label>Coût estimé par appel (€)<input type="number" min="0" step="0.001" value={costPerExecutionEur} onChange={(event) => updateCostPerExecution(Number(event.target.value))} /><small>Sert uniquement au plafond. Le coût réel reste visible dans “Coûts réels”.</small></label>
             <label>Budget maximum (€)<input type="number" min="0" step="1" value={maxBudgetEur} onChange={(event) => setMaxBudgetEur(Number(event.target.value))} /><small>Plafond de sécurité du job. Le worker s&rsquo;arrête avant de le dépasser.</small></label>
@@ -166,7 +167,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
             <p>Moteurs : {engines.map((engine) => engineLabels[engine] ?? engine).join(", ") || "aucun"}</p>
             <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond :</strong> {maxBudgetEur.toFixed(2)} €</p>
             <p><strong>{realism.label}</strong> — {realism.text}</p>
-            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence Bright Data. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
+            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes, selon la latence des moteurs LLM. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
             {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
             {estimatedCost > maxBudgetEur && <p className="warning"><AlertTriangle size={14} /> Le coût estimé dépasse le budget maximum. Retourne à l’étape 2 pour augmenter le plafond ou réduire les moteurs.</p>}
           </div>
