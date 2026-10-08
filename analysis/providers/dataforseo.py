@@ -13,12 +13,12 @@ class DataForSEOProvider(AnalysisProvider):
     """
 
     name = "dataforseo"
-    base_url = "https://api.dataforseo.com/v3/ai_optimization"
+    base_url = "https://api.dataforseo.com/v3"
     engine_paths = {
-        "chatgpt": "chat_gpt",
-        "gemini": "gemini",
-        "perplexity": "perplexity",
-        "claude": "claude",
+        "chatgpt": "ai_optimization/chat_gpt",
+        "gemini": "ai_optimization/gemini",
+        "perplexity": "ai_optimization/perplexity",
+        "claude": "ai_optimization/claude",
     }
     default_models = {
         "chatgpt": "gpt-4.1-mini",
@@ -26,6 +26,7 @@ class DataForSEOProvider(AnalysisProvider):
         "perplexity": "sonar",
         "claude": "claude-3-5-sonnet",
     }
+    country_locations = {"BE": "Belgium", "FR": "France", "NL": "Netherlands", "DE": "Germany", "US": "United States", "GB": "United Kingdom"}
 
     def __init__(self, login: Optional[str] = None, password: Optional[str] = None, timeout: int = 120):
         self.login = login or self.env("DATAFORSEO_LOGIN")
@@ -39,6 +40,8 @@ class DataForSEOProvider(AnalysisProvider):
     def execute(self, request: AnalysisRequest) -> AnalysisObservation:
         if not self.is_configured:
             raise MissingCredentialsError("DataForSEO requires DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD")
+        if request.engine == "google_ai_mode":
+            return self._execute_google_ai_mode(request)
         path = self.engine_paths.get(request.engine)
         if not path:
             raise ProviderError(f"DataForSEO ne supporte pas le moteur {request.engine}")
@@ -61,6 +64,54 @@ class DataForSEOProvider(AnalysisProvider):
         if not response.ok:
             raise ProviderError(f"DataForSEO returned HTTP {response.status_code}: {response.text[:300]}")
         return self.parse_response(request, response.json())
+
+    def _execute_google_ai_mode(self, request: AnalysisRequest) -> AnalysisObservation:
+        location = self.country_locations.get(request.country.upper()[:2], request.country)
+        task = {
+            "keyword": request.prompt,
+            "location_name": location,
+            "language_code": "en",
+            "device": "desktop",
+            "os": "windows",
+        }
+        response = requests.post(
+            f"{self.base_url}/serp/google/ai_mode/live/advanced",
+            auth=(self.login, self.password),
+            headers={"Content-Type": "application/json"},
+            json=[task],
+            timeout=self.timeout,
+        )
+        if not response.ok:
+            raise ProviderError(f"DataForSEO AI Mode returned HTTP {response.status_code}: {response.text[:300]}")
+        return self._parse_ai_mode(request, response.json())
+
+    def _parse_ai_mode(self, request: AnalysisRequest, raw: Any) -> AnalysisObservation:
+        tasks = raw.get("tasks") or []
+        task = tasks[0] if tasks else {}
+        status = task.get("status_code")
+        if status and status >= 40000:
+            raise ProviderError(f"DataForSEO AI Mode task failed: {task.get('status_message')}")
+        results = task.get("result") or []
+        record = results[0] if isinstance(results, list) and results else {}
+        overview = next((item for item in record.get("items") or [] if isinstance(item, dict) and item.get("type") == "ai_overview"), {})
+        elements = overview.get("items") or []
+        answer = "".join(str(el.get("markdown") or el.get("text") or "") for el in elements if isinstance(el, dict))
+        references = overview.get("references") or []
+        citations = [{"url": ref.get("url", ""), "title": ref.get("title", ""), "text": ref.get("text", "")} for ref in references if isinstance(ref, dict)]
+        return AnalysisObservation(
+            prompt=request.prompt,
+            provider=self.name,
+            engine=request.engine,
+            answer=answer,
+            fan_outs=[],
+            citations=normalize_citations(citations),
+            country=request.country,
+            language=request.language,
+            model="google-ai-mode",
+            web_search_triggered=bool(overview),
+            raw_response=record or raw,
+            metadata=request.metadata,
+        )
 
     def parse_response(self, request: AnalysisRequest, raw: Any) -> AnalysisObservation:
         if not isinstance(raw, dict):
