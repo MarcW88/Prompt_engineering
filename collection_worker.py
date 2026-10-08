@@ -19,7 +19,7 @@ from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBu
 from analysis.dataset_quality import score_dataset_example
 from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
-from analysis.providers import BrightDataProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
+from analysis.providers import BrightDataProvider, DataForSEOProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
 from analysis.reconstruction import PromptReconstructor, ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
@@ -586,7 +586,9 @@ class CollectionWorker:
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         self._report(job, 10, "Démarrage des exécutions moteur")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
-        if provider_name == "openai":
+        if provider_name == "dataforseo":
+            provider = DataForSEOProvider()
+        elif provider_name == "openai":
             provider = OpenAILLMProvider()
         elif provider_name == "oxylabs":
             provider = OxylabsProvider()
@@ -729,7 +731,9 @@ class CollectionWorker:
         if projected_cost > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Projected cost {projected_cost:.2f} EUR exceeds budget")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
-        if provider_name == "openai":
+        if provider_name == "dataforseo":
+            provider = DataForSEOProvider()
+        elif provider_name == "openai":
             provider = OpenAILLMProvider()
         elif provider_name == "oxylabs":
             provider = OxylabsProvider()
