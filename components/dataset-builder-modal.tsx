@@ -46,15 +46,13 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
   const executions = useMemo(() => estimateDatasetExecutions({ executionSampleSize, repetitions, engines }), [executionSampleSize, repetitions, engines]);
   const estimatedCost = executions * costPerExecutionEur;
   const highCost = estimatedCost >= 10;
-  const waves = Math.ceil(executions / 5);
-  const waveMinMinutes = 1;
-  const waveMaxMinutes = 3;
-  const minMinutes = waves * waveMinMinutes;
-  const maxMinutes = waves * waveMaxMinutes;
+  const secondsPerExecution = 10;
+  const minMinutes = Math.max(1, Math.ceil((executions * secondsPerExecution) / 60));
+  const maxMinutes = Math.max(2, Math.ceil((executions * secondsPerExecution * 2.5) / 60));
   const realism = executions <= 5
     ? { label: "Micro-test recommandé", tone: "good", text: "Idéal pour vérifier le workflow et les exports sans attendre trop longtemps." }
     : executions <= 20
-      ? { label: "Test réaliste", tone: "medium", text: "Suffisant pour évaluer la diversité des clusters, mais Bright Data peut prendre 20 à 60 minutes." }
+      ? { label: "Test réaliste", tone: "medium", text: "Suffisant pour évaluer la diversité des clusters en quelques minutes." }
       : executions <= 100
         ? { label: "Analyse large", tone: "warn", text: "À réserver après un premier test réussi. Vérifiez le budget et laissez le job tourner en arrière-plan." }
         : { label: "Analyse massive", tone: "warn", text: "Non recommandée pour un test. Réduisez l'échantillon ou augmentez progressivement." };
@@ -158,7 +156,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
         {step === 2 && <>
           <div className="builder-guide">
             <strong>Étape 2 — Moteurs et budget</strong>
-            <p>Commence par ChatGPT seul. Chaque moteur coché multiplie les exécutions payantes. La vitesse réelle dépend du provider configuré côté worker (Bright Data est lent, OpenAI direct est rapide).</p>
+            <p>Commence par ChatGPT seul. Chaque moteur coché multiplie les exécutions payantes (~0,03 $ par appel sur ta balance DataForSEO).</p>
           </div>
           <fieldset>
             <legend>Moteurs d&rsquo;exécution</legend>
@@ -195,7 +193,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
             <p>Moteurs : {engines.map((engine) => engineLabels[engine] ?? engine).join(", ") || "aucun"}</p>
             <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond :</strong> {maxBudgetEur.toFixed(2)} €</p>
             <p><strong>{realism.label}</strong> — {realism.text}</p>
-            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes avec OpenAI direct. Bright Data peut être 5 à 10 fois plus lent selon la file d’attente. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
+            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes (~10 s par exécution via DataForSEO). Facturé sur ta balance DataForSEO, pas OpenAI. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
             {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
             {estimatedCost > maxBudgetEur && <p className="warning"><AlertTriangle size={14} /> Le coût estimé dépasse le budget maximum. Retourne à l’étape 2 pour augmenter le plafond ou réduire les moteurs.</p>}
           </div>
