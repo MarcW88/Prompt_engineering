@@ -184,6 +184,7 @@ class CollectionWorker:
     def _stored_observations(self, prompt_id: str, engines=None):
         engine_filter = f"&engine=in.({','.join(engines)})" if engines else ""
         rows = self.db.request("GET", "observations", f"select=*&prompt_id=eq.{prompt_id}{engine_filter}&order=observed_at.asc")
+        rows = [row for row in rows if row.get("answer") and not (row.get("raw_response") or {}).get("error")]
         observation_ids = [row["id"] for row in rows]
         fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&observation_id=in.({','.join(observation_ids)})") if observation_ids else []
         fan_outs = {}
