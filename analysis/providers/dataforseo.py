@@ -47,7 +47,8 @@ class DataForSEOProvider(AnalysisProvider):
         if not path:
             raise ProviderError(f"DataForSEO ne supporte pas le moteur {request.engine}")
         task = {
-            "user_prompt": request.prompt,
+            # DataForSEO limits user_prompt to 500 characters.
+            "user_prompt": request.prompt[:500],
             "model_name": self.env(f"DATAFORSEO_{request.engine.upper()}_MODEL") or self.default_models[request.engine],
             "web_search": True,
         }
@@ -71,7 +72,8 @@ class DataForSEOProvider(AnalysisProvider):
     def _execute_google_ai_mode(self, request: AnalysisRequest) -> AnalysisObservation:
         location = self.country_locations.get(request.country.upper()[:2], request.country)
         task = {
-            "keyword": request.prompt,
+            # AI Mode keyword is limited to 700 characters.
+            "keyword": request.prompt[:700],
             "location_name": location,
             "language_code": "en",
             "device": "desktop",
