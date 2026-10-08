@@ -18,7 +18,16 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
     prompt_signature = build_signature([candidate.text])
     similarities = [signature_similarity(prompt_signature, build_signature([prompt])) for prompt in similar_prompts if prompt != candidate.text]
     redundancy = max(similarities, default=0.0)
-    quality = 0.4 * coverage + 0.35 * reproduction + 0.2 * stability + 0.05 * (1 - redundancy)
+    has_fan_outs = any(observation.fan_outs for observation in observations)
+    answer_score = sum(min(1.0, len(observation.answer or "") / 400) for observation in observations) / len(observations)
+    avg_citations = sum(len(observation.citations) for observation in observations) / len(observations)
+    citation_score = min(1.0, avg_citations / 3)
+    if has_fan_outs:
+        quality = 0.35 * coverage + 0.30 * reproduction + 0.15 * stability + 0.15 * answer_score + 0.05 * (1 - redundancy)
+    else:
+        # Engines like Google AI Mode never return fan-out queries: score the
+        # answer itself and its citations instead of forcing coverage to 0.
+        quality = 0.50 * answer_score + 0.25 * citation_score + 0.20 * stability + 0.05 * (1 - redundancy)
     return {
         "coverage_score": round(coverage, 4),
         "stability_score": round(stability, 4),

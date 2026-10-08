@@ -24,10 +24,14 @@ export function ValidationModal({ projectId, onClose, onJobQueued }: { projectId
       ]);
       const datasetsData = datasetsResponse.ok ? await datasetsResponse.json() : { datasets: [] };
       const jobsData = jobsResponse.ok ? await jobsResponse.json() : { jobs: [] };
-      const list = datasetsData.datasets ?? [];
+      const list = (datasetsData.datasets ?? []).filter((dataset: Dataset) => dataset.status === "ready");
       if (!active) return;
       setDatasets(list);
-      setSelectedDatasetId((current) => current || list[0]?.id || "");
+      setSelectedDatasetId((current) => {
+        if (current && list.some((dataset: Dataset) => dataset.id === current)) return current;
+        const withAccepted = list.find((dataset: Dataset) => Number(dataset.statistics?.accepted ?? 0) > 0);
+        return withAccepted?.id || list[0]?.id || "";
+      });
       setJobs((jobsData.jobs ?? []).filter((job: ValidationJob) => job.kind === "validate_dataset"));
       setHasLoaded(true);
     }
