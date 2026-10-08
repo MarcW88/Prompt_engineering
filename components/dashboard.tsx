@@ -56,6 +56,7 @@ export function Dashboard() {
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
   const [jobs, setJobs] = useState<Array<{ kind: string; status: string }>>([]);
   const [configured, setConfigured] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Workspace GEO");
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
@@ -80,8 +81,12 @@ export function Dashboard() {
   const loadDashboard = useCallback(async (selectedProjectId?: string) => {
     const suffix = selectedProjectId ? `?projectId=${encodeURIComponent(selectedProjectId)}` : "";
     const response = await fetch(`/api/dashboard${suffix}`);
-    if (!response.ok) throw new Error("Dashboard indisponible");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error ?? "Dashboard indisponible");
+    }
     const data = await response.json();
+    setLoadError("");
     setConfigured(Boolean(data.configured));
     setProjectId(data.projectId ?? null);
     setProjectName(data.projectName ?? "Workspace GEO");
@@ -96,8 +101,8 @@ export function Dashboard() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadDashboard().catch(() => {
-        setConfigured(false);
+      void loadDashboard().catch((reason: unknown) => {
+        setLoadError(reason instanceof Error ? reason.message : "Dashboard indisponible");
         setRecords([]);
       });
     }, 0);
@@ -235,7 +240,8 @@ export function Dashboard() {
             <div className="hero-actions"><button className="secondary" onClick={() => setCostsModal(true)}><CircleDollarSign size={17} /> Coûts réels</button><button className="secondary" onClick={() => setReviewModal(true)}><ShieldCheck size={17} /> Revue manuelle</button><button className="secondary" onClick={() => setDatasetModal(true)}><Database size={17} /> Dataset Builder</button></div>
           </section>
 
-          {!configured && <div className="setup-banner"><Database size={17} /><div><strong>Base de données à connecter</strong><span>Ajoutez NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SECRET_KEY dans Vercel pour activer les données réelles.</span></div></div>}
+          {loadError && <div className="setup-banner"><Database size={17} /><div><strong>Erreur de chargement</strong><span>{loadError}</span></div><button className="secondary" onClick={() => void loadDashboard(projectId ?? undefined).catch(() => undefined)}>Réessayer</button></div>}
+          {!configured && !loadError && <div className="setup-banner"><Database size={17} /><div><strong>Base de données à connecter</strong><span>Ajoutez NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SECRET_KEY dans Vercel pour activer les données réelles.</span></div></div>}
           {configured && !projectId && <div className="setup-banner"><Database size={17} /><div><strong>Créez votre premier workspace</strong><span>Le projet regroupera les sources, questions, prompts et observations.</span></div><button className="secondary" onClick={() => setWorkspaceModal(true)}>Créer un workspace</button></div>}
           <section className="metrics">
             <article><div className="metric-icon violet"><CircleHelp /></div><div><span>Questions collectées</span><strong>{metrics.questions.toLocaleString("fr-FR")}</strong><small>Données persistées</small></div></article>

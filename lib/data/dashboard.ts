@@ -48,7 +48,7 @@ export async function getDashboardData(projectId?: string): Promise<DashboardDat
   ]);
   const ids = promptIds.map((row) => row.id);
   const datasetIds = datasets.map((row) => row.id);
-  const observations = await fetchLinked<{ id: string; stability_score: number }>("observations", ids, "prompt_id", "id,stability_score");
+  const observations = await fetchLinked<{ id: string }>("observations", ids, "prompt_id", "id");
   const validations = await fetchLinked<{ id: string; stability_score: number }>("validations", ids, "prompt_id", "id,stability_score");
   const examples = await fetchLinked<{ id: string; manual_review_status: string }>("dataset_examples", datasetIds, "dataset_id", "id,manual_review_status");
   const stability = validations.length ? Math.round(validations.reduce((sum, row) => sum + Number(row.stability_score), 0) / validations.length * 100) : 0;
