@@ -58,7 +58,7 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="modal docs-modal" onMouseDown={(event) => event.stopPropagation()}>
+      <section className="modal exports-modal" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div><span className="eyebrow">EXPORTS</span><h2>Exporter chaque étape</h2></div>
           <button type="button" className="icon-button" onClick={onClose}><X size={19} /></button>

@@ -13,7 +13,7 @@ const engineLabels: Record<string, string> = {
 
 const steps = ["Corps", "Moteurs", "Vérification"];
 
-export function DatasetBuilderModal({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
+export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { projectId: string | null; onClose: () => void; onJobQueued?: () => void }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("Dataset GEO initial");
   const [candidatePoolSize, setCandidatePoolSize] = useState(50);
@@ -101,7 +101,8 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Construction impossible.");
       setDatasetId(data.dataset.id);
-      setStatus(`${candidatePoolSize.toLocaleString("fr-FR")} candidats à construire, ${executions.toLocaleString("fr-FR")} observations de screening planifiées. Le job apparaît dans Piloter les jobs.`);
+      setStatus(`${candidatePoolSize.toLocaleString("fr-FR")} candidats à construire, ${executions.toLocaleString("fr-FR")} observations de screening planifiées.`);
+      window.setTimeout(() => onJobQueued?.(), 600);
     } catch (reason) {
       setStatus(reason instanceof Error ? reason.message : "Construction impossible.");
     } finally {
@@ -115,6 +116,7 @@ export function DatasetBuilderModal({ projectId, onClose }: { projectId: string 
     const response = await fetch("/api/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, datasetId, targetRuns, limit: targetRuns === 3 ? 100 : 50 }) });
     const data = await response.json();
     setStatus(response.ok ? `Vague ${targetRuns} runs ajoutée à la file du worker.` : data.error ?? "Planification impossible.");
+    if (response.ok) window.setTimeout(() => onJobQueued?.(), 600);
   }
 
   const canGoNext = step === 1 || (step === 2 && engines.length > 0);

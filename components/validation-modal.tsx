@@ -6,7 +6,7 @@ import { ArrowRight, CheckCircle2, Play, ShieldCheck, X } from "lucide-react";
 interface Dataset { id: string; name: string; status: string; statistics?: Record<string, unknown>; created_at: string }
 interface ValidationJob { id: string; kind: string; status: string; progress: number; output?: Record<string, unknown>; error?: string | null; created_at: string }
 
-export function ValidationModal({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
+export function ValidationModal({ projectId, onClose, onJobQueued }: { projectId: string | null; onClose: () => void; onJobQueued?: () => void }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [jobs, setJobs] = useState<ValidationJob[]>([]);
@@ -46,6 +46,7 @@ export function ValidationModal({ projectId, onClose }: { projectId: string | nu
     });
     const data = await response.json();
     setMessage(response.ok ? `Vague ${targetRuns} runs ajoutée à la file du worker.` : data.error ?? "Planification impossible.");
+    if (response.ok) window.setTimeout(() => onJobQueued?.(), 700);
   }
 
   const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);

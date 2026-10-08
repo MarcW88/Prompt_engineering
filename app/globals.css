@@ -8,3 +8,27 @@
 .next-step{padding:14px;border:1px solid #ddd8ff;border-radius:14px;background:#f7f6ff;margin-bottom:14px}.next-step strong{display:block;font-size:13px;color:var(--violet)}.next-step p{margin:5px 0 0;color:var(--muted);font-size:13px;line-height:1.5}.cancel-button,.remove-button{display:inline-flex;align-items:center;gap:4px;margin-left:auto;border:0;background:#fff2f2;color:#b83e3e;font-size:12px;font-weight:700;padding:4px 8px;border-radius:7px}.cancel-button:disabled,.remove-button:disabled{opacity:.55}.remove-button{background:#f1f0ec;color:var(--muted)}.execution-stage{display:block;margin-top:8px;color:var(--violet);font-weight:700}.job-cancelled .execution-bar span{background:#8a8794}
 .next-action{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 22px;margin-top:16px;border:1px solid #ddd8ff;border-radius:18px;background:linear-gradient(135deg,#f7f6ff,#fff)}.next-action h2{margin:4px 0 6px;font-size:21px}.next-action p{margin:0;color:var(--muted);line-height:1.5}.next-action .primary{flex:none}@media(max-width:760px){.next-action{align-items:flex-start;flex-direction:column}.next-action .primary{width:100%;justify-content:center}}
 .workflow-track{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.workflow-step{position:relative;text-align:left;padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff;color:var(--ink)}.workflow-step .step-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--violet-soft);color:var(--violet);margin:12px 0}.workflow-step h3{margin:0;font-size:15px}.workflow-step p{min-height:39px;margin:7px 0 12px;color:var(--muted);font-size:12px;line-height:1.45}.workflow-step strong{font-size:22px}.workflow-step small{display:block;color:var(--muted);margin-top:2px}.workflow-step em{display:inline-flex;margin-top:12px;padding:4px 8px;border-radius:99px;background:#f0eee9;color:var(--muted);font-size:11px;font-style:normal;font-weight:800}.workflow-step.done{border-color:#bfe4d4}.workflow-step.done .step-icon{background:var(--green-soft);color:var(--green)}.workflow-step.done em{background:var(--green-soft);color:var(--green)}.workflow-step.current{border-color:#b9b0ff;box-shadow:0 0 0 3px var(--violet-soft)}.workflow-step.current em{background:var(--violet-soft);color:var(--violet)}.workflow-step.ready em{background:#eef5ff;color:var(--blue)}@media(max-width:1100px){.workflow-track{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.workflow-track{grid-template-columns:1fr}.workflow-step p{min-height:auto}}
+
+/* UX polish: wider exports modal, tighter modal typography */
+.exports-modal{width:min(1080px,calc(100vw - 32px))}
+.exports-modal .export-grid{grid-template-columns:repeat(2,1fr);gap:14px}
+@media(max-width:760px){.exports-modal .export-grid{grid-template-columns:1fr}}
+.modal h2{font-size:18px;letter-spacing:-.3px}
+.modal .eyebrow{font-size:9px;letter-spacing:1.4px}
+.export-intro{font-size:13px;line-height:1.5}
+.docs-intro{padding:13px 15px}
+.docs-intro p{font-size:12px;line-height:1.5}
+.docs-intro strong{font-size:13px}
+.builder-guide{padding:12px 14px}
+.builder-guide strong{font-size:13px}
+.builder-guide ol{font-size:12px;line-height:1.5}
+.builder-guide p{font-size:12px;line-height:1.5;margin:5px 0 0;color:var(--muted)}
+.next-step{padding:12px 14px}
+.next-step p{font-size:12px}
+.dataset-estimate{font-size:12px;line-height:1.5;padding:12px 14px}
+.dataset-estimate p strong{font-size:13px}
+.dataset-modal label small,.dataset-modal fieldset small,.seed-modal label small,.seed-modal fieldset small{font-size:10.5px}
+.export-item p{font-size:11.5px}
+.modal-head{margin-bottom:16px}
+.modal-actions{margin-top:16px}
+.import-status{font-size:12px}

@@ -68,12 +68,12 @@ export function Dashboard() {
     if (!metrics.signals || !metrics.questions || !metrics.clusters) return { title: "Préparer les questions", text: "Transforme les signaux en questions, puis lance automatiquement le clustering.", action: () => setPipelineModal(true), button: "Ouvrir le workflow" };
     const buildJob = jobs.find((job) => job.kind === "build_dataset");
     const validateJob = jobs.find((job) => job.kind === "validate_dataset");
-    if (!metrics.observations && buildJob?.status !== "completed") return { title: "1. Construire le dataset", text: "Sélectionnez un petit échantillon de clusters et lancez les premières exécutions.", action: () => setDatasetModal(true), button: "Ouvrir Dataset Builder" };
-    if (!metrics.observations && buildJob?.status === "completed") return { title: "1b. Problème de build", text: "Le dataset s’est terminé mais aucune observation n’a été créée. Vérifiez Piloter les jobs pour l’erreur.", action: () => setExecutionModal(true), button: "Voir l’erreur" };
-    if (!metrics.validations && validateJob?.status !== "completed") return { title: "2. Valider le dataset", text: "Relancez les prompts acceptés sur 3 runs pour mesurer la stabilité.", action: () => setValidationModal(true), button: "Ouvrir Validation" };
-    if (!metrics.prompts) return { title: "3. Reverse engineering", text: "Reconstruisez des prompts plausibles depuis les fan-outs observés.", action: () => setPipelineModal(true), button: "Reconstruire" };
-    if (!metrics.approved) return { title: "4. Revue manuelle", text: "Approuvez, modifiez ou rejetez les prompts avant l’export final.", action: () => setReviewModal(true), button: "Réviser" };
-    return { title: "5. Exporter", text: "Téléchargez les prompts approuvés au format Semactic.", action: () => setExportsModal(true), button: "Exporter" };
+    if (!metrics.observations && buildJob?.status !== "completed") return { title: "Étape 4 — Construire le dataset", text: "Passer à l’étape suivante : sélectionnez un échantillon de clusters et lancez les exécutions moteur.", action: () => setDatasetModal(true), button: "Ouvrir Dataset Builder" };
+    if (!metrics.observations && buildJob?.status === "completed") return { title: "Étape 4 — Le build n’a rien produit", text: "Le dataset s’est terminé mais aucune observation n’a été créée. Ouvrez la progression pour voir l’erreur.", action: () => setExecutionModal(true), button: "Voir l’erreur" };
+    if (!metrics.validations && validateJob?.status !== "completed") return { title: "Étape 5 — Valider le dataset", text: "Passer à l’étape suivante : relancez les prompts acceptés sur 3 runs pour mesurer la stabilité.", action: () => setValidationModal(true), button: "Ouvrir la validation" };
+    if (!metrics.prompts) return { title: "Étape 6 — Reverse engineering", text: "Passer à l’étape suivante : reconstruisez des prompts plausibles depuis les fan-outs observés.", action: () => setPipelineModal(true), button: "Reconstruire" };
+    if (!metrics.approved) return { title: "Étape 7 — Revue manuelle", text: "Passer à l’étape suivante : approuvez, modifiez ou rejetez les prompts avant l’export final.", action: () => setReviewModal(true), button: "Réviser" };
+    return { title: "Étape 8 — Exporter", text: "Téléchargez les prompts approuvés au format Semactic.", action: () => setExportsModal(true), button: "Exporter" };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJob, metrics, projectId]);
 
@@ -284,15 +284,15 @@ export function Dashboard() {
       </main>
       {sidebar && <button className="backdrop" onClick={() => setSidebar(false)} aria-label="Fermer le menu" />}
       {modal && <PromptModal projectId={projectId} onClose={() => setModal(false)} onSubmit={reloadAfterPromptTest} />}
-      {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} onSubmitted={() => void loadDashboard(projectId ?? undefined)} />}
-      {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} />}
+      {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} onSubmitted={() => { setSeedModal(false); setExecutionModal(true); void loadDashboard(projectId ?? undefined); }} />}
+      {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} onJobQueued={() => { setDatasetModal(false); setExecutionModal(true); }} />}
       {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} onOpenCollection={() => { setPipelineModal(false); setSeedModal(true); }} onOpenDataset={() => { setPipelineModal(false); setDatasetModal(true); }} onOpenValidation={() => { setPipelineModal(false); setValidationModal(true); }} onOpenReview={() => { setPipelineModal(false); setReviewModal(true); }} onOpenExports={() => { setPipelineModal(false); setExportsModal(true); }} />}
       {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
       {costsModal && <CostsModal projectId={projectId} onClose={() => setCostsModal(false)} />}
       {docsModal && <DocumentationModal onClose={() => setDocsModal(false)} />}
       {executionModal && <ExecutionCenterModal projectId={projectId} onClose={() => setExecutionModal(false)} />}
       {exportsModal && <ExportsModal projectId={projectId} onClose={() => setExportsModal(false)} />}
-      {validationModal && <ValidationModal projectId={projectId} onClose={() => setValidationModal(false)} />}
+      {validationModal && <ValidationModal projectId={projectId} onClose={() => setValidationModal(false)} onJobQueued={() => { setValidationModal(false); setExecutionModal(true); }} />}
       {workspaceModal && <WorkspaceModal onClose={() => setWorkspaceModal(false)} onCreated={workspaceCreated} />}
     </div>
   );
