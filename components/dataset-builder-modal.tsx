@@ -93,6 +93,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
 
   async function submit() {
     if (!projectId) { setStatus("Créez d'abord un workspace Supabase."); return; }
+    if (step < 3) { setStep(step + 1); return; }
     if (highCost && !window.confirm(`Coût estimé : ${estimatedCost.toFixed(2)} €. Cette analyse dépasse 10 €. Confirmer le lancement ?`)) return;
     setLoading(true);
     setStatus("Création du corpus candidat…");
@@ -123,7 +124,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <form className="modal dataset-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <form className="modal dataset-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (step === 3) void submit(); }}>
         <div className="modal-head">
           <div>
             <span className="eyebrow">REVERSE ENGINEERING</span>
