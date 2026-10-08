@@ -50,7 +50,6 @@ class BrightDataProvider(AnalysisProvider):
             "url": self._engine_url(first.engine),
             "prompt": request.prompt,
             "country": request.country.upper(),
-            "require_sources": True,
             "web_search": request.web_search,
             "additional_prompt": self._language_instruction(request.language),
         } for request in analysis_requests]
