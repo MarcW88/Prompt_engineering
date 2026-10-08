@@ -22,10 +22,11 @@ class DataForSEOProvider(AnalysisProvider):
     }
     default_models = {
         "chatgpt": "gpt-4.1-mini",
-        "gemini": "gemini-2.0-flash",
+        "gemini": "gemini-2.5-flash",
         "perplexity": "sonar",
         "claude": "claude-3-5-sonnet",
     }
+    geo_supported = {"chatgpt", "perplexity", "claude"}
     country_locations = {"BE": "Belgium", "FR": "France", "NL": "Netherlands", "DE": "Germany", "US": "United States", "GB": "United Kingdom"}
 
     def __init__(self, login: Optional[str] = None, password: Optional[str] = None, timeout: int = 120):
@@ -50,10 +51,12 @@ class DataForSEOProvider(AnalysisProvider):
             "model_name": self.env(f"DATAFORSEO_{request.engine.upper()}_MODEL") or self.default_models[request.engine],
             "web_search": True,
         }
-        if request.country:
+        if request.country and request.engine in self.geo_supported:
             task["web_search_country_iso_code"] = request.country.upper()[:2]
-        if request.language:
+        if request.language and request.engine in self.geo_supported:
             task["web_search_language_iso_code"] = request.language.lower()[:2]
+        if request.engine == "gemini":
+            task["max_output_tokens"] = 1024
         response = requests.post(
             f"{self.base_url}/{path}/llm_responses/live",
             auth=(self.login, self.password),
