@@ -600,6 +600,7 @@ class CollectionWorker:
         accepted = rejected = completed = openai_search_calls = 0
         tasks = []
         stored_observations = {}
+        all_prompts = [candidate.text for candidate in candidates]
         for candidate in selected:
             prompt = prompts_by_text.get(candidate.text)
             example = examples_by_prompt.get(prompt["id"]) if prompt else None
@@ -608,8 +609,16 @@ class CollectionWorker:
             existing = self._stored_observations(prompt["id"], engines)
             stored_observations[example["id"]] = existing
             if int(example.get("completed_runs") or 0) >= repetitions or min(sum(item.engine == engine for item in existing) for engine in engines) >= repetitions:
-                accepted += int(example.get("status") == "accepted")
-                rejected += int(example.get("status") == "rejected")
+                if example.get("status") in ("accepted", "rejected"):
+                    accepted += int(example.get("status") == "accepted")
+                    rejected += int(example.get("status") == "rejected")
+                elif existing:
+                    scores = score_dataset_example(candidate, existing, all_prompts)
+                    is_accepted = scores["quality_score"] >= threshold
+                    accepted += int(is_accepted)
+                    rejected += int(not is_accepted)
+                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                    self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                 continue
             records.append((candidate, prompt, example, existing))
             for engine in engines:
@@ -617,13 +626,12 @@ class CollectionWorker:
                 for run_index in range(completed_runs, repetitions):
                     tasks.append((candidate, prompt, example, engine, run_index))
         openai_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-        all_prompts = [candidate.text for candidate in candidates]
         total = max(1, len(tasks))
         expected = {example["id"]: repetitions * len(engines) for _, _, example, _ in records}
         received = {example["id"]: 0 for _, _, example, _ in records}
         concurrency = max(1, min(20, int(os.getenv("ANALYSIS_CONCURRENCY", "10"))))
         self._report(job, 12, f"{len(tasks)} exécutions à lancer (provider={provider_name}, concurrency={concurrency})")
-        if not tasks:
+        if not tasks and not (accepted or rejected):
             raise RuntimeError(f"Aucune exécution à lancer. {len(records)} exemples existants déjà complétés ou manquants.")
         # For providers that support batched execution (Bright Data), group tasks
         # by engine to send several prompts in a single snapshot.
@@ -681,7 +689,7 @@ class CollectionWorker:
                         self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                         self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                     self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
-        if completed == 0:
+        if completed == 0 and not (accepted or rejected):
             raise RuntimeError("Aucune observation n'a été produite. Vérifiez les clés API et le provider.")
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
