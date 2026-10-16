@@ -293,7 +293,7 @@ export function Dashboard() {
       {seedModal && <SeedModal projectId={projectId} onClose={() => setSeedModal(false)} onSubmitted={() => { setSeedModal(false); setExecutionModal(true); void loadDashboard(projectId ?? undefined); }} />}
       {datasetModal && <DatasetBuilderModal projectId={projectId} onClose={() => setDatasetModal(false)} onJobQueued={() => { setDatasetModal(false); setExecutionModal(true); }} />}
       {pipelineModal && <PipelineModal projectId={projectId} onClose={() => setPipelineModal(false)} onOpenCollection={() => { setPipelineModal(false); setSeedModal(true); }} onOpenDataset={() => { setPipelineModal(false); setDatasetModal(true); }} onOpenValidation={() => { setPipelineModal(false); setValidationModal(true); }} onOpenReview={() => { setPipelineModal(false); setReviewModal(true); }} onOpenExports={() => { setPipelineModal(false); setExportsModal(true); }} />}
-      {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} />}
+      {reviewModal && <ManualReviewModal projectId={projectId} onClose={() => setReviewModal(false)} onCompleted={() => { setReviewModal(false); setExportsModal(true); void loadDashboard(projectId ?? undefined); }} />}
       {costsModal && <CostsModal projectId={projectId} onClose={() => setCostsModal(false)} />}
       {docsModal && <DocumentationModal onClose={() => setDocsModal(false)} />}
       {executionModal && <ExecutionCenterModal projectId={projectId} onClose={() => setExecutionModal(false)} />}
