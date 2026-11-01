@@ -85,7 +85,10 @@ class AdapterTests(unittest.TestCase):
         self.assertTrue(all(i.metadata['extractor'] == 'forumscraper' for i in items))
 
     def test_extractor_requests_in_memory_data(self):
-        import forumscraper
+        try:
+            import forumscraper
+        except Exception:
+            self.skipTest("forumscraper requires Python >= 3.10")
         from scrapers.extractors import extract_forum_thread
         def get_thread(url, state, output):
             self.assertIn(forumscraper.Outputs.data, output)
