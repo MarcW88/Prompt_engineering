@@ -104,14 +104,15 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
     if (response.ok) await load();
   }
 
-  const minExecutions = selectedTargets.length * maxCandidates * validationRuns;
-
-  useEffect(() => {
-    if (rePanel) setExecutionCeiling((current) => Math.max(current, minExecutions));
-  }, [rePanel, minExecutions]);
+  const maxExecutions = selectedTargets.length * maxCandidates * validationRuns;
+  const effectiveCeiling = Math.max(executionCeiling, maxExecutions);
 
   function toggleTarget(id: string) {
-    setSelectedTargets((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setSelectedTargets((current) => {
+      if (current.includes(id)) return current.filter((value) => value !== id);
+      if (current.length >= 10) return current; // le worker borne max_targets à 10
+      return [...current, id];
+    });
   }
 
   async function launchReverseEngineer() {
@@ -128,7 +129,7 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
           max_targets: selectedTargets.length,
           max_candidates_per_cluster: maxCandidates,
           validation_runs: validationRuns,
-          max_validation_executions: executionCeiling,
+          max_validation_executions: effectiveCeiling,
         },
       }),
     });
@@ -211,7 +212,7 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
           <div className="export-item" style={{ padding: "1rem" }}>
             <strong>Cibles de reconstruction — observations avec fan-outs rapportés par le provider</strong>
             <p>Seules les observations réelles du projet sont éligibles. Le prompt cible est exclu de son propre contexte ICL et la validation réexécute chaque candidat sur le même moteur.</p>
-            {targets.length === 0 && <p>Aucune observation éligible : exécutez d'abord des prompts via l'étape 4 (build_dataset) pour produire des fan-outs Bright Data.</p>}
+            {targets.length === 0 && <p>Aucune observation éligible : exécutez d&apos;abord des prompts via l&apos;étape 4 (build_dataset) pour produire des fan-outs Bright Data.</p>}
             <div style={{ maxHeight: "16rem", overflowY: "auto", margin: "0.75rem 0" }}>
               {targets.map((target) => (
                 <label key={target.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.3rem 0" }}>
@@ -224,11 +225,11 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
             <div className="form-row">
               <label>Candidats / cible<input type="number" min={3} max={5} value={maxCandidates} onChange={(event) => setMaxCandidates(Number(event.target.value))} /></label>
               <label>Runs de validation<input type="number" min={1} max={4} value={validationRuns} onChange={(event) => setValidationRuns(Number(event.target.value))} /></label>
-              <label>Plafond d'exécutions<input type="number" min={minExecutions} value={executionCeiling} onChange={(event) => setExecutionCeiling(Number(event.target.value))} /></label>
+              <label>Plafond d&apos;exécutions<input type="number" min={maxExecutions} value={effectiveCeiling} onChange={(event) => setExecutionCeiling(Number(event.target.value))} /></label>
             </div>
-            <small>Plan borné : {selectedTargets.length} cible(s) × {maxCandidates} candidats × {validationRuns} run(s) = minimum {minExecutions} exécutions payantes. Le statut « validated » exige ≥ 3 runs et une stabilité ≥ 0,65.</small>
+            <small>Plan borné : {selectedTargets.length} cible(s) (max 10) × {maxCandidates} candidats × {validationRuns} run(s) = maximum planifié de {maxExecutions} exécutions payantes ; la validation adaptative peut en exécuter moins. Le statut « validated » exige ≥ 3 runs et une stabilité ≥ 0,65.</small>
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-              <button className="primary" disabled={!selectedTargets.length || executionCeiling < minExecutions} onClick={() => void launchReverseEngineer()}>Lancer la reconstruction</button>
+              <button className="primary" disabled={!selectedTargets.length || effectiveCeiling < maxExecutions} onClick={() => void launchReverseEngineer()}>Lancer la reconstruction</button>
               <button className="secondary" onClick={() => setRePanel(false)}>Fermer</button>
             </div>
           </div>

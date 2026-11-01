@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { createAndTriggerJob } from "@/lib/data/jobs";
+import { createAndTriggerJob, createReservedAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { confirmedCostEur } from "@/lib/data/budget";
 
 const stages = new Set(["prepare_questions", "transform_signals", "cluster_questions", "reverse_engineer"]);
 
@@ -32,23 +31,22 @@ export async function POST(request: Request) {
       if (!Array.isArray(input.target_observation_ids) || !input.target_observation_ids.length || !(Number(input.max_validation_executions) > 0)) {
         return NextResponse.json({ error: "Sélectionnez des target_observation_ids réels et un plafond max_validation_executions. Pour générer depuis les signaux utilisateurs, utilisez build_dataset." }, { status: 400 });
       }
-      const encoded = encodeURIComponent(body.projectId);
-      const [projects, costs, activeJobs] = await Promise.all([
-        supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encoded}&limit=1` }),
-        supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encoded}` }),
-        supabaseRest<Array<{ input: Record<string, unknown> | null }>>("jobs", { query: `select=input&project_id=eq.${encoded}&status=in.(pending,running)` }),
-      ]);
-      const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
-      // Dépense engagée = coûts confirmés + réservations des jobs encore actifs.
-      const concurrentReservedEur = activeJobs.reduce((sum, job) => sum + Number(job.input?.reserved_cost_eur ?? 0), 0);
-      const spentEur = confirmedCostEur(costs) + concurrentReservedEur;
-      const reserveEur = Math.max(0.25, Math.round(totalBudgetEur * 0.1 * 100) / 100);
-      if (spentEur + reserveEur > totalBudgetEur) return NextResponse.json({ error: `Réserve reverse engineering insuffisante : ${reserveEur.toFixed(2)} € requis, ${Math.max(0, totalBudgetEur - spentEur).toFixed(2)} € restant.` }, { status: 422 });
-      input = { ...input, reserved_cost_eur: reserveEur };
+      // Réserve proportionnée au plan déclaré : exécutions moteur plafonnées
+      // + coût ICL/embeddings OpenAI par cible.
+      const targetCount = Math.min(input.target_observation_ids.length, 10);
+      const candidates = Math.max(3, Math.min(5, Number(input.max_candidates_per_cluster ?? 3)));
+      const runs = Math.max(1, Math.min(4, Number(input.validation_runs ?? 1)));
+      const costPerExecution = Math.max(0, Number(input.cost_per_execution_eur ?? 0.05));
+      const plannedExecutions = Math.min(Number(input.max_validation_executions), targetCount * candidates * runs);
+      const reserveEur = Math.round((plannedExecutions * costPerExecution + targetCount * 0.02) * 100) / 100;
+      const result = await createReservedAndTriggerJob({ project_id: body.projectId, kind, status: "pending", input, reserved_cost_eur: reserveEur });
+      return NextResponse.json(result, { status: 202 });
     }
     const result = await createAndTriggerJob({ project_id: body.projectId, kind, status: "pending", input });
     return NextResponse.json(result, { status: 202 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Création du job impossible." }, { status: 502 });
+    const message = error instanceof Error ? error.message : "Création du job impossible.";
+    if (message.includes("budget_exceeded")) return NextResponse.json({ error: "Budget global insuffisant pour cette réserve (coûts confirmés + réservations des jobs actifs prises en compte)." }, { status: 422 });
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

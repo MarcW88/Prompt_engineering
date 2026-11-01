@@ -165,8 +165,8 @@ class ReconstructionTests(unittest.TestCase):
                 if table == 'projects': return [{'language': 'fr', 'country': 'BE'}]
                 if table == 'prompts': return [{'id': 'train', 'text': 'Original training prompt', 'cluster_id': 'c'}, {'id': 'target-p', 'text': 'Held out original', 'cluster_id': 'c'}]
                 if table == 'observations':
-                    if 'engine' in query: return [{'id': 'target-o', 'prompt_id': 'target-p', 'engine': 'chatgpt'}]
-                    return [{'id': 'train-o', 'prompt_id': 'train'}]
+                    if 'target-p' in query: return [{'id': 'target-o', 'prompt_id': 'target-p', 'engine': 'chatgpt', 'provider': 'brightdata', 'answer': 'ok', 'raw_response': {}}]
+                    return [{'id': 'train-o', 'prompt_id': 'train', 'engine': 'chatgpt', 'provider': 'brightdata', 'answer': 'ok', 'raw_response': {}}]
                 if table == 'fan_outs': return [{'observation_id': 'train-o', 'query': 'observed boots query', 'source': 'brightdata'}]
             if method == 'POST' and table == 'prompts': return [{'id': 'new', **body[0]}]
             if method == 'POST' and table == 'observations': return [{'id': 'new-o'}]

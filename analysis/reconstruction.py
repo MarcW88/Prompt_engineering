@@ -10,6 +10,7 @@ class ReconstructionExample:
     prompt: str
     fan_outs: List[str]
     source_reference: str = ""
+    engine: str = ""
 
 
 class PromptReconstructor:

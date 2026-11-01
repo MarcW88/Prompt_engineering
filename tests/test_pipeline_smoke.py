@@ -88,3 +88,57 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertEqual(final['metadata']['target_observation_id'], target_id)
         self.assertEqual(final['expected_fan_outs'], ['chaussures randonnée confort semelle', 'chaussures randonnée comparatif'])
         self.assertNotIn('Decathlon', repr(w.db.tables))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_adaptive_validation_mixed_candidates(self):
+        """Un candidat qui échoue au premier run ne reçoit aucune répétition ;
+        le contexte ICL ne contient que des exemples du même moteur."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.db.tables['projects'] = [{'id': 'p', 'language': 'fr', 'country': 'BE'}]
+        w.db.tables['prompts'] = [
+            {'id': 'pr-train', 'project_id': 'p', 'text': 'prompt entrainement', 'cluster_id': 'c'},
+            {'id': 'pr-target', 'project_id': 'p', 'text': 'prompt cible', 'cluster_id': 'c'},
+        ]
+        w.db.tables['dataset_examples'] = [{'prompt_id': 'pr-train', 'status': 'accepted'}]
+        w.db.tables['observations'] = [
+            {'id': 'obs-train', 'prompt_id': 'pr-train', 'engine': 'chatgpt', 'provider': 'brightdata', 'answer': 'réponse', 'raw_response': {}},
+            {'id': 'obs-train-gemini', 'prompt_id': 'pr-train', 'engine': 'gemini', 'provider': 'brightdata', 'answer': 'réponse', 'raw_response': {}},
+            {'id': 'obs-target', 'prompt_id': 'pr-target', 'engine': 'chatgpt', 'provider': 'brightdata', 'answer': 'réponse', 'raw_response': {}},
+            {'id': 'obs-errored', 'prompt_id': 'pr-target', 'engine': 'chatgpt', 'provider': 'brightdata', 'answer': '', 'raw_response': {'error': 'timeout'}},
+        ]
+        w.db.tables['fan_outs'] = [
+            {'observation_id': 'obs-train', 'query': 'train query', 'source': 'brightdata'},
+            {'observation_id': 'obs-train-gemini', 'query': 'gemini trace', 'source': 'brightdata'},
+            {'observation_id': 'obs-target', 'query': 'target query', 'source': 'brightdata'},
+        ]
+        w._report = Mock()
+        w._record_cost = Mock()
+        contexts = []
+
+        def generate(self, *args, **kwargs):
+            contexts.append([e.engine for e in self.examples])
+            return ['candidat gagnant', 'candidat perdant']
+
+        provider = Mock()
+        provider.batch_size = 10
+        provider.execute.side_effect = lambda request: AnalysisObservation(
+            request.prompt, 'brightdata', request.engine,
+            answer='réponse' if 'gagnant' in request.prompt else '',
+            fan_outs=['target query'] if 'gagnant' in request.prompt else [],
+            raw_response={} if 'gagnant' in request.prompt else {'error': 'failed'},
+        )
+        job = {'id': 'j', 'project_id': 'p', 'input': {
+            'target_observation_ids': ['obs-target', 'obs-errored'],
+            'max_validation_executions': 20, 'validation_runs': 3, 'max_targets': 2,
+        }}
+        with patch('collection_worker.BrightDataProvider', return_value=provider), \
+             patch.object(ICLPromptReconstructor, '_generate_with_llm', generate):
+            result = w._reverse_engineer(job)
+        # obs-errored est écartée par le contrat d'admission (answer vide + error).
+        self.assertEqual(result['executions'], 4)  # 1 run perdant + 3 runs gagnant
+        self.assertEqual(result['validated'], 1)
+        # Segmentation moteur : pas de trace Gemini dans le contexte d'une cible ChatGPT.
+        self.assertTrue(contexts)
+        for engines in contexts:
+            self.assertNotIn('gemini', engines)

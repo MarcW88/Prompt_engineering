@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { createAndTriggerJob } from "@/lib/data/jobs";
+import { createReservedAndTriggerJob } from "@/lib/data/jobs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { confirmedCostEur } from "@/lib/data/budget";
 
 const allowedEngines = new Set(["chatgpt", "perplexity", "gemini", "google_ai_mode"]);
 
@@ -21,22 +20,17 @@ export async function POST(request: Request) {
   if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €. Augmentez le plafond ou réduisez les moteurs/l'échantillon.` }, { status: 422 });
   try {
     const encoded = encodeURIComponent(body.projectId);
-    const [clusters, projects, costs, activeJobs] = await Promise.all([
-      supabaseRest<Array<{ id: string }>>("clusters", { query: `select=id&project_id=eq.${encoded}&is_geo_relevant=eq.true` }),
-      supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encoded}&limit=1` }),
-      supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encoded}` }),
-      supabaseRest<Array<{ input: Record<string, unknown> | null }>>("jobs", { query: `select=input&project_id=eq.${encoded}&status=in.(pending,running)` }),
-    ]);
+    const clusters = await supabaseRest<Array<{ id: string }>>("clusters", { query: `select=id&project_id=eq.${encoded}&is_geo_relevant=eq.true` });
     if (!clusters.length) return NextResponse.json({ error: "Aucun cluster GEO exploitable. Lancez d'abord le clustering." }, { status: 409 });
-    const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
-    const concurrentReservedEur = activeJobs.reduce((sum, job) => sum + Number(job.input?.reserved_cost_eur ?? 0), 0);
-    const spentEur = confirmedCostEur(costs) + concurrentReservedEur;
-    if (spentEur + estimatedCostEur > totalBudgetEur) return NextResponse.json({ error: `Cette étape porterait le coût à ${(spentEur + estimatedCostEur).toFixed(2)} €, au-delà du budget global de ${totalBudgetEur.toFixed(2)} €.` }, { status: 422 });
     const datasets = await supabaseRest<Array<{ id: string }>>("datasets", { method: "POST", body: [{ project_id: body.projectId, name: body.name ?? `Dataset ${new Date().toLocaleDateString("fr-BE")}`, target_size: candidatePoolSize, candidate_pool_size: candidatePoolSize, execution_sample_size: executionSampleSize, repetitions, engines, cost_per_execution_eur: costPerExecutionEur, max_budget_eur: maxBudgetEur, estimated_cost_eur: estimatedCostEur, build_config: { candidates_per_cluster: candidatesPerCluster, max_per_cluster: Number(body.maxPerCluster ?? 5), personas: body.personas ?? [], stages: body.stages ?? ["discovery", "comparison"], specificity_levels: body.specificityLevels ?? [0, 1, 2], quality_threshold: Number(body.qualityThreshold ?? 0.65) } }] });
     const dataset = datasets[0];
-    const result = await createAndTriggerJob({ project_id: body.projectId, kind: "build_dataset", status: "pending", input: { dataset_id: dataset.id, reserved_cost_eur: estimatedCostEur } });
+    // Réservation atomique côté base : le solde est vérifié sous verrou au
+    // moment de la création du job, ce qui écarte les dépassements concurrents.
+    const result = await createReservedAndTriggerJob({ project_id: body.projectId, kind: "build_dataset", status: "pending", input: { dataset_id: dataset.id }, reserved_cost_eur: estimatedCostEur });
     return NextResponse.json({ dataset, ...result }, { status: 202 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Construction impossible." }, { status: 502 });
+    const message = error instanceof Error ? error.message : "Construction impossible.";
+    if (message.includes("budget_exceeded")) return NextResponse.json({ error: "Budget global insuffisant pour cette étape (coûts confirmés + réservations des jobs actifs prises en compte)." }, { status: 422 });
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

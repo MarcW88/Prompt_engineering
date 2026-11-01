@@ -862,15 +862,23 @@ class CollectionWorker:
         prompts_by_id = {row["id"]: row for row in prompts if row["id"] in accepted_prompt_ids}
         if not prompts_by_id:
             return {"examples": 0, "reconstructed": 0}
-        observations = self.db.request("GET", "observations", f"select=id,prompt_id&prompt_id=in.({','.join(prompts_by_id)})")
-        observation_prompt = {row["id"]: row["prompt_id"] for row in observations}
-        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=eq.brightdata&observation_id=in.({','.join(observation_prompt)})") if observations else []
-        fan_outs_by_prompt = {}
+        # Same admission contract as the corpus export and the target selector:
+        # non-empty answer, no provider error, Bright Data execution only.
+        observations = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response&prompt_id=in.({','.join(prompts_by_id)})")
+        observations = [row for row in observations if row.get("provider") == "brightdata"
+            and str(row.get("answer") or "").strip() and not (row.get("raw_response") or {}).get("error")]
+        observation_ref = {row["id"]: row for row in observations}
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=eq.brightdata&observation_id=in.({','.join(observation_ref)})") if observations else []
+        # Examples are segmented by engine: ChatGPT traces never mix with
+        # Gemini traces in the same ICL context.
+        fan_outs_by_key = {}
         for row in fan_out_rows:
-            prompt_id = observation_prompt.get(row["observation_id"])
-            if prompt_id:
-                fan_outs_by_prompt.setdefault(prompt_id, []).append(row["query"])
-        examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id) for prompt_id, fan_outs in fan_outs_by_prompt.items() if fan_outs]
+            observation = observation_ref.get(row["observation_id"])
+            if observation:
+                key = (observation["prompt_id"], str(observation.get("engine") or ""))
+                fan_outs_by_key.setdefault(key, []).append(row["query"])
+        examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id, engine)
+            for (prompt_id, engine), fan_outs in fan_outs_by_key.items() if fan_outs]
         if not examples:
             return {"examples": 0, "reconstructed": 0}
         reconstructor = ICLPromptReconstructor(examples)
@@ -884,10 +892,15 @@ class CollectionWorker:
             return {"examples": len(examples), "reconstructed": 0, "skipped": "No observed targets selected; use build_dataset for signal-based generation"}
         project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id,text&project_id=eq.{project_id}")
         owned = {row["id"]: row for row in project_prompts}
-        targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine&prompt_id=in.({','.join(owned)})") if owned else []
-        targets = [row for row in targets if row["id"] in target_ids]
-        if len(targets) != len(set(target_ids)):
+        candidates_targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response&prompt_id=in.({','.join(owned)})") if owned else []
+        owned_ids = {row["id"] for row in candidates_targets}
+        if not set(target_ids) <= owned_ids:
             raise ValueError("Target observations must belong to this project")
+        # Admission contract: valid trace only (non-empty answer, no provider
+        # error, Bright Data execution). Ineligible selections are skipped.
+        targets = [row for row in candidates_targets if row["id"] in target_ids
+            and row.get("provider") == "brightdata" and str(row.get("answer") or "").strip()
+            and not (row.get("raw_response") or {}).get("error")]
         max_candidates = max(3, min(5, int(options.get("max_candidates_per_cluster", 3))))
         max_targets = max(1, min(10, int(options.get("max_targets", 1))))
         runs = max(1, min(4, int(options.get("validation_runs", 1))))
@@ -920,9 +933,11 @@ class CollectionWorker:
             if not queries:
                 continue
             # Hold out the original prompt and its near-variants: they must not
-            # leak into the ICL context of the reconstruction target.
+            # leak into the ICL context of the reconstruction target. Context is
+            # restricted to traces from the same engine as the target.
             target_signature = build_signature([owned[target["prompt_id"]].get("text", "")])
             reconstructor.examples = [e for e in examples if e.source_reference != target["prompt_id"]
+                and e.engine == str(target.get("engine") or "")
                 and signature_similarity(target_signature, build_signature([e.prompt])) < 0.8]
             if not reconstructor.icl_available:
                 continue

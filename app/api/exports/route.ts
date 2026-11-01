@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import writeExcelFile from "write-excel-file/node";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
+import { isEligibleObservation } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
@@ -156,7 +157,7 @@ export async function GET(request: Request) {
       return download(rows, ["id", "dataset_name", "status", "prompt_text", "prompt_provenance", "persona", "journey_stage", "specificity_level", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "validation_tier", "target_runs", "completed_runs", "manual_review_status", "reviewed_at", "review_note", "selected_for_execution", "created_at"], stage, format);
     }
 
-    const observations = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,web_search_triggered,observed_at");
+    const observations = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response,web_search_triggered,observed_at");
     observations.sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)));
     const observationIds = observations.map((row) => String(row.id));
     const observationById = new Map(observations.map((row) => [String(row.id), row]));
@@ -174,8 +175,13 @@ export async function GET(request: Request) {
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
       const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status");
       const acceptedPrompts = new Set(examples.filter((row) => row.status === "accepted").map((row) => String(row.prompt_id)));
+      // Corpus éligible : prompts acceptés, trace valide (réponse non vide,
+      // pas d'erreur provider), provider cohérent. Les observations rejetées ou
+      // en erreur restent visibles dans l'export brut "observations".
       const rows = observations
         .filter((observation) => (fanByObservation.get(String(observation.id)) ?? []).length > 0)
+        .filter(isEligibleObservation)
+        .filter((observation) => acceptedPrompts.has(String(observation.prompt_id)))
         .map((observation) => ({
           project_id: projectId,
           prompt_id: observation.prompt_id,
@@ -189,7 +195,7 @@ export async function GET(request: Request) {
           observed_at: observation.observed_at,
           fan_outs: JSON.stringify(fanByObservation.get(String(observation.id)) ?? []),
           trace_kind: "provider_reported",
-          status: acceptedPrompts.has(String(observation.prompt_id)) ? "accepted" : "observed",
+          status: "accepted",
           raw_response_reference: `observations:${observation.id}`,
         }));
       if (format === "json") {
