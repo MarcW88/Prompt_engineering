@@ -25,8 +25,22 @@ export async function POST(request: Request) {
     const approved = examples.filter((row) => row.manual_review_status === "approved");
     if (!approved.length) return NextResponse.json({ error: "Aucun prompt approuvé à figer." }, { status: 409 });
     const promptIds = [...new Set(approved.map((row) => String(row.prompt_id)))];
-    const prompts = await supabaseRest<Row[]>("prompts", { query: `select=id,text&project_id=eq.${project}&id=in.(${promptIds.join(",")})` });
+    const prompts = await supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,metadata&project_id=eq.${project}&id=in.(${promptIds.join(",")})` });
     const promptById = new Map(prompts.map((row) => [String(row.id), row]));
+    // Executed state at freeze time: a version counts as executed only if a
+    // run has actually executed its exact text.
+    const observations = promptIds.length
+      ? await supabaseRest<Row[]>("observations", { query: `select=prompt_id,provider,engine,answer,executed_text:raw_response->>executed_text,error:raw_response->>error&prompt_id=in.(${promptIds.join(",")})` })
+      : [];
+    const runsByPromptText = new Map<string, { runs: number; surfaces: Set<string> }>();
+    for (const obs of observations) {
+      const key = `${obs.prompt_id}|${String(obs.executed_text || promptById.get(String(obs.prompt_id))?.text || "")}`;
+      if (!String(obs.answer ?? "").trim() || obs.error) continue;
+      const entry = runsByPromptText.get(key) ?? { runs: 0, surfaces: new Set<string>() };
+      entry.runs += 1;
+      entry.surfaces.add(`${obs.provider}/${obs.engine}`);
+      runsByPromptText.set(key, entry);
+    }
 
     const versionId = `fin-${new Date().toISOString().replace(/[:.]/g, "").slice(0, 15)}`;
     const snapshot = {
@@ -36,14 +50,30 @@ export async function POST(request: Request) {
       method_version: "v1.0-2026-11-01",
       code_sha: process.env.VERCEL_GIT_COMMIT_SHA || "local-dev",
       prompt_version_ids: approved.map((row) => String(row.id)),
-      versions: approved.map((row) => ({
-        prompt_version_id: row.id,
-        prompt_id: row.prompt_id,
-        text: String(row.edited_prompt_text || promptById.get(String(row.prompt_id))?.text || ""),
-        quality_score: row.quality_score ?? null,
-        reproduction_score: row.reproduction_score ?? null,
-        completed_runs: row.completed_runs ?? 0,
-      })),
+      versions: approved.map((row) => {
+        const prompt = promptById.get(String(row.prompt_id));
+        const meta = (prompt?.metadata ?? {}) as Row;
+        const text = String(row.edited_prompt_text || prompt?.text || "");
+        const executed = runsByPromptText.get(`${row.prompt_id}|${text}`) ?? { runs: 0, surfaces: new Set<string>() };
+        return {
+          prompt_version_id: row.id,
+          prompt_id: row.prompt_id,
+          cluster_id: prompt?.cluster_id ?? null,
+          intent_id: String(meta.intent_id ?? ""),
+          provenance: prompt?.provenance ?? "",
+          origin: String(meta.method ?? prompt?.provenance ?? ""),
+          text,
+          selection_status: row.status,
+          approval: row.manual_review_status,
+          quality_score: row.quality_score ?? null,
+          stability_score: row.stability_score ?? null,
+          reproduction_score: row.reproduction_score ?? null,
+          completed_runs: row.completed_runs ?? 0,
+          executed_runs: executed.runs,
+          surfaces_tested: [...executed.surfaces],
+          executed_state: executed.runs ? "exécutée" : "approuvée non exécutée",
+        };
+      }),
     };
     const rows = await supabaseRest<Row[]>("jobs", {
       method: "POST",

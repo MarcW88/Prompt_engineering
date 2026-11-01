@@ -42,6 +42,7 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
   const [datasetId, setDatasetId] = useState("");
   const [tier, setTier] = useState(3);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [versionId, setVersionId] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -87,11 +88,12 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
             <p className="export-intro">Synthèse, prompts finaux, filiation complète, sources/questions, décisions par intention, versions, exécutions, fan-outs/citations, reconstruction, coûts détaillés et synthèse, méthodes et limites.</p>
           </div>
           <div className="form-row">
-            <a className="primary export-final" href={`/api/exports/workbook?projectId=${encodeURIComponent(projectId ?? "")}`}><Download size={16} /> Télécharger le rapport complet (.xlsx)</a>
+            <a className="primary export-final" href={`/api/exports/workbook?projectId=${encodeURIComponent(projectId ?? "")}${versionId ? `&versionId=${encodeURIComponent(versionId)}` : ""}`}><Download size={16} /> Télécharger le rapport complet (.xlsx)</a>
             <button type="button" className="secondary" disabled={!projectId} onClick={async () => {
               const response = await fetch("/api/portfolio/finalize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId }) });
               const data = await response.json().catch(() => ({}));
-              alert(response.ok ? `Portefeuille figé : ${data.version_id} (${data.frozen_versions} versions)` : `Finalisation impossible : ${data.error ?? response.status}`);
+              if (response.ok) setVersionId(String(data.version_id ?? ""));
+              alert(response.ok ? `Portefeuille figé : ${data.version_id} (${data.frozen_versions} versions) — le rapport télécharge maintenant cette version.` : `Finalisation impossible : ${data.error ?? response.status}`);
             }}>Finaliser le portefeuille (fige une version)</button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
+import { toEurAmount, USD_EUR_RATE } from "@/lib/data/budget";
 import { traceKind } from "@/lib/data/observations";
 
 // §16.2 — one downloadable workbook, twelve linked tabs. From a final prompt
@@ -25,6 +26,11 @@ async function fetchInBatches<RowType extends Row>(table: string, ids: string[],
   }
   return rows;
 }
+
+// Explicit currency conversion before aggregation (§16.3): amounts keep their
+// original currency in the journal; synthesis is in EUR using a declared rate.
+const EUR_RATE_SOURCE = `taux fixe ENV COST_USD_EUR_RATE = ${USD_EUR_RATE} (export du ${new Date().toISOString().slice(0, 10)})`;
+const toEur = toEurAmount;
 
 function cellText(value: unknown): string {
   // Source extracts are written as literal text — never interpreted formulas.
@@ -55,7 +61,7 @@ export async function GET(request: Request) {
 
   try {
     const project = encodeURIComponent(projectId);
-    const projectRows = await supabaseRest<Row[]>("projects", { query: `select=id,name,country,language,created_at&id=eq.${project}&limit=1` });
+    const projectRows = await supabaseRest<Row[]>("projects", { query: `select=id,name,country,language,created_at,budget_total_eur&id=eq.${project}&limit=1` });
     const projectRow = projectRows[0] ?? {};
 
     // ---- Frozen version (§16.1.8) ------------------------------------------------
@@ -69,7 +75,6 @@ export async function GET(request: Request) {
       frozen = versions[0] ?? null;
     }
     const frozenVersionId = String((frozen?.output as Row | undefined)?.version_id ?? "non_finalise");
-    const frozenIds = new Set(((frozen?.output as Row | undefined)?.prompt_version_ids as string[] | undefined) ?? []);
 
     // ---- Core data --------------------------------------------------------------
     const [seeds, signals, questions, clusters, clusterQuestions, prompts, datasets, costRows, jobs] = await Promise.all([
@@ -168,48 +173,90 @@ export async function GET(request: Request) {
     }
 
     // ---- Final prompt versions (§16.1.5) ----------------------------------------
+    // When a frozen version is requested, the set, texts and results come
+    // exclusively from the snapshot — later edits or approvals never leak in.
     const finalRows: Row[] = [];
     const finalRowsByPromptVersion = new Map<string, number>();
-    for (const prompt of prompts) {
-      for (const example of exampleByPrompt.get(String(prompt.id)) ?? []) {
-        const approved = example.manual_review_status === "approved";
-        if (!approved && !frozenIds.has(String(example.id))) continue;
-        const meta = (prompt.metadata ?? {}) as Row;
-        const finalText = String(example.edited_prompt_text || prompt.text || "");
-        const versionObs = (obsByPrompt.get(String(prompt.id)) ?? []).filter((obs) => String(obs.executed_text || prompt.text) === finalText);
-        const directQuestions = [prompt.text, String(meta.variant_of ?? "")].filter(Boolean)
-          .map((value) => questionTextIndex.get(`${prompt.cluster_id}:${normalize(value)}`)).filter(Boolean) as Row[];
-        const runs = versionObs.filter((obs) => String(obs.answer ?? "").trim() && !obs.raw_response_error);
-        const surfaces = [...new Set(versionObs.map((obs) => `${obs.provider}/${obs.engine}`))].join(" | ");
-        const stabilityShown = Number(example.completed_runs ?? 0) >= Math.max(3, Number(example.target_runs ?? 0)) ? example.stability_score : null;
-        const versions = (exampleByPrompt.get(String(prompt.id)) ?? []).length;
-        const rowIndex = finalRows.length + 2;
-        finalRowsByPromptVersion.set(String(example.id), rowIndex);
+    if (versionId) {
+      const frozenVersions = ((frozen?.output as Row | undefined)?.versions as Row[] | undefined) ?? [];
+      for (const version of frozenVersions) {
+        const prompt = promptById.get(String(version.prompt_id));
         finalRows.push({
-          prompt_version_id: example.id,
-          prompt_id: prompt.id,
-          version: `v${versions}`,
-          final_text: finalText,
-          intent_id: String(meta.intent_id ?? ""),
-          cluster_label: String(clusterById.get(String(prompt.cluster_id))?.label ?? ""),
-          constraints_persona: [meta.constraints, example.persona].filter(Boolean).map((v) => JSON.stringify(v)).join(" "),
-          origin: String(meta.method ?? prompt.provenance ?? ""),
-          base_questions: directQuestions.map((q) => q.text).join(" || "),
-          base_question_ids: directQuestions.map((q) => q.id).join(", "),
-          choice_reason: approved ? "approuvé en revue humaine" : "figé par finalisation",
-          rejected_alternatives: (exampleByPrompt.get(String(prompt.id)) ?? []).filter((e) => e.id !== example.id && e.status === "rejected").map((e) => e.id).join(", "),
-          approval: String(example.manual_review_status ?? ""),
-          surfaces_tested: surfaces || "aucune",
-          executed_runs: runs.length,
-          trace_status: [...new Set(versionObs.map((obs) => traceKind(fanSourcesByObs.get(String(obs.id)) ?? [], obs.provider, obs.engine)))].join(" | ") || "non mesuré",
-          stability: stabilityShown ?? "non mesurée",
-          executed_state: runs.length ? "exécutée" : "approuvée non exécutée",
-          reconstruction_target: String(meta.target_observation_id ?? ""),
+          prompt_version_id: version.prompt_version_id,
+          prompt_id: version.prompt_id,
+          version: "figée",
+          final_text: version.text,
+          intent_id: version.intent_id ?? "",
+          cluster_label: String(clusterById.get(String(version.cluster_id ?? ""))?.label ?? prompt?.cluster_id ?? ""),
+          constraints_persona: "",
+          origin: version.origin ?? version.provenance ?? "",
+          base_questions: "voir onglet 02 (données live)",
+          base_question_ids: "",
+          choice_reason: "figé par finalisation",
+          rejected_alternatives: "",
+          approval: version.approval ?? "approved",
+          surfaces_tested: ((version.surfaces_tested as string[] | undefined) ?? []).join(" | ") || "aucune",
+          executed_runs: version.executed_runs ?? 0,
+          trace_status: "figé — voir 06_Executions",
+          stability: version.stability_score ?? "non mesurée",
+          executed_state: version.executed_state ?? "",
+          reconstruction_target: "",
+          quality_score: version.quality_score ?? "",
+          reproduction_score: version.reproduction_score ?? "",
         });
       }
+    } else {
+      for (const prompt of prompts) {
+        for (const example of exampleByPrompt.get(String(prompt.id)) ?? []) {
+          if (example.manual_review_status !== "approved") continue;
+          const meta = (prompt.metadata ?? {}) as Row;
+          const finalText = String(example.edited_prompt_text || prompt.text || "");
+          const versionObs = (obsByPrompt.get(String(prompt.id)) ?? []).filter((obs) => String(obs.executed_text || prompt.text) === finalText);
+          const directQuestions = [prompt.text, String(meta.variant_of ?? "")].filter(Boolean)
+            .map((value) => questionTextIndex.get(`${prompt.cluster_id}:${normalize(value)}`)).filter(Boolean) as Row[];
+          const runs = versionObs.filter((obs) => String(obs.answer ?? "").trim() && !obs.raw_response_error);
+          const surfaces = [...new Set(versionObs.map((obs) => `${obs.provider}/${obs.engine}`))].join(" | ");
+          const stabilityShown = Number(example.completed_runs ?? 0) >= Math.max(3, Number(example.target_runs ?? 0)) ? example.stability_score : null;
+          const versions = (exampleByPrompt.get(String(prompt.id)) ?? []).length;
+          const rowIndex = finalRows.length + 2;
+          finalRowsByPromptVersion.set(String(example.id), rowIndex);
+          finalRows.push({
+            prompt_version_id: example.id,
+            prompt_id: prompt.id,
+            version: `v${versions}`,
+            final_text: finalText,
+            intent_id: String(meta.intent_id ?? ""),
+            cluster_label: String(clusterById.get(String(prompt.cluster_id))?.label ?? ""),
+            constraints_persona: [meta.constraints, example.persona].filter(Boolean).map((v) => JSON.stringify(v)).join(" "),
+            origin: String(meta.method ?? prompt.provenance ?? ""),
+            base_questions: directQuestions.map((q) => q.text).join(" || "),
+            base_question_ids: directQuestions.map((q) => q.id).join(", "),
+            choice_reason: "approuvé en revue humaine",
+            rejected_alternatives: (exampleByPrompt.get(String(prompt.id)) ?? []).filter((e) => e.id !== example.id && e.status === "rejected").map((e) => e.id).join(", "),
+            approval: String(example.manual_review_status ?? ""),
+            surfaces_tested: surfaces || "aucune",
+            executed_runs: runs.length,
+            trace_status: [...new Set(versionObs.map((obs) => traceKind(fanSourcesByObs.get(String(obs.id)) ?? [], obs.provider, obs.engine)))].join(" | ") || "non mesuré",
+            stability: stabilityShown ?? "non mesurée",
+            executed_state: runs.length ? "exécutée" : "approuvée non exécutée",
+            reconstruction_target: String(meta.target_observation_id ?? ""),
+          });
+        }
+      }
     }
+    // §16.1.5: 01_Prompts_finaux holds only executed versions; approved but
+    // never-executed propositions live in their own tab, clearly labelled.
+    const propositionRows = finalRows.filter((row) => Number(row.executed_runs ?? 0) === 0);
+    const executedFinalRows = finalRows.filter((row) => Number(row.executed_runs ?? 0) > 0);
 
     // ---- Filiation paths (§16.2 tab 02) -----------------------------------------
+    // Frozen exports stay frozen everywhere: paths only cover frozen versions
+    // and their final text comes from the snapshot, never from later edits.
+    const frozenOutput = (frozen?.output as Row | undefined) ?? {};
+    const frozenVersionById = new Map((((frozenOutput.versions as Row[] | undefined) ?? [])).map((v) => [String(v.prompt_version_id), v]));
+    const frozenPromptIds = new Set((versionId ? (frozenOutput.prompt_version_ids as string[] | undefined) ?? [] : []).map(String));
+    const frozenByPromptId = new Map<string, Row>();
+    for (const v of (frozenOutput.versions as Row[] | undefined) ?? []) frozenByPromptId.set(String(v.prompt_id), v);
     const pathRows: Row[] = [];
     for (const prompt of prompts) {
       const meta = (prompt.metadata ?? {}) as Row;
@@ -226,13 +273,15 @@ export async function GET(request: Request) {
         const signal = signalById.get(String(question.signal_id));
         const seed = seeds.find((s) => String(s.value).toLowerCase() === String(question.text).toLowerCase());
         for (const example of exampleByPrompt.get(String(prompt.id)) ?? [{}]) {
+          if (versionId && !frozenPromptIds.has(String(example.id))) continue;
+          const frozenVersion = versionId ? (frozenVersionById.get(String(example.id)) ?? frozenByPromptId.get(String(prompt.id))) : undefined;
           pathRows.push({
             final_version: example.manual_review_status === "approved" ? String(example.id) : "",
             campaign_id: projectId,
             seed_id: seed?.id ?? "",
             seed_value: seed?.value ?? "",
             signal_id: signal?.id ?? "",
-            source_excerpt: signal ? String(signal.raw_text ?? signal.title ?? "").slice(0, 2000) : "chemin absent",
+            source_excerpt: signal ? String(signal.raw_text ?? signal.title ?? "") : "chemin absent",
             source_url: signal?.url ?? "",
             platform: signal?.platform ?? "",
             question_id: question.id ?? "",
@@ -243,12 +292,21 @@ export async function GET(request: Request) {
             candidate_prompt_id: prompt.id,
             candidate_text: prompt.text,
             reconstruction: prompt.provenance === "reverse_engineered" ? `ICL depuis observation ${String(meta.target_observation_id ?? "?")}` : "",
-            final_text: String(example.edited_prompt_text || prompt.text || ""),
+            final_text: String(frozenVersion?.text ?? example.edited_prompt_text ?? prompt.text ?? ""),
             step_status: `${prompt.status ?? ""}/${example.status ?? "non candidat"}`,
           });
         }
       }
     }
+
+    // Long source excerpts are split into identified rows — never truncated.
+    const expandedPathRows: Row[] = [];
+    for (const row of pathRows) {
+      const parts = chunk(String(row.source_excerpt ?? ""));
+      parts.forEach((part, index) => expandedPathRows.push({ ...row, part: parts.length > 1 ? `${index + 1}/${parts.length}` : "", source_excerpt: index + 1 === parts.length ? part : `${part} [suite partie ${index + 2}/${parts.length}]` }));
+    }
+    pathRows.length = 0;
+    pathRows.push(...expandedPathRows);
 
     // ---- 06 Executions ------------------------------------------------------------
     const executionRows: Row[] = [];
@@ -336,6 +394,23 @@ export async function GET(request: Request) {
     if (!reconRows.length) reconRows.push({ candidate_prompt_id: "", hypothesis_text: "module non exécuté sur cette campagne", target_observation: "", target_surface: "", example_observations: "", validation_runs: "", reproduction: "", stability: "", decision: "absent" });
 
     // ---- 09 / 10 Costs -------------------------------------------------------------
+    // Reconciliation (§16.3): a confirmed event replaces the pending provision
+    // it settles (same provider+category, linked by external_reference or the
+    // same job/dataset attribution) — it is never an additional charge.
+    const confirmedKeys = new Set(
+      costRows
+        .filter((row) => ["actual", "account_delta"].includes(String(row.cost_status)))
+        .map((row) => `${row.provider}|${row.category}|${row.job_id ?? ""}`),
+    );
+    const confirmedRefs = new Set(
+      costRows
+        .filter((row) => ["actual", "account_delta"].includes(String(row.cost_status)))
+        .map((row) => String(row.external_reference ?? "")).filter(Boolean),
+    );
+    const isReconciledProvision = (row: Row) =>
+      ["usage_only", "pending_reconciliation"].includes(String(row.cost_status)) &&
+      (confirmedKeys.has(`${row.provider}|${row.category}|${row.job_id ?? ""}`) ||
+        confirmedRefs.has(String(row.external_reference ?? "")));
     const costDetail = costRows.map((row) => ({
       cost_event_id: row.id,
       provider: row.provider,
@@ -348,34 +423,44 @@ export async function GET(request: Request) {
       currency: row.currency,
       amount: row.amount ?? "inconnu",
       estimated_unit_cost: "",
-      conversion_eur: "",
+      conversion_eur: toEur(row.amount, row.currency) ? Number(toEur(row.amount, row.currency)).toFixed(4) : (row.amount ? "devise non convertible" : ""),
       billing_reference: row.external_reference ?? "",
       created_at: "",
-      note: String(row.cost_status) === "account_delta" ? "delta de compte partagé — non attribué à un run sans preuve" : "",
+      note: [
+        String(row.cost_status) === "account_delta" ? "delta de compte partagé — non attribué à un run sans preuve" : "",
+        isReconciledProvision(row) ? "provision rapprochée par un coût confirmé — non recomptée" : "",
+      ].filter(Boolean).join(" ; "),
     }));
-    const COST_GROUPS: Record<string, string> = { actual: "confirmé", account_delta: "confirmé", usage_only: "consommé non rapproché", pending_reconciliation: "consommé non rapproché", estimated: "inconnu" };
+    const COST_GROUPS: Record<string, string> = { actual: "confirmé", account_delta: "confirmé", usage_only: "consommé non rapproché", pending_reconciliation: "consommé non rapproché", estimated: "inconnu", reserved: "réservé futur" };
     const synthesisMap = new Map<string, Row>();
     for (const row of costRows) {
-      const group = COST_GROUPS[String(row.cost_status)] ?? "inconnu";
-      const key = `${row.provider}|${row.category}|${group}`;
-      const entry = synthesisMap.get(key) ?? { provider: row.provider, service_category: row.category, statut: group, total: 0, currency: row.currency, events: 0 };
-      entry.total = Number(entry.total) + Number(row.amount ?? 0);
+      const group = row.amount == null ? "inconnu" : isReconciledProvision(row) ? "provision rapprochée" : COST_GROUPS[String(row.cost_status)] ?? "inconnu";
+      const key = `${row.provider}|${row.category}|${String(row.currency ?? "").toLowerCase()}|${group}`;
+      const entry = synthesisMap.get(key) ?? { provider: row.provider, service_category: row.category, statut: group, total_original: 0, total_eur: 0, currency: row.currency, events: 0 };
+      entry.total_original = Number(entry.total_original) + Number(row.amount ?? 0);
+      entry.total_eur = Number(entry.total_eur) + toEur(row.amount, row.currency);
       entry.events = Number(entry.events) + 1;
       synthesisMap.set(key, entry);
     }
-    const confirmed = [...synthesisMap.values()].filter((r) => r.statut === "confirmé").reduce((sum, r) => sum + Number(r.total), 0);
-    const pending = [...synthesisMap.values()].filter((r) => r.statut === "consommé non rapproché").reduce((sum, r) => sum + Number(r.total), 0);
+    const confirmed = [...synthesisMap.values()].filter((r) => r.statut === "confirmé").reduce((sum, r) => sum + Number(r.total_eur), 0);
+    const pending = [...synthesisMap.values()].filter((r) => r.statut === "consommé non rapproché").reduce((sum, r) => sum + Number(r.total_eur), 0);
+    const hasUnknown = [...synthesisMap.values()].some((r) => r.statut === "inconnu") || costRows.some((r) => r.amount == null);
     const pendingJobs = jobs.filter((row) => row.status === "pending" || row.status === "running");
+    // Project-wide ceiling in the same currency as the aggregate (EUR).
+    const plafondEur = projectRow.budget_total_eur != null ? Number(projectRow.budget_total_eur) : null;
+    const disponible = hasUnknown || pendingJobs.length
+      ? "non garanti — coûts inconnus ou réservations en cours"
+      : plafondEur == null ? "plafond projet non défini" : (plafondEur - confirmed - pending).toFixed(4);
     const synthesisRows = [
-      ...[...synthesisMap.values()].map((r) => ({ provider: r.provider, service_category: r.service_category, statut: r.statut, total: Number(r.total).toFixed(4), currency: r.currency, events: r.events, plafond: "", disponible: "" })),
-      { provider: "TOTAL", service_category: "confirmé + provision", statut: "total engagé", total: (confirmed + pending).toFixed(4), currency: "usd", events: costRows.length, plafond: Math.max(...datasets.map((d) => Number(d.max_budget_eur ?? 0)), 0), disponible: (Math.max(...datasets.map((d) => Number(d.max_budget_eur ?? 0)), 0) - confirmed - pending).toFixed(4) },
-      ...(pendingJobs.length ? [{ provider: "réservé futur", service_category: `${pendingJobs.length} job(s) en cours`, statut: "réservé", total: "inconnu", currency: "", events: pendingJobs.length, plafond: "", disponible: "non garanti tant que des coûts restent inconnus" }] : []),
+      ...[...synthesisMap.values()].map((r) => ({ provider: r.provider, service_category: r.service_category, statut: r.statut, total: Number(r.total_original).toFixed(4), currency: r.currency, total_eur: Number(r.total_eur).toFixed(4), events: r.events, plafond: "", disponible: "" })),
+      { provider: "TOTAL", service_category: "confirmé + provision non rapprochée", statut: "total engagé", total: "", currency: "eur", total_eur: (confirmed + pending).toFixed(4), events: costRows.length, plafond: plafondEur ?? "non défini", disponible },
+      ...(pendingJobs.length ? [{ provider: "réservé futur", service_category: `${pendingJobs.length} job(s) en cours`, statut: "réservé", total: "inconnu", currency: "eur", total_eur: "inconnu", events: pendingJobs.length, plafond: "", disponible: "non garanti tant que des coûts restent inconnus" }] : []),
     ];
 
     // ---- 00 Synthese ---------------------------------------------------------------
     const datasetsStats = datasets.map((d) => (d.statistics as Row | undefined)).filter(Boolean) as Row[];
     const intentsIdentified = Math.max(0, ...datasetsStats.map((s) => Array.isArray(s.intents_identified) ? s.intents_identified.length : 0));
-    const approvedCount = finalRows.filter((r) => r.approval === "approved").length;
+    const approvedCount = finalRows.length;
     const syntheseRows = [
       { champ: "Client / campagne", valeur: `${projectRow.name ?? projectId} (${projectId})` },
       { champ: "Marché / langue", valeur: `${projectRow.country ?? ""} / ${projectRow.language ?? ""}` },
@@ -390,24 +475,41 @@ export async function GET(request: Request) {
       { champ: "Questions", valeur: questions.length },
       { champ: "Intentions identifiées (avant plafonds)", valeur: intentsIdentified || "inventaire non persisté" },
       { champ: "Intentions couvertes", valeur: inventoryRows.filter((r) => r.decision === "sélectionnée").length },
-      { champ: "Prompts finaux approuvés", valeur: approvedCount },
+      { champ: "Prompts finaux exécutés (01)", valeur: executedFinalRows.length },
+      { champ: "Propositions approuvées non exécutées (01b)", valeur: propositionRows.length },
+      { champ: "Prompts finaux approuvés (total)", valeur: approvedCount },
       { champ: "Exécutions", valeur: observations.length },
       { champ: "Limites", valeur: "traces non exposées par certains providers ; stabilité non mesurée sous 2 runs ; Perplexity exclu" },
-      { champ: "Résumé financier", valeur: `engagé ${(confirmed + pending).toFixed(4)} usd (confirmé ${confirmed.toFixed(4)} + provision ${pending.toFixed(4)})` },
+      { champ: "Résumé financier", valeur: `engagé ${(confirmed + pending).toFixed(4)} eur (confirmé ${confirmed.toFixed(4)} + provision ${pending.toFixed(4)}) · conversion: ${EUR_RATE_SOURCE}` },
     ];
 
     // ---- 03 Sources_questions -------------------------------------------------------
-    const sourceRows = [
-      ...seeds.map((s) => ({ kind: "seed", id: s.id, text: s.value, url: "", platform: "", collected_at: s.created_at, provenance: "seed", question_id: "", direct_or_context: "", filters: `type=${s.seed_type} enabled=${s.enabled}` })),
-      ...signals.map((s) => ({
-        kind: "extrait", id: s.id, text: String(s.raw_text ?? s.title ?? "").slice(0, 2000), url: s.url, platform: s.platform,
-        collected_at: s.collected_at, provenance: s.source_type,
-        question_id: questions.filter((q) => String(q.signal_id) === String(s.id)).map((q) => q.id).join(", "),
-        direct_or_context: "",
-        filters: s.theme ?? "",
-      })),
-      ...questions.map((q) => ({ kind: "question", id: q.id, text: q.text, url: signalById.get(String(q.signal_id))?.url ?? "", platform: signalById.get(String(q.signal_id))?.platform ?? "", collected_at: q.created_at, provenance: q.provenance, question_id: q.id, direct_or_context: "", filters: `confidence=${q.confidence ?? ""}` })),
-    ];
+    // Complete extracts: no silent truncation. Texts beyond the Excel cell
+    // limit are split into identified rows (part x/n) with an explicit
+    // pointer to the next part.
+    const sourceRows: Row[] = [];
+    for (const s of seeds) {
+      sourceRows.push({ kind: "seed", id: s.id, part: "", text: s.value, url: "", platform: "", collected_at: s.created_at, provenance: "seed", question_id: "", direct_or_context: "", filters: `type=${s.seed_type} enabled=${s.enabled}` });
+    }
+    for (const s of signals) {
+      const parts = chunk(String(s.raw_text ?? s.title ?? ""));
+      const qids = questions.filter((q) => String(q.signal_id) === String(s.id)).map((q) => q.id).join(", ");
+      parts.forEach((part, index) => {
+        sourceRows.push({
+          kind: "extrait", id: s.id,
+          part: parts.length > 1 ? `${index + 1}/${parts.length}` : "",
+          text: index + 1 === parts.length ? part : `${part} [suite partie ${index + 2}/${parts.length}]`,
+          url: s.url, platform: s.platform,
+          collected_at: s.collected_at, provenance: s.source_type,
+          question_id: qids,
+          direct_or_context: "",
+          filters: s.theme ?? "",
+        });
+      });
+    }
+    for (const q of questions) {
+      sourceRows.push({ kind: "question", id: q.id, part: "", text: q.text, url: signalById.get(String(q.signal_id))?.url ?? "", platform: signalById.get(String(q.signal_id))?.platform ?? "", collected_at: q.created_at, provenance: q.provenance, question_id: q.id, direct_or_context: "", filters: `confidence=${q.confidence ?? ""}` });
+    }
 
     // ---- 05 Candidats_versions -------------------------------------------------------
     const candidateRows: Row[] = [];
@@ -415,18 +517,21 @@ export async function GET(request: Request) {
       const meta = (prompt.metadata ?? {}) as Row;
       const examples = exampleByPrompt.get(String(prompt.id)) ?? [];
       if (!examples.length) {
+        if (versionId) continue;
         candidateRows.push({ prompt_id: prompt.id, example_id: "", version_text: prompt.text, parent_version: "", reference_formulation: String(meta.variant_of ?? ""), generation_method: String(meta.method ?? prompt.provenance ?? ""), params: "", quality: "", stability: "", reproduction: "", decision: prompt.status, review_history: "" });
       }
       for (const example of examples) {
+        if (versionId && !frozenPromptIds.has(String(example.id))) continue;
+        const frozenVersion = versionId ? frozenVersionById.get(String(example.id)) : undefined;
         candidateRows.push({
           prompt_id: prompt.id, example_id: example.id,
-          version_text: String(example.edited_prompt_text || prompt.text || ""),
+          version_text: String(frozenVersion?.text ?? example.edited_prompt_text ?? prompt.text ?? ""),
           parent_version: example.edited_prompt_text ? "texte original (édité)" : "",
           reference_formulation: String(meta.variant_of ?? ""),
           generation_method: String(meta.method ?? prompt.provenance ?? ""),
           params: [example.persona, example.journey_stage, example.specificity_level].filter(Boolean).join(" "),
-          quality: example.quality_score ?? "", stability: example.stability_score ?? "", reproduction: example.reproduction_score ?? "",
-          decision: `${example.status ?? ""} / ${example.manual_review_status ?? "pending"}`,
+          quality: frozenVersion?.quality_score ?? example.quality_score ?? "", stability: frozenVersion?.stability ?? example.stability_score ?? "", reproduction: frozenVersion?.reproduction_score ?? example.reproduction_score ?? "",
+          decision: versionId ? `figé / approuvé` : `${example.status ?? ""} / ${example.manual_review_status ?? "pending"}`,
           review_history: example.review_note ?? "",
         });
       }
@@ -449,16 +554,17 @@ export async function GET(request: Request) {
     // ---- Assemble sheets ---------------------------------------------------------------
     const sheets: SheetSpec[] = [
       { name: "00_Synthese", columns: [{ header: "champ", key: "champ", width: 34 }, { header: "valeur", key: "valeur", width: 90 }], rows: syntheseRows, wrapColumns: ["valeur"] },
-      { name: "01_Prompts_finaux", columns: ["prompt_version_id", "prompt_id", "version", "final_text", "intent_id", "cluster_label", "constraints_persona", "origin", "base_questions", "base_question_ids", "choice_reason", "rejected_alternatives", "approval", "surfaces_tested", "executed_runs", "trace_status", "stability", "executed_state", "reconstruction_target"].map((key) => ({ header: key, key, width: key.includes("text") || key.includes("questions") ? 60 : 22 })), rows: finalRows, wrapColumns: ["final_text", "base_questions"] },
-      { name: "02_Parcours_complet", columns: ["final_version", "campaign_id", "seed_id", "seed_value", "signal_id", "source_excerpt", "source_url", "platform", "question_id", "initial_question", "transformed_question", "cluster_id", "intent_id", "candidate_prompt_id", "candidate_text", "reconstruction", "final_text", "step_status"].map((key) => ({ header: key, key, width: ["source_excerpt", "initial_question", "candidate_text", "final_text", "source_url"].includes(key) ? 50 : 20 })), rows: pathRows, wrapColumns: ["source_excerpt", "initial_question", "candidate_text", "final_text"] },
-      { name: "03_Sources_questions", columns: ["kind", "id", "text", "url", "platform", "collected_at", "provenance", "question_id", "direct_or_context", "filters"].map((key) => ({ header: key, key, width: key === "text" || key === "url" ? 55 : 20 })), rows: sourceRows, wrapColumns: ["text"] },
+      { name: "01_Prompts_finaux", columns: ["prompt_version_id", "prompt_id", "version", "final_text", "intent_id", "cluster_label", "constraints_persona", "origin", "base_questions", "base_question_ids", "choice_reason", "rejected_alternatives", "approval", "surfaces_tested", "executed_runs", "trace_status", "stability", "executed_state", "reconstruction_target"].map((key) => ({ header: key, key, width: key.includes("text") || key.includes("questions") ? 60 : 22 })), rows: executedFinalRows, wrapColumns: ["final_text", "base_questions"] },
+      { name: "01b_Propositions", columns: ["prompt_version_id", "prompt_id", "final_text", "intent_id", "cluster_label", "origin", "approval", "executed_state", "note"].map((key) => ({ header: key, key, width: key === "final_text" ? 60 : 24 })), rows: propositionRows.map((row) => ({ ...row, note: "approuvée mais jamais exécutée — non présentée comme testée" })), wrapColumns: ["final_text", "note"] },
+      { name: "02_Parcours_complet", columns: ["final_version", "campaign_id", "seed_id", "seed_value", "signal_id", "part", "source_excerpt", "source_url", "platform", "question_id", "initial_question", "transformed_question", "cluster_id", "intent_id", "candidate_prompt_id", "candidate_text", "reconstruction", "final_text", "step_status"].map((key) => ({ header: key, key, width: ["source_excerpt", "initial_question", "candidate_text", "final_text", "source_url"].includes(key) ? 50 : 20 })), rows: pathRows, wrapColumns: ["source_excerpt", "initial_question", "candidate_text", "final_text"] },
+      { name: "03_Sources_questions", columns: ["kind", "id", "part", "text", "url", "platform", "collected_at", "provenance", "question_id", "direct_or_context", "filters"].map((key) => ({ header: key, key, width: key === "text" || key === "url" ? 55 : 16 })), rows: sourceRows, wrapColumns: ["text"] },
       { name: "04_Intentions_decisions", columns: ["dataset_id", "intent_id", "representative_text", "variants", "constraints", "decision", "decision_reason", "in_final_set"].map((key) => ({ header: key, key, width: key === "representative_text" ? 55 : 24 })), rows: inventoryRows, wrapColumns: ["representative_text", "decision_reason"] },
       { name: "05_Candidats_versions", columns: ["prompt_id", "example_id", "version_text", "parent_version", "reference_formulation", "generation_method", "params", "quality", "stability", "reproduction", "decision", "review_history"].map((key) => ({ header: key, key, width: ["version_text", "review_history"].includes(key) ? 55 : 24 })), rows: candidateRows, wrapColumns: ["version_text"] },
       { name: "06_Executions", columns: ["observation_id", "part", "executed_text", "prompt_id", "provider_api", "surface_engine", "model", "market_language", "observed_at", "result_or_error", "truncated_note", "parent_observation", "relation", "web_search_triggered", "fanout_reason", "payload_ref"].map((key) => ({ header: key, key, width: ["executed_text", "result_or_error", "payload_ref"].includes(key) ? 60 : 20 })), rows: executionRows, wrapColumns: ["executed_text", "result_or_error"] },
       { name: "07_Fanouts_citations", columns: ["id", "type", "run_observation_id", "query_or_url", "title_excerpt", "position", "source", "observed_or_estimated", "parent_relation", "parent_observation_id"].map((key) => ({ header: key, key, width: ["query_or_url", "title_excerpt"].includes(key) ? 55 : 22 })), rows: [...fanRows, ...citationRows], wrapColumns: ["query_or_url", "title_excerpt"] },
       { name: "08_Reconstruction", columns: ["candidate_prompt_id", "hypothesis_text", "target_observation", "target_surface", "example_observations", "validation_runs", "reproduction", "stability", "decision"].map((key) => ({ header: key, key, width: ["hypothesis_text", "example_observations", "decision"].includes(key) ? 50 : 24 })), rows: reconRows, wrapColumns: ["hypothesis_text"] },
       { name: "09_Couts_detail", columns: ["cost_event_id", "provider", "service_category", "job_id", "dataset_id", "quantity", "unit", "status", "currency", "amount", "estimated_unit_cost", "conversion_eur", "billing_reference", "created_at", "note"].map((key) => ({ header: key, key, width: key === "note" || key === "billing_reference" ? 45 : 20 })), rows: costDetail, wrapColumns: ["note"] },
-      { name: "10_Couts_synthese", columns: ["provider", "service_category", "statut", "total", "currency", "events", "plafond", "disponible"].map((key) => ({ header: key, key, width: 26 })), rows: synthesisRows },
+      { name: "10_Couts_synthese", columns: ["provider", "service_category", "statut", "total", "currency", "total_eur", "events", "plafond", "disponible"].map((key) => ({ header: key, key, width: 26 })), rows: synthesisRows },
       { name: "11_Methodes_limites", columns: [{ header: "rubrique", key: "rubrique", width: 30 }, { header: "valeur", key: "valeur", width: 60 }, { header: "limite", key: "limite", width: 60 }], rows: methodRows, wrapColumns: ["valeur", "limite"] },
     ];
 
@@ -489,7 +595,7 @@ export async function GET(request: Request) {
     const execRows = executionRows;
     for (const [rowNumber, exec] of execRows.map((e, i) => [i + 2, e] as const)) {
       const promptId = String(exec.prompt_id);
-      const targetRow = finalRows.findIndex((r) => String(r.prompt_id) === promptId);
+      const targetRow = executedFinalRows.findIndex((r) => String(r.prompt_id) === promptId);
       if (targetRow >= 0) {
         const cell = execSheet!.getCell(`D${rowNumber}`);
         cell.value = { text: promptId, hyperlink: `#'01_Prompts_finaux'!A${targetRow + 2}` };
