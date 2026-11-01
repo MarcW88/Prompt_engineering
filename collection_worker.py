@@ -872,7 +872,17 @@ class CollectionWorker:
                 self._record_cost(job, "brightdata", "web_scraper_api", amount=bright_delta, quantity=completed, unit="records", cost_status="account_delta", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
             else:
                 self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", estimated_unit_cost=float(dataset.get("cost_per_execution_eur") or 0.05), metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
-        statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
+        # Intent inventory recorded before every cap: the coverage denominator
+        # must be the admissible intents identified, not only the intents that
+        # survived selection. Deferred intents and exclusion reasons stay
+        # visible for the justification table.
+        intent_inventory = sorted({str(c.metadata.get("intent_id")) for c in built if c.metadata.get("intent_id")})
+        intents_selected = sorted({str(c.metadata.get("intent_id")) for c in selected if c.metadata.get("intent_id")})
+        statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0,
+            "intents_identified": intent_inventory,
+            "intents_selected": intents_selected,
+            "intents_deferred": [i for i in intent_inventory if i not in intents_selected],
+            "exclusion_reasons": {"brand_filter": "clusters écartés avant construction" if len(clusters) != len(set(c.source_reference for c in built)) else None, "pool_cap": f"pool_size={pool_size}" if len(built) > pool_size else None}}
         confirmed_cost = bright_delta or 0
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "actual_cost_usd": confirmed_cost, "cost_status": "partial" if openai_search_calls else "reconciled", "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         self._report(job, 99, f"Dataset prêt: {accepted} acceptés, {rejected} rejetés, {completed} exécutions")
@@ -979,10 +989,14 @@ class CollectionWorker:
         for row in fan_out_rows:
             observation = observation_ref.get(row["observation_id"])
             if observation and row.get("source") == same_run_fan_out_source(observation.get("provider"), observation.get("engine")):
-                key = (observation["prompt_id"], str(observation.get("engine") or ""))
+                # The example prompt is the exact text executed for that run:
+                # an edited version produces its own couples, never merged
+                # with the previous version's traces.
+                executed_text = str((observation.get("raw_response") or {}).get("executed_text") or prompts_by_id[observation["prompt_id"]]["text"])
+                key = (observation["prompt_id"], executed_text, str(observation.get("engine") or ""))
                 fan_outs_by_key.setdefault(key, []).append(row["query"])
-        examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id, engine)
-            for (prompt_id, engine), fan_outs in fan_outs_by_key.items() if fan_outs]
+        examples = [ReconstructionExample(executed_text, fan_outs, prompt_id, engine)
+            for (prompt_id, executed_text, engine), fan_outs in fan_outs_by_key.items() if fan_outs]
         if not examples:
             return {"examples": 0, "reconstructed": 0,
                 "skipped": "No same-run provider-reported traces on this surface; reconstruction unavailable"}
@@ -997,7 +1011,7 @@ class CollectionWorker:
             return {"examples": len(examples), "reconstructed": 0, "skipped": "No observed targets selected; use build_dataset for signal-based generation"}
         project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id,text&project_id=eq.{project_id}")
         owned = {row["id"]: row for row in project_prompts}
-        candidates_targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response->>error&prompt_id=in.({','.join(owned)})") if owned else []
+        candidates_targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response->>error,raw_response->>executed_text&prompt_id=in.({','.join(owned)})") if owned else []
         owned_ids = {row["id"] for row in candidates_targets}
         if not set(target_ids) <= owned_ids:
             raise ValueError("Target observations must belong to this project")
@@ -1063,7 +1077,7 @@ class CollectionWorker:
             # Hold out the original prompt and its near-variants: they must not
             # leak into the ICL context of the reconstruction target. Context is
             # restricted to traces from the same engine as the target.
-            target_signature = build_signature([owned[target["prompt_id"]].get("text", "")])
+            target_signature = build_signature([str(target.get("executed_text") or owned[target["prompt_id"]].get("text", ""))])
             reconstructor.examples = [e for e in examples if e.source_reference != target["prompt_id"]
                 and e.engine == str(target.get("engine") or "")
                 and signature_similarity(target_signature, build_signature([e.prompt])) < 0.8]

@@ -221,3 +221,51 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertTrue(contexts)
         for engines in contexts:
             self.assertNotIn('gemini', engines)
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_edited_version_drives_icl_examples(self):
+        """Un run exécuté sur « texte édité » produit un exemple ICL portant
+        le texte édité — jamais l'ancienne formulation de prompts.text."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.db.tables['projects'] = [{'id': 'p', 'language': 'fr', 'country': 'BE'}]
+        w.db.tables['prompts'] = [
+            {'id': 'pr-train', 'project_id': 'p', 'text': 'ancien texte', 'cluster_id': 'c'},
+            {'id': 'pr-target', 'project_id': 'p', 'text': 'prompt cible', 'cluster_id': 'c'},
+        ]
+        w.db.tables['dataset_examples'] = [{'prompt_id': 'pr-train', 'status': 'accepted'}]
+        w.db.tables['observations'] = [
+            {'id': 'obs-train', 'prompt_id': 'pr-train', 'engine': 'chatgpt', 'provider': 'brightdata',
+             'answer': 'réponse', 'raw_response': {'executed_text': 'texte édité'}},
+            {'id': 'obs-target', 'prompt_id': 'pr-target', 'engine': 'chatgpt', 'provider': 'brightdata',
+             'answer': 'réponse', 'raw_response': {}},
+        ]
+        w.db.tables['fan_outs'] = [
+            {'observation_id': 'obs-train', 'query': 'train query', 'source': 'brightdata'},
+            {'observation_id': 'obs-target', 'query': 'target query', 'source': 'brightdata'},
+        ]
+        w._report = Mock()
+        w._record_cost = Mock()
+        contexts = []
+
+        def generate(self, *args, **kwargs):
+            contexts.append([e.prompt for e in self.examples])
+            return ['candidat gagnant']
+
+        provider = Mock()
+        provider.batch_size = 10
+        provider.execute.side_effect = lambda request: AnalysisObservation(
+            request.prompt, 'brightdata', request.engine,
+            answer='réponse', fan_outs=['target query'], raw_response={},
+        )
+        job = {'id': 'j', 'project_id': 'p', 'input': {
+            'target_observation_ids': ['obs-target'],
+            'max_validation_executions': 9, 'validation_runs': 1, 'max_targets': 1,
+        }}
+        with patch('collection_worker.BrightDataProvider', return_value=provider), \
+             patch.object(ICLPromptReconstructor, '_generate_with_llm', generate):
+            w._reverse_engineer(job)
+        self.assertTrue(contexts)
+        for example_texts in contexts:
+            self.assertIn('texte édité', example_texts)
+            self.assertNotIn('ancien texte', example_texts)

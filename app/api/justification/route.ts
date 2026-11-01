@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       supabaseRest<Array<{ id: string; provenance: string; signal_id: string | null }>>("questions", { query: `select=id,provenance,signal_id&project_id=eq.${encoded}` }),
       supabaseRest<Array<{ id: string; is_geo_relevant: boolean }>>("clusters", { query: `select=id,is_geo_relevant&project_id=eq.${encoded}` }),
       supabaseRest<Array<{ id: string; provenance: string; status: string; metadata: Record<string, unknown> }>>("prompts", { query: `select=id,provenance,status,metadata&project_id=eq.${encoded}` }),
-      supabaseRest<Array<{ id: string }>>("datasets", { query: `select=id&project_id=eq.${encoded}` }),
+      supabaseRest<Array<{ id: string; statistics: Record<string, unknown> | null }>>("datasets", { query: `select=id,statistics&project_id=eq.${encoded}` }),
     ]);
     const datasetIds = datasets.map((row) => row.id);
     const examples = datasetIds.length
@@ -53,7 +53,13 @@ export async function GET(request: Request) {
       questions_synthetic: count(questions, (row) => row.provenance === "synthetic"),
       clusters: clusters.length,
       geo_relevant_clusters: count(clusters, (row) => row.is_geo_relevant),
-      intents_identified: uniq(prompts, (row) => String(row.metadata?.intent_id ?? "")),
+      // Denominator = intent inventory recorded before caps (persisted in the
+      // dataset build statistics). Fallback: intents of registered prompts.
+      intents_identified: (() => {
+        const inventory = datasets.map((row) => (row.statistics?.intents_identified as string[] | undefined) ?? []).reduce((a, b) => a.length > b.length ? a : b, []);
+        return inventory.length || uniq(prompts, (row) => String(row.metadata?.intent_id ?? ""));
+      })(),
+      intents_deferred: datasets.map((row) => (row.statistics?.intents_deferred as string[] | undefined) ?? []).reduce((a, b) => a.length > b.length ? a : b, []),
     };
     const selection = {
       prompts_total: prompts.length,

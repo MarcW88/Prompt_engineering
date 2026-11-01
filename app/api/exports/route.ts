@@ -165,6 +165,8 @@ export async function GET(request: Request) {
       const signalById = new Map(signals.map((row) => [String(row.id), row]));
       const questionById = new Map(questions.map((row) => [String(row.id), row]));
       const evidenceByCluster = new Map<string, { question_ids: string[]; signal_urls: string[]; platforms: string[] }>();
+      const questionTextIndex = new Map<string, { question_id: string; signal_url: string | null; platform: string | null }>();
+      const normalize = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
       for (const link of clusterQuestions) {
         const question = questionById.get(String(link.question_id));
         const signal = question ? signalById.get(String(question.signal_id)) : null;
@@ -173,6 +175,15 @@ export async function GET(request: Request) {
         if (signal?.url) entry.signal_urls.push(String(signal.url));
         if (signal?.platform) entry.platforms.push(String(signal.platform));
         evidenceByCluster.set(String(link.cluster_id), entry);
+        // Direct evidence: the exact question/extract that produced this
+        // formulation, distinguished from mere same-cluster context.
+        if (question?.text) {
+          questionTextIndex.set(`${link.cluster_id}:${normalize(question.text)}`, {
+            question_id: String(link.question_id),
+            signal_url: signal?.url ? String(signal.url) : null,
+            platform: signal?.platform ? String(signal.platform) : null,
+          });
+        }
       }
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
       const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status,manual_review_status,review_note,edited_prompt_text,quality_score,stability_score,reproduction_score,completed_runs,target_runs,validation_tier");
@@ -183,27 +194,42 @@ export async function GET(request: Request) {
         if (!current || String(example.status) === "accepted") exampleByPrompt.set(key, example);
       }
       const obsCounts = new Map<string, number>();
-      for (const row of await fetchInBatches<Row>("observations", promptIds, "prompt_id", "prompt_id,answer,raw_response->>error")) {
+      const obsTexts = new Map<string, Set<string>>();
+      for (const row of await fetchInBatches<Row>("observations", promptIds, "prompt_id", "prompt_id,answer,raw_response->>error,raw_response->>executed_text")) {
         const key = String(row.prompt_id);
-        if ((row.answer ?? "").toString().trim() && !row.error) obsCounts.set(key, (obsCounts.get(key) ?? 0) + 1);
+        if ((row.answer ?? "").toString().trim() && !row.error) {
+          obsCounts.set(key, (obsCounts.get(key) ?? 0) + 1);
+          obsTexts.set(key, (obsTexts.get(key) ?? new Set()).add(String(row.executed_text || "")));
+        }
       }
       const rows = fullPrompts.map((prompt) => {
         const meta = (prompt.metadata ?? {}) as Record<string, unknown>;
         const example = exampleByPrompt.get(String(prompt.id));
         const edited = example?.edited_prompt_text ? String(example.edited_prompt_text) : "";
         const evidence = evidenceByCluster.get(String(prompt.cluster_id)) ?? { question_ids: [], signal_urls: [], platforms: [] };
+        // Direct proof = the question(s) whose text matches this formulation
+        // (or its representative for variants); cluster evidence stays
+        // separate so a source is never claimed for a formulation it did
+        // not produce.
+        const metaVariant = String(meta.variant_of ?? "");
+        const directKeys = [prompt.text, metaVariant].filter(Boolean).map((value) => `${prompt.cluster_id}:${normalize(value)}`);
+        const direct = directKeys.map((key) => questionTextIndex.get(key)).filter(Boolean) as { question_id: string; signal_url: string | null; platform: string | null }[];
         return {
           id: prompt.id,
           intent_id: String(meta.intent_id ?? meta.cluster_id ?? ""),
           cluster_label: clusterById.get(String(prompt.cluster_id)) ?? "",
-          question_ids: JSON.stringify([...new Set(evidence.question_ids)]),
-          source_urls: JSON.stringify([...new Set(evidence.signal_urls)]),
+          direct_question_ids: JSON.stringify([...new Set(direct.map((item) => item.question_id))]),
+          direct_source_urls: JSON.stringify([...new Set(direct.map((item) => item.signal_url).filter(Boolean))]),
+          cluster_question_ids: JSON.stringify([...new Set(evidence.question_ids)]),
+          cluster_source_urls: JSON.stringify([...new Set(evidence.signal_urls)]),
           source_platforms: [...new Set(evidence.platforms)].join(" | "),
           role: meta.is_representative === false ? "variant" : meta.is_representative === true ? "representative" : "candidate",
           variant_of: String(meta.variant_of ?? ""),
           text: prompt.text,
           edited_text: edited || null,
-          text_state: edited ? "unexecuted_version" : String(prompt.status ?? ""),
+          // An edited text is only "unexecuted" until a run has actually
+          // executed that exact version — previous-version runs don't count.
+          text_state: edited ? (obsTexts.get(String(prompt.id))?.has(edited) ? "edited_executed" : "unexecuted_version") : String(prompt.status ?? ""),
           provenance: prompt.provenance,
           origin: String(meta.method ?? prompt.provenance ?? ""),
           reconstruction_target_observation: String(meta.target_observation_id ?? ""),
@@ -219,7 +245,7 @@ export async function GET(request: Request) {
           created_at: prompt.created_at,
         };
       });
-      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "question_ids", "source_urls", "source_platforms", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
+      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "direct_question_ids", "direct_source_urls", "cluster_question_ids", "cluster_source_urls", "source_platforms", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
     }
 
     if (stage === "dataset") {
@@ -237,7 +263,7 @@ export async function GET(request: Request) {
       return download(rows, ["id", "dataset_name", "status", "prompt_text", "prompt_provenance", "persona", "journey_stage", "specificity_level", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "validation_tier", "target_runs", "completed_runs", "manual_review_status", "reviewed_at", "review_note", "selected_for_execution", "created_at"], stage, format);
     }
 
-    const observationRows = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response_error:raw_response->>error,web_search_triggered,observed_at");
+    const observationRows = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response_error:raw_response->>error,executed_text:raw_response->>executed_text,web_search_triggered,observed_at");
     const observations: Row[] = observationRows.map((row) => ({ ...row, raw_response: row.raw_response_error ? { error: row.raw_response_error } : null }));
     observations.sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)));
     const observationIds = observations.map((row) => String(row.id));
@@ -270,7 +296,10 @@ export async function GET(request: Request) {
         .map((observation) => ({
           project_id: projectId,
           prompt_id: observation.prompt_id,
-          prompt: promptById.get(String(observation.prompt_id))?.text ?? "",
+          // The corpus must pair searches with the exact text executed, not
+          // the prompt row's current text — an edited version produces its
+          // own prompt/searches couples.
+          prompt: String(observation.executed_text || promptById.get(String(observation.prompt_id))?.text || ""),
           observation_id: observation.id,
           provider: observation.provider,
           engine: observation.engine,
