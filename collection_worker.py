@@ -263,7 +263,7 @@ class CollectionWorker:
         plateformes sont activées simultanément."""
         if not sample or not sources:
             return {}
-        social = {"reddit", "facebook", "instagram", "linkedin", "x"}
+        social = {"facebook", "instagram", "linkedin", "x"}
         non_social = [source for source in sources if source not in social]
         social_sources = [source for source in sources if source in social]
         # Cap social pool at 35% of the total query budget when several platforms are active.
@@ -433,6 +433,12 @@ class CollectionWorker:
                         source_report[platform]["skipped"] = scraper.skipped[platform]
             else:
                 source_report[scraper.source_type] = {"collected": len(items) - before, "errors": scraper.errors_count, "budget_eur": round(source_budget_eur.get(scraper.source_type, 0), 2)}
+                # Reddit transite par le ForumScraper (Arctic Shift) : on isole
+                # son volume pour un reporting par source fidèle à la sélection.
+                if scraper.source_type == "forum" and "reddit" in requested:
+                    reddit_count = sum(1 for item in items[before:] if item.platform == "reddit")
+                    source_report["reddit"] = {"collected": reddit_count, "errors": 0, "budget_eur": round(source_budget_eur.get("reddit", 0), 2)}
+                    source_report["forum"]["collected"] -= reddit_count
         accepted_languages = {language.lower() for language in config.filters.accepted_languages}
         filtered_items = []
         rejected_languages = 0

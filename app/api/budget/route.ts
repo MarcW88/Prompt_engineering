@@ -50,7 +50,7 @@ export async function GET(request: Request) {
       signals: signals.length,
       themes: listLength(source.themes),
       competitors: listLength(source.competitors),
-      socialTargets: ["subreddits", "facebook_urls", "instagram_urls", "linkedin_urls", "x_urls"].reduce((sum, key) => sum + listLength(source[key]), 0),
+      socialTargets: ["facebook_urls", "instagram_urls", "linkedin_urls", "x_urls"].reduce((sum, key) => sum + listLength(source[key]), 0),
       languages: Math.max(1, listLength(source.languages)),
       markets: 1,
       plannedRequests,

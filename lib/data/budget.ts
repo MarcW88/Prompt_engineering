@@ -36,8 +36,8 @@ const shares: Record<BudgetStage, number> = {
 const sourceWeights: Record<string, number> = {
   serp: 1,
   review: 1,
-  forum: 2,
-  reddit: 3,
+  forum: 1,
+  reddit: 1,
   facebook: 4,
   instagram: 4,
   linkedin: 4,
@@ -45,12 +45,15 @@ const sourceWeights: Record<string, number> = {
 };
 
 // Indicative cost per source in EUR for a small sample run. Used for pre-flight
-// warnings only; real costs depend on provider billing.
+// warnings only; real costs depend on provider billing. Reddit, forums, SERP
+// (PAA/suggest) et avis passent désormais par des collecteurs gratuits
+// (Arctic Shift, SearXNG, __NEXT_DATA__, endpoint Suggest) — seuls les réseaux
+// sociaux restent sur Bright Data.
 const sourceCostHints: Record<string, number> = {
-  serp: 0.05,
-  review: 0.10,
-  forum: 0.10,
-  reddit: 0.30,
+  serp: 0.02,
+  review: 0.05,
+  forum: 0.03,
+  reddit: 0.02,
   facebook: 0.60,
   instagram: 0.60,
   linkedin: 0.60,
@@ -90,7 +93,7 @@ export function estimateCollectionCostEur(input: CostEstimateInput): number {
     const base = sourceCostHints[source] ?? 0.3;
     cost += base + (requestBudget / sourceCount) * (base / 10);
   }
-  const socialSources = input.sources.filter((source) => ["reddit", "facebook", "instagram", "linkedin", "x"].includes(source));
+  const socialSources = input.sources.filter((source) => ["facebook", "instagram", "linkedin", "x"].includes(source));
   if (socialSources.length && input.socialTargets) {
     cost += socialSources.length * input.socialTargets * input.socialPostLimit * (1 + input.socialCommentLimit * 0.4) * 0.02;
   }
@@ -114,8 +117,8 @@ export function recommendConfigForTargetPrompts(targetPrompts: number, sampleMod
   // Always include all social families, but keep their combined budget share
   // capped so they do not dominate the cost. The worker allocates a shared
   // social budget pool (max ~35%) split across the active social platforms.
-  const coreSources = ["serp", "review", "forum"];
-  const socialSources = ["reddit", "facebook", "instagram", "linkedin", "x"];
+  const coreSources = ["serp", "review", "forum", "reddit"];
+  const socialSources = ["facebook", "instagram", "linkedin", "x"];
   const sources = [...coreSources, ...socialSources];
   const sourceCount = sources.length;
   // In sample mode the per-source budget is split across sources; in full audit

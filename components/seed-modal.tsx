@@ -7,10 +7,10 @@ import { parseSeedText, type SeedType } from "@/lib/data/seeds";
 import { recommendBudget, estimateCollectionCostEur, recommendConfigForTargetPrompts } from "@/lib/data/budget";
 
 const sourceLabels: Record<string, string> = {
-  reddit: "Reddit",
+  reddit: "Reddit (gratuit)",
   forum: "Forums",
   serp: "PAA & suggestions",
-  review: "Trustpilot & avis",
+  review: "Trustpilot & avis Google",
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
@@ -109,7 +109,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     signals: 0,
     themes: lines(themes).length,
     competitors: lines(competitors).length,
-    socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length,
+    socialTargets: lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length,
     languages: Math.max(1, lines(languages).length),
     markets: 1,
     plannedRequests,
@@ -118,10 +118,10 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     socialCommentLimit,
     sampleMode,
   }), [competitors, facebookUrls, instagramUrls, languages, linkedinUrls, plannedRequests, priority, sampleMode, seedType, socialCommentLimit, socialPostLimit, sources, subreddits, text, themes, xUrls]);
-  const socialPlatformsSelected = sources.some((source) => ["facebook", "instagram", "linkedin", "x", "reddit"].includes(source));
+  const socialPlatformsSelected = sources.some((source) => ["facebook", "instagram", "linkedin", "x"].includes(source));
   const recommendedQueryBudget = { light: 3, standard: 5, extended: 10, segmented: 15 }[collectionRecommendation.tier];
   const estimatedCollectionCostEur = useMemo(() => estimateCollectionCostEur({
-    sources, plannedRequests, queryBudget, sampleMode, socialTargets: lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length, socialPostLimit, socialCommentLimit,
+    sources, plannedRequests, queryBudget, sampleMode, socialTargets: lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length, socialPostLimit, socialCommentLimit,
   }), [sources, plannedRequests, queryBudget, sampleMode, subreddits, facebookUrls, instagramUrls, linkedinUrls, xUrls, socialPostLimit, socialCommentLimit]);
   const displayBudgetTotalEur = customBudgetTotalEur ?? collectionRecommendation.totalEur;
 
@@ -251,7 +251,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           {(() => {
             const recommendation = recommendConfigForTargetPrompts(targetPrompts, sampleMode, fullOptiUnlocked);
             const exceedsCap = recommendation.collectionCostEur > recommendation.totalBudgetEur;
-            const socialTargetsCount = lines(subreddits).length + lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length;
+            const socialTargetsCount = lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length;
             const tooManySocialTargets = socialTargetsCount > recommendation.maxSocialTargets;
             return <div className={`dataset-estimate ${exceedsCap || tooManySocialTargets ? "warn" : "good"}`}><p className="estimate-title">Configuration recommandée</p><p><strong>{recommendation.estimatedSignals.toLocaleString("fr-FR")}</strong> signaux estimés · <strong>{recommendation.estimatedClusters.toLocaleString("fr-FR")}</strong> clusters · budget requêtes <strong>{recommendation.queryBudget}</strong></p><p><strong>Coût collecte estimé :</strong> {recommendation.collectionCostEur.toFixed(2)} € · <strong>Plafond global indicatif :</strong> {recommendation.totalBudgetEur.toFixed(2)} €</p><p><small>Sources recommandées : {recommendation.sources.map((source) => sourceLabels[source as keyof typeof sourceLabels] ?? source).join(", ")}</small></p><p><small>Part sociale plafonnée à ~{recommendation.socialSharePercent}% · cibles sociales max ~{recommendation.maxSocialTargets}</small></p><p><small>{sampleMode ? "Mode échantillon : le budget est réparti entre les sources. Idéal pour tester." : "Mode audit complet : chaque source reçoit le budget affiché. Coût plus élevé mais couverture maximale."}</small></p>{exceedsCap && <p className="warning"><AlertTriangle size={14} /> L’estimation de collecte dépasse le plafond global affiché. Augmente le plafond ou réduis le nombre de prompts cibles.</p>}{tooManySocialTargets && <p className="warning"><AlertTriangle size={14} /> Tu as {socialTargetsCount} cibles sociales configurées. Pour rester dans le budget, limite-toi à environ {recommendation.maxSocialTargets} cibles au total (tous réseaux confondus).</p>}</div>;
           })()}
