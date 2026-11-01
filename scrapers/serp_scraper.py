@@ -328,7 +328,7 @@ class SerpScraper(BaseScraper):
             "language_code": "fr"
         }]
         
-        result = self._dataforseo_request("serp/google/autocomplete/live", payload)
+        result = self._dataforseo_request("serp/google/autocomplete/live/advanced", payload)
         
         if not result or result.get("status_code") != 20000:
             self.logger.debug(f"DataForSEO suggestions request failed for '{query}'")

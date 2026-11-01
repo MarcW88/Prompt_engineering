@@ -295,7 +295,16 @@ class CollectionWorker:
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
             self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", estimated_unit_cost=float(os.getenv("CLOUD_RUN_COST_PER_SECOND_USD", "0.0001")), external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "cpu": 2, "memory_gib": 2})
             actual_cost, cost_status = self._job_cost_summary(job["id"])
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result if result is not None else {}, "actual_cost_usd": actual_cost, "cost_status": cost_status, **self._settle_reservation(job), "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            patch = {"status": "completed", "progress": 100, "output": result if result is not None else {}, "actual_cost_usd": actual_cost, "cost_status": cost_status, **self._settle_reservation(job), "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}
+            try:
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", patch, "return=minimal")
+            except RuntimeError as error:
+                if "reservation_open" not in str(error):
+                    raise
+                # Schéma sans la migration réservation : on clôture quand même,
+                # la couverture budgétaire résiduelle reste inactive.
+                patch = {key: value for key, value in patch.items() if key not in ("reservation_open", "reserved_cost_eur")}
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", patch, "return=minimal")
         except Exception as error:
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
             try:
@@ -306,7 +315,14 @@ class CollectionWorker:
             # Un échec après consommation garde sa provision ; un échec avant
             # toute consommation la libère (résiduel nul).
             settlement = self._settle_reservation(job) if not can_retry else {}
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "output": {}, **settlement, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            patch = {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "output": {}, **settlement, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}
+            try:
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", patch, "return=minimal")
+            except RuntimeError as patch_error:
+                if "reservation_open" not in str(patch_error):
+                    raise
+                patch = {key: value for key, value in patch.items() if key not in ("reservation_open", "reserved_cost_eur")}
+                self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", patch, "return=minimal")
             raise
         finally:
             heartbeat.stop()
