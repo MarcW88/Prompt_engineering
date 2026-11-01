@@ -71,12 +71,24 @@ présence d'un dépôt dans cette liste ne vaut ni intégration ni validation.
 - **Limite** : traces observées ≠ estimées ; deux conversations indépendantes
   ne donnent pas nécessairement les mêmes requêtes.
 
-### query-fanout-viewer — `LorenzoSchiff/query-fanout-viewer`
+### query-fanout-viewer — `LorenzoSchiff/query-fanout-viewer` **(inspecteur retenu)**
 
-- **Version examinée** : `main` @ `268446b465cc` — bookmarklet
-  (`src/bookmarklet.js`) inspectant grounding/fan-outs dans ChatGPT/Claude.
-- **Rôle** : alternative légère à OpenQueries, même limitation navigateur.
-  Référence seulement.
+- **Version examinée** : `main` @ `268446b465cc`, clone `/tmp` du 1 nov. 2026.
+- **Fichier vérifié** : `src/bookmarklet.js` (unique fichier de 46k
+  caractères, bookmarklet auto-contenu).
+- **Mécanisme réel vérifié** : le bookmarklet parse le payload de
+  conversation ChatGPT en mémoire — lots `web.run` → `searchBatches` avec
+  requêtes dédupliquées, `groups.entries` tagués `search`/`view` pour les
+  résultats, `ref_id` (`turn_index`/`ref_type`) pour la corrélation
+  citation-path. Pour Claude il lit les `web_search` tool uses.
+- **Décision** : retenu comme inspecteur de contrôle indépendant (un seul,
+  conformément au cahier des charges) — OpenQueries reste une référence.
+- **Usage prévu** : QA navigateur — l'utilisateur ouvre sa conversation
+  ChatGPT, lance le bookmarklet, et compare les requêtes affichées aux
+  fan-outs stockés. **Limite honnête** : le contrôle est manuel et par
+  conversation ; il ne garantit pas l'observabilité automatisée, et deux
+  runs indépendants n'ont pas à produire les mêmes recherches.
+- **Preuve** : mécanisme lu dans le source, pas seulement le README.
 
 ## Collecteurs (conservés, filiation vérifiée)
 
@@ -94,7 +106,7 @@ présence d'un dépôt dans cette liste ne vaut ni intégration ni validation.
 - **Sélection des formulations (mode `faithful`)** : regroupement d'intentions
   par similarité de signature lexicale + égalité des tokens de contraintes
   (budget, audience, chiffres). Seuil `intent_similarity_threshold` (défaut
-  0,85) configurable par `build_config`. Choix local, pas repris d'Elmo/WRA.
+  0,65) configurable par `build_config`. Choix local, pas repris d'Elmo/WRA.
 - **Scores** : `pre_execution_score`, `quality_score`, `reproduction_score`
   (lexical, référence) + `semantic_reproduction_score` (complément descriptif).
   Seuils : acceptation `quality_threshold` (0,65 défaut), `validated` = ≥3 runs

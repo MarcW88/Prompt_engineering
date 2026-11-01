@@ -5,7 +5,7 @@ import { isEligibleObservation, observedFanOutSourceFilter, traceKind } from "@/
 
 type Row = Record<string, unknown>;
 
-const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved", "corpus"]);
+const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved", "corpus", "portfolio"]);
 
 function csvCell(value: unknown) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -91,6 +91,7 @@ export async function GET(request: Request) {
         fanouts: await countLinkedRows("fan_outs", observationIds, "observation_id"),
         citations: await countLinkedRows("citations", observationIds, "observation_id"),
         validations: await countLinkedRows("validations", promptIds, "prompt_id"),
+        portfolio: promptIds.length,
         corpus: (await fetchInBatches<{ id: string }>("fan_outs", observationIds, "observation_id", `id&${observedFanOutSourceFilter()}`)).length,
       };
       return NextResponse.json({ counts });
@@ -141,6 +142,57 @@ export async function GET(request: Request) {
     const prompts = await supabaseRest<Row[]>("prompts", { query: `select=id,text,provenance&project_id=eq.${project}&limit=20000` });
     const promptIds = prompts.map((row) => String(row.id));
     const promptById = new Map(prompts.map((row) => [String(row.id), row]));
+
+    if (stage === "portfolio") {
+      // §10 business portfolio: one dossier per prompt, grouped by intent,
+      // explaining every selection and exclusion. An edited text is a new,
+      // unexecuted version — its scores stay with the original formulation.
+      const fullPrompts = await supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,confidence,status,expected_fan_outs,metadata,created_at&project_id=eq.${project}&limit=20000&order=created_at.asc` });
+      const clusterIds = [...new Set(fullPrompts.map((row) => String(row.cluster_id)).filter((id) => id && id !== "null"))];
+      const clusterById = new Map((clusterIds.length ? await supabaseRest<Row[]>("clusters", { query: `select=id,label&project_id=eq.${project}` }) : []).map((row) => [String(row.id), String(row.label ?? "")]));
+      const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
+      const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status,manual_review_status,review_note,edited_prompt_text,quality_score,stability_score,reproduction_score,completed_runs,target_runs,validation_tier");
+      const exampleByPrompt = new Map<string, Row>();
+      for (const example of examples) {
+        const key = String(example.prompt_id);
+        const current = exampleByPrompt.get(key);
+        if (!current || String(example.status) === "accepted") exampleByPrompt.set(key, example);
+      }
+      const obsCounts = new Map<string, number>();
+      for (const row of await fetchInBatches<Row>("observations", promptIds, "prompt_id", "prompt_id,answer,raw_response->>error")) {
+        const key = String(row.prompt_id);
+        if ((row.answer ?? "").toString().trim() && !row.error) obsCounts.set(key, (obsCounts.get(key) ?? 0) + 1);
+      }
+      const rows = fullPrompts.map((prompt) => {
+        const meta = (prompt.metadata ?? {}) as Record<string, unknown>;
+        const example = exampleByPrompt.get(String(prompt.id));
+        const edited = example?.edited_prompt_text ? String(example.edited_prompt_text) : "";
+        return {
+          id: prompt.id,
+          intent_id: String(meta.intent_id ?? meta.cluster_id ?? ""),
+          cluster_label: clusterById.get(String(prompt.cluster_id)) ?? "",
+          role: meta.is_representative === false ? "variant" : meta.is_representative === true ? "representative" : "candidate",
+          variant_of: String(meta.variant_of ?? ""),
+          text: prompt.text,
+          edited_text: edited || null,
+          text_state: edited ? "unexecuted_version" : String(prompt.status ?? ""),
+          provenance: prompt.provenance,
+          origin: String(meta.method ?? prompt.provenance ?? ""),
+          reconstruction_target_observation: String(meta.target_observation_id ?? ""),
+          cluster_id: prompt.cluster_id,
+          executed_runs: obsCounts.get(String(prompt.id)) ?? 0,
+          quality_score: example?.quality_score ?? null,
+          stability_score: example && Number(example.completed_runs ?? 0) >= Math.max(3, Number(example.target_runs ?? 0)) ? example.stability_score : null,
+          reproduction_score: example?.reproduction_score ?? null,
+          selection_status: example?.status ?? "not_selected",
+          review_status: example?.manual_review_status ?? "pending",
+          review_note: example?.review_note ?? null,
+          confidence: prompt.confidence,
+          created_at: prompt.created_at,
+        };
+      });
+      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
+    }
 
     if (stage === "dataset") {
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id,name,status,created_at&project_id=eq.${project}&order=created_at.desc` });
