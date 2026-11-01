@@ -1,11 +1,11 @@
-from typing import Dict, Iterable, List
+from typing import Callable, Dict, Iterable, List, Optional
 
 from analysis.models import AnalysisObservation, PromptCandidate
 from analysis.signatures import build_signature, signature_similarity
 from analysis.validation import stability_score
 
 
-def score_dataset_example(candidate: PromptCandidate, observations: Iterable[AnalysisObservation], similar_prompts: Iterable[str] = ()) -> Dict[str, float]:
+def score_dataset_example(candidate: PromptCandidate, observations: Iterable[AnalysisObservation], similar_prompts: Iterable[str] = (), semantic_scorer: Optional[Callable[[List[str], List[str]], float]] = None) -> Dict[str, float]:
     observations = list(observations)
     if not observations:
         return {"coverage_score": 0.0, "stability_score": 0.0, "reproduction_score": 0.0, "redundancy_score": 0.0, "quality_score": 0.0}
@@ -13,6 +13,14 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
     reproduction = sum(signature_similarity(expected, build_signature(observation.fan_outs)) for observation in observations) / len(observations)
     observed_queries = {query.casefold() for observation in observations for query in observation.fan_outs}
     expected_queries = expected.normalized_queries
+    # Mesure sémantique complémentaire (le lexical reste la référence) :
+    # similarité moyenne du meilleur appariement attendu ↔ observé.
+    semantic_reproduction = None
+    if semantic_scorer is not None and expected_queries and observed_queries:
+        try:
+            semantic_reproduction = semantic_scorer(list(expected_queries), sorted(observed_queries))
+        except Exception:
+            semantic_reproduction = None
     coverage = sum(any(signature_similarity(build_signature([query]), build_signature([observed])) >= 0.45 for observed in observed_queries) for query in expected_queries) / len(expected_queries) if expected_queries else 0.0
     stability = stability_score(observations)
     prompt_signature = build_signature([candidate.text])
@@ -28,10 +36,13 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
         # Engines like Google AI Mode never return fan-out queries: score the
         # answer itself and its citations instead of forcing coverage to 0.
         quality = 0.50 * answer_score + 0.25 * citation_score + 0.20 * stability + 0.05 * (1 - redundancy)
-    return {
+    result = {
         "coverage_score": round(coverage, 4),
         "stability_score": round(stability, 4),
         "reproduction_score": round(reproduction, 4),
         "redundancy_score": round(redundancy, 4),
         "quality_score": round(quality, 4),
     }
+    if semantic_reproduction is not None:
+        result["semantic_reproduction_score"] = round(semantic_reproduction, 4)
+    return result

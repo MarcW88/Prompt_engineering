@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
 
 type Row = Record<string, unknown>;
 
-const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved"]);
+const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved", "corpus"]);
 
 function csvCell(value: unknown) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -90,6 +90,7 @@ export async function GET(request: Request) {
         fanouts: await countLinkedRows("fan_outs", observationIds, "observation_id"),
         citations: await countLinkedRows("citations", observationIds, "observation_id"),
         validations: await countLinkedRows("validations", promptIds, "prompt_id"),
+        corpus: (await fetchInBatches<{ id: string }>("fan_outs", observationIds, "observation_id", "id&source=eq.brightdata")).length,
       };
       return NextResponse.json({ counts });
     } catch (error) {
@@ -159,6 +160,43 @@ export async function GET(request: Request) {
     observations.sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)));
     const observationIds = observations.map((row) => String(row.id));
     const observationById = new Map(observations.map((row) => [String(row.id), row]));
+
+    if (stage === "corpus") {
+      // Corpus d'apprentissage reconstruction (contrat §7) : uniquement des
+      // observations avec fan-outs réellement rapportés par le provider,
+      // le prompt exact exécuté, et aucune requête synthétique.
+      const fanRows = await fetchInBatches<Row>("fan_outs", observationIds, "observation_id", "observation_id,query,source&source=eq.brightdata&order=position.asc");
+      const fanByObservation = new Map<string, string[]>();
+      for (const row of fanRows) {
+        const key = String(row.observation_id);
+        fanByObservation.set(key, [...(fanByObservation.get(key) ?? []), String(row.query)]);
+      }
+      const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
+      const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status");
+      const acceptedPrompts = new Set(examples.filter((row) => row.status === "accepted").map((row) => String(row.prompt_id)));
+      const rows = observations
+        .filter((observation) => (fanByObservation.get(String(observation.id)) ?? []).length > 0)
+        .map((observation) => ({
+          project_id: projectId,
+          prompt_id: observation.prompt_id,
+          prompt: promptById.get(String(observation.prompt_id))?.text ?? "",
+          observation_id: observation.id,
+          provider: observation.provider,
+          engine: observation.engine,
+          model: observation.model ?? null,
+          country: observation.country,
+          language: observation.language,
+          observed_at: observation.observed_at,
+          fan_outs: JSON.stringify(fanByObservation.get(String(observation.id)) ?? []),
+          trace_kind: "provider_reported",
+          status: acceptedPrompts.has(String(observation.prompt_id)) ? "accepted" : "observed",
+          raw_response_reference: `observations:${observation.id}`,
+        }));
+      if (format === "json") {
+        return NextResponse.json({ stage, count: rows.length, rows: rows.map((row) => ({ ...row, fan_outs: JSON.parse(String(row.fan_outs)) })) });
+      }
+      return download(rows, ["project_id", "prompt_id", "prompt", "observation_id", "provider", "engine", "model", "country", "language", "observed_at", "fan_outs", "trace_kind", "status", "raw_response_reference"], stage, format);
+    }
 
     if (stage === "observations") {
       const rows = observations.map((row) => ({ ...row, prompt_text: promptById.get(String(row.prompt_id))?.text, prompt_provenance: promptById.get(String(row.prompt_id))?.provenance }));

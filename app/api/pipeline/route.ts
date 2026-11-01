@@ -33,12 +33,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Sélectionnez des target_observation_ids réels et un plafond max_validation_executions. Pour générer depuis les signaux utilisateurs, utilisez build_dataset." }, { status: 400 });
       }
       const encoded = encodeURIComponent(body.projectId);
-      const [projects, costs] = await Promise.all([
+      const [projects, costs, activeJobs] = await Promise.all([
         supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encoded}&limit=1` }),
         supabaseRest<Array<{ amount: number | null; currency: string; cost_status: string }>>("analysis_costs", { query: `select=amount,currency,cost_status&project_id=eq.${encoded}` }),
+        supabaseRest<Array<{ input: Record<string, unknown> | null }>>("jobs", { query: `select=input&project_id=eq.${encoded}&status=in.(pending,running)` }),
       ]);
       const totalBudgetEur = Number(projects[0]?.budget_total_eur ?? 8);
-      const spentEur = confirmedCostEur(costs);
+      // Dépense engagée = coûts confirmés + réservations des jobs encore actifs.
+      const concurrentReservedEur = activeJobs.reduce((sum, job) => sum + Number(job.input?.reserved_cost_eur ?? 0), 0);
+      const spentEur = confirmedCostEur(costs) + concurrentReservedEur;
       const reserveEur = Math.max(0.25, Math.round(totalBudgetEur * 0.1 * 100) / 100);
       if (spentEur + reserveEur > totalBudgetEur) return NextResponse.json({ error: `Réserve reverse engineering insuffisante : ${reserveEur.toFixed(2)} € requis, ${Math.max(0, totalBudgetEur - spentEur).toFixed(2)} € restant.` }, { status: 422 });
       input = { ...input, reserved_cost_eur: reserveEur };

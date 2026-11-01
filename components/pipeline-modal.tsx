@@ -28,12 +28,21 @@ const steps = [
   { kind: "cluster_questions", title: "3. Clusters", text: "Regroupe les questions par intention avec embeddings.", action: "launch" },
   { kind: "build_dataset", title: "4. Dataset", text: "Construit le corpus candidat et exécute l’échantillon choisi.", action: "dataset" },
   { kind: "validate_dataset", title: "5. Validation", text: "Réexécute les exemples acceptés sur 3 ou 5 runs.", action: "validation" },
-  { kind: "reverse_engineer", title: "6. Reverse engineering", text: "Reconstruit des prompts à partir des fan-outs observés.", action: "launch" },
+  { kind: "reverse_engineer", title: "6. Reverse engineering", text: "Parcours « reconstruction » : reconstruit des prompts uniquement à partir des fan-outs réellement observés (cibles à sélectionner). Distinct de l'étape 4, qui génère depuis les signaux utilisateurs.", action: "launch" },
   { kind: "manual_review", title: "7. Revue humaine", text: "Approuve, modifie ou rejette les prompts avant export.", action: "review" },
   { kind: "semactic_export", title: "8. Export", text: "Exporte uniquement les prompts acceptés et approuvés.", action: "export" },
 ];
 
 const launchableKinds = new Set(["transform_signals", "cluster_questions", "reverse_engineer"]);
+
+interface TargetObservation {
+  id: string;
+  prompt_text: string;
+  provider: string;
+  engine: string;
+  observed_at: string;
+  fan_out_count: number;
+}
 
 interface PipelineModalProps {
   projectId: string | null;
@@ -49,6 +58,12 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
   const [jobs, setJobs] = useState<PipelineJob[]>([]);
   const [metrics, setMetrics] = useState<WorkflowMetrics>({ signals: 0, questions: 0, clusters: 0, datasets: 0, observations: 0, validations: 0, approved: 0 });
   const [message, setMessage] = useState("");
+  const [rePanel, setRePanel] = useState(false);
+  const [targets, setTargets] = useState<TargetObservation[]>([]);
+  const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
+  const [maxCandidates, setMaxCandidates] = useState(3);
+  const [validationRuns, setValidationRuns] = useState(3);
+  const [executionCeiling, setExecutionCeiling] = useState(0);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -71,11 +86,55 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
 
   async function launch(kind: string) {
     if (!projectId) { setMessage("Créez d'abord un workspace Supabase."); return; }
+    if (kind === "reverse_engineer") {
+      setMessage("Chargement des observations éligibles…");
+      const response = await fetch(`/api/observations?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+      const data = await response.json();
+      setTargets(response.ok ? data.observations ?? [] : []);
+      setSelectedTargets([]);
+      setExecutionCeiling(0);
+      setRePanel(true);
+      setMessage(response.ok ? "" : data.error ?? "Chargement impossible.");
+      return;
+    }
     setMessage("Création du job…");
     const response = await fetch("/api/pipeline", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, stage: kind }) });
     const data = await response.json();
     setMessage(response.ok ? "Job ajouté à la file du worker." : data.error ?? "Création impossible.");
     if (response.ok) await load();
+  }
+
+  const minExecutions = selectedTargets.length * maxCandidates * validationRuns;
+
+  useEffect(() => {
+    if (rePanel) setExecutionCeiling((current) => Math.max(current, minExecutions));
+  }, [rePanel, minExecutions]);
+
+  function toggleTarget(id: string) {
+    setSelectedTargets((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  }
+
+  async function launchReverseEngineer() {
+    if (!projectId) return;
+    setMessage("Création du job de reconstruction…");
+    const response = await fetch("/api/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        stage: "reverse_engineer",
+        input: {
+          target_observation_ids: selectedTargets,
+          max_targets: selectedTargets.length,
+          max_candidates_per_cluster: maxCandidates,
+          validation_runs: validationRuns,
+          max_validation_executions: executionCeiling,
+        },
+      }),
+    });
+    const data = await response.json();
+    setMessage(response.ok ? "Job de reconstruction ajouté à la file." : data.error ?? "Création impossible.");
+    if (response.ok) { setRePanel(false); await load(); }
   }
 
   function latest(kind: string) {
@@ -148,6 +207,32 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
             );
           })}
         </div>
+        {rePanel && (
+          <div className="export-item" style={{ padding: "1rem" }}>
+            <strong>Cibles de reconstruction — observations avec fan-outs rapportés par le provider</strong>
+            <p>Seules les observations réelles du projet sont éligibles. Le prompt cible est exclu de son propre contexte ICL et la validation réexécute chaque candidat sur le même moteur.</p>
+            {targets.length === 0 && <p>Aucune observation éligible : exécutez d'abord des prompts via l'étape 4 (build_dataset) pour produire des fan-outs Bright Data.</p>}
+            <div style={{ maxHeight: "16rem", overflowY: "auto", margin: "0.75rem 0" }}>
+              {targets.map((target) => (
+                <label key={target.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.3rem 0" }}>
+                  <input type="checkbox" checked={selectedTargets.includes(target.id)} onChange={() => toggleTarget(target.id)} />
+                  <span style={{ flex: 1 }}>{target.prompt_text}</span>
+                  <small>{target.engine} · {target.fan_out_count} fan-outs · {String(target.observed_at).slice(0, 10)}</small>
+                </label>
+              ))}
+            </div>
+            <div className="form-row">
+              <label>Candidats / cible<input type="number" min={3} max={5} value={maxCandidates} onChange={(event) => setMaxCandidates(Number(event.target.value))} /></label>
+              <label>Runs de validation<input type="number" min={1} max={4} value={validationRuns} onChange={(event) => setValidationRuns(Number(event.target.value))} /></label>
+              <label>Plafond d'exécutions<input type="number" min={minExecutions} value={executionCeiling} onChange={(event) => setExecutionCeiling(Number(event.target.value))} /></label>
+            </div>
+            <small>Plan borné : {selectedTargets.length} cible(s) × {maxCandidates} candidats × {validationRuns} run(s) = minimum {minExecutions} exécutions payantes. Le statut « validated » exige ≥ 3 runs et une stabilité ≥ 0,65.</small>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+              <button className="primary" disabled={!selectedTargets.length || executionCeiling < minExecutions} onClick={() => void launchReverseEngineer()}>Lancer la reconstruction</button>
+              <button className="secondary" onClick={() => setRePanel(false)}>Fermer</button>
+            </div>
+          </div>
+        )}
         {message && <p className="import-status">{message}</p>}
         <div className="pipeline-note">La liste se rafraîchit toutes les 5 secondes. La collecte, le dataset, la revue et l’export utilisent leurs écrans dédiés.</div>
       </div>

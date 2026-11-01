@@ -98,6 +98,7 @@ def extract_page_text(url: str, session: Optional[requests.Session] = None,
             "title": str(data.get("title") or ""),
             "text": text,
             "date": str(data.get("date") or ""),
+            "engine": "trafilatura",
         }
     except Exception as error:
         if logger:
@@ -120,7 +121,7 @@ def _extract_page_bs4(url: str, session: Optional[requests.Session],
         text = " ".join(soup.get_text(" ").split())[:10000]
         if len(text) < 40:
             return None
-        return {"title": title, "text": text, "date": ""}
+        return {"title": title, "text": text, "date": "", "engine": "bs4"}
     except Exception as error:
         if logger:
             logger.debug(f"BeautifulSoup extraction failed on {url}: {error}")
@@ -137,6 +138,6 @@ def extract_url_content(url: str, session: Optional[requests.Session] = None,
         return thread
     page = extract_page_text(url, session, timeout, logger)
     if page:
-        page["engine"] = "trafilatura"
+        page["engine"] = page.get("engine") or "trafilatura"
         return page
     return None

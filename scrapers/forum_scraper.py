@@ -226,7 +226,10 @@ class ForumScraper(BaseScraper):
     def _scrape_subreddit_json(self, subreddit_name: str, max_threads: int) -> List[RawItem]:
         """Scrape un subreddit via l'API JSON publique de Reddit"""
         items = []
-        
+        max_comments = int(self.config.scraping.forum.get("max_replies_per_thread", 3))
+        comment_thread_limit = int(self.config.scraping.forum.get("arctic_comment_threads", 5))
+        commented = 0
+
         planned_queries = plan_queries(self.config.seeds, "reddit", max_threads)
         for index, planned in enumerate(planned_queries, start=1):
             self._report_progress(index - 1, len(planned_queries), f"Reddit · r/{subreddit_name} · {planned.query}")
@@ -287,7 +290,50 @@ class ForumScraper(BaseScraper):
                             client_slug=self.config.client.slug
                         )
                         items.append(item)
-                
+                        # Fallback commentaires via le JSON public du thread.
+                        if commented < comment_thread_limit and post.get("num_comments", 0) > 0 and post.get("permalink"):
+                            try:
+                                time.sleep(self.config.scraping.delay_between_requests)
+                                c_response = requests.get(f"https://www.reddit.com{post['permalink']}.json",
+                                    params={"limit": max_comments, "depth": 1},
+                                    headers=self.reddit_headers, timeout=30)
+                                if c_response.status_code == 200:
+                                    listing = c_response.json()
+                                    children = (listing[1] if isinstance(listing, list) and len(listing) > 1 else {}).get("data", {}).get("children", [])
+                                    fetched = 0
+                                    for child in children:
+                                        if fetched >= max_comments or child.get("kind") != "t1":
+                                            break
+                                        body = (child.get("data", {}).get("body") or "").strip()
+                                        if len(body) < 20:
+                                            continue
+                                        fetched += 1
+                                        c_created = child["data"].get("created_utc")
+                                        items.append(RawItem(
+                                            source_type=SourceType.FORUM,
+                                            platform="reddit",
+                                            raw_text=body,
+                                            url=f"https://reddit.com{child['data'].get('permalink', '') or post.get('permalink', '')}",
+                                            title=f"Commentaire · {title[:80]}",
+                                            brand=self._detect_brand(body),
+                                            theme=self._detect_theme(body),
+                                            date=datetime.fromtimestamp(c_created) if c_created else None,
+                                            metadata={
+                                                "subreddit": subreddit_name,
+                                                "provider": "reddit_public_json",
+                                                "signal_kind": "comment",
+                                                "post_id": post.get("id"),
+                                                "search_term": planned.seed,
+                                                "seed_type": planned.seed_type,
+                                                "seed_priority": planned.priority,
+                                                "is_question": self._is_question(body),
+                                            },
+                                            client_slug=self.config.client.slug,
+                                        ))
+                                    commented += 1 if fetched else 0
+                            except Exception as error:
+                                self.logger.debug(f"Reddit comments fetch failed for {post.get('permalink')}: {error}")
+
                 self.logger.debug(f"r/{subreddit_name} search '{planned.query}': {len(posts)} posts found")
                 
             except Exception as e:

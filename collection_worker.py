@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import math
 import os
 import re
 import socket
@@ -21,6 +22,7 @@ from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, DataForSEOProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
+from analysis.signatures import build_signature, signature_similarity
 from analysis.icl_reconstruction import ICLPromptReconstructor
 from analysis.reconstruction import ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
@@ -29,6 +31,47 @@ from utils.config_loader import load_config, neutral_config
 
 
 load_dotenv()
+
+
+def semantic_scorer():
+    """Retourne un scorer sémantique (embeddings OpenAI, cache) ou None si la
+    clé est absente. signature: (expected_queries, observed_queries) -> float,
+    moyenne du meilleur appariement cosinus attendu → observé."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    cache = {}
+
+    def embed(texts):
+        missing = [text for text in texts if text not in cache]
+        if missing:
+            response = requests.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"), "input": missing},
+                timeout=60,
+            )
+            response.raise_for_status()
+            data = response.json()["data"]
+            if len(data) != len(missing):
+                raise ValueError("Incomplete embeddings response")
+            for row in data:
+                cache[missing[row["index"]]] = row["embedding"]
+        return [cache[text] for text in texts]
+
+    def cosine(a, b):
+        if len(a) != len(b) or not a or not any(a) or not any(b):
+            return 0.0
+        return sum(x * y for x, y in zip(a, b)) / math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+
+    def scorer(expected, observed):
+        expected_vectors = embed(expected)
+        observed_vectors = embed(observed)
+        if not expected_vectors or not observed_vectors:
+            return 0.0
+        return sum(max(cosine(vector, other) for other in observed_vectors) for vector in expected_vectors) / len(expected_vectors)
+
+    return scorer
 
 
 def clamp_collection_budget(value) -> int:
@@ -839,7 +882,7 @@ class CollectionWorker:
         target_ids = options.get("target_observation_ids") or []
         if not target_ids:
             return {"examples": len(examples), "reconstructed": 0, "skipped": "No observed targets selected; use build_dataset for signal-based generation"}
-        project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id&project_id=eq.{project_id}")
+        project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id,text&project_id=eq.{project_id}")
         owned = {row["id"]: row for row in project_prompts}
         targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine&prompt_id=in.({','.join(owned)})") if owned else []
         targets = [row for row in targets if row["id"] in target_ids]
@@ -853,16 +896,37 @@ class CollectionWorker:
         if execution_limit < min(len(targets), max_targets) * max_candidates * runs:
             raise ValueError("Set max_validation_executions to cover the bounded reconstruction validation plan")
         provider = BrightDataProvider()
+        scorer = semantic_scorer()
+        threshold = float(options.get("reproduction_threshold", 0.65))
         saved_count = executions = validated = 0
+
+        def execute_once(prompt, candidate, engine, run_index):
+            nonlocal executions
+            # No secondary-engine fan-outs: reproduction must come from the target engine.
+            observation = provider.execute(AnalysisRequest(candidate.text, engine=engine,
+                country=project.get("country", "BE"), language=project.get("language", "fr")))
+            observation.metadata["fan_out_source"] = observation.provider
+            self._persist_observation(prompt, observation)
+            executions += 1
+            self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
+                cost_status="pending_reconciliation", external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
+            return observation
+
         for target in targets[:max_targets]:
+            if executions >= execution_limit:
+                break
             query_rows = self.db.request("GET", "fan_outs", f"select=query,source&observation_id=eq.{target['id']}&order=position.asc")
             queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") == "brightdata"))
             if not queries:
                 continue
-            # Hold out the original prompt: it must not leak into its own ICL context.
-            reconstructor.examples = [e for e in examples if e.source_reference != target["prompt_id"]]
+            # Hold out the original prompt and its near-variants: they must not
+            # leak into the ICL context of the reconstruction target.
+            target_signature = build_signature([owned[target["prompt_id"]].get("text", "")])
+            reconstructor.examples = [e for e in examples if e.source_reference != target["prompt_id"]
+                and signature_similarity(target_signature, build_signature([e.prompt])) < 0.8]
             if not reconstructor.icl_available:
                 continue
+            pending = []
             for candidate in reconstructor.reconstruct(queries, project.get("language", "fr"), max_candidates):
                 if candidate.metadata.get("method") != "icl_retrieval":
                     raise RuntimeError("ICL generation failed; deterministic fallback is not accepted by this job")
@@ -872,26 +936,33 @@ class CollectionWorker:
                     "text": candidate.text, "provenance": "reverse_engineered", "confidence": candidate.confidence,
                     "status": "testing", "expected_fan_outs": queries, "metadata": metadata,
                 }], "resolution=ignore-duplicates,return=representation")
-                if not rows:
+                if rows:
+                    pending.append({"candidate": candidate, "prompt": rows[0], "metadata": metadata, "observations": []})
+            # Adaptive validation: one run per candidate first, extra runs only
+            # for candidates that reproduce the target fan-outs.
+            for entry in pending:
+                if executions >= execution_limit:
+                    break
+                entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], 0))
+                entry["passed_first"] = (bool(entry["observations"][0].fan_outs)
+                    and not entry["observations"][0].raw_response.get("error")
+                    and score_dataset_example(entry["candidate"], entry["observations"], semantic_scorer=scorer)["reproduction_score"] >= threshold)
+            for entry in [e for e in pending if e["passed_first"]]:
+                while len(entry["observations"]) < runs and executions < execution_limit:
+                    entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], len(entry["observations"])))
+            for entry in pending:
+                candidate, prompt, metadata = entry["candidate"], entry["prompt"], entry["metadata"]
+                observations = entry["observations"]
+                if not observations:
                     continue
-                prompt = rows[0]
-                observations = []
-                for run_index in range(runs):
-                    # No secondary-engine fan-outs: reproduction must come from the target engine.
-                    observation = provider.execute(AnalysisRequest(candidate.text, engine=target["engine"],
-                        country=project.get("country", "BE"), language=project.get("language", "fr")))
-                    observation.metadata["fan_out_source"] = observation.provider
-                    self._persist_observation(prompt, observation)
-                    observations.append(observation)
-                    executions += 1
-                    self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
-                        cost_status="pending_reconciliation", external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
-                scores = score_dataset_example(candidate, observations)
-                passed = all(o.fan_outs and not o.raw_response.get("error") for o in observations) and scores["reproduction_score"] >= float(options.get("reproduction_threshold", 0.65))
+                run_count = len(observations)
+                scores = score_dataset_example(candidate, observations, semantic_scorer=scorer)
+                passed = (all(o.fan_outs and not o.raw_response.get("error") for o in observations)
+                    and scores["reproduction_score"] >= threshold)
                 # A single run establishes reproduction, not stability.
-                final_status = "validated" if passed and runs >= 3 and scores["stability_score"] >= 0.65 else "draft"
-                metadata.update({**scores, "validation_runs": runs, "reproduction_passed": passed,
-                    "stability_measured": runs >= 2})
+                final_status = "validated" if passed and run_count >= 3 and scores["stability_score"] >= 0.65 else "draft"
+                metadata.update({**scores, "validation_runs": run_count, "reproduction_passed": passed,
+                    "stability_measured": run_count >= 2, "adaptive_validation": True})
                 self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}&project_id=eq.{project_id}",
                     {"status": final_status, "confidence": scores["reproduction_score"], "metadata": metadata}, "return=minimal")
                 validated += int(final_status == "validated")
