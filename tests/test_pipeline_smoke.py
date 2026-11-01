@@ -91,7 +91,7 @@ class PipelineSmokeTests(unittest.TestCase):
         # Mock network generation, keep the actual ICL candidate construction and worker validation.
         with patch('collection_worker.BrightDataProvider', return_value=provider), patch.object(ICLPromptReconstructor, '_rank_examples', return_value=[(0.9, __import__('analysis.reconstruction', fromlist=['ReconstructionExample']).ReconstructionExample('training', ['observed']))]), patch.object(ICLPromptReconstructor, '_generate_with_llm', return_value=['Quel modèle de chaussures choisir pour marcher confortablement ?']):
             result = w._reverse_engineer({**job, 'input': {'target_observation_ids': [target_id], 'max_validation_executions': 9, 'validation_runs': 3}})
-        self.assertEqual(result['executions'], 3)
+        self.assertEqual(result['executions'], 4)  # +1 run baseline
         self.assertEqual(result['validated'], 1)
         final = w.db.tables['prompts'][-1]
         self.assertEqual(final['metadata']['target_observation_id'], target_id)
@@ -163,8 +163,8 @@ class PipelineSmokeTests(unittest.TestCase):
         }}
         with patch.object(ICLPromptReconstructor, '_generate_with_llm', return_value=['candidat']):
             result = w._reverse_engineer(job)
-        self.assertEqual(result['executions'], 3)
-        self.assertEqual(w.fanout_extractor.extract.call_count, 3)
+        self.assertEqual(result['executions'], 4)  # 3 runs candidat + 1 run baseline même surface
+        self.assertEqual(w.fanout_extractor.extract.call_count, 4)
         self.assertEqual(result['validated'], 1)
         self.assertTrue(all(o['engine'] == 'openai_web_search' for o in w.db.tables['observations'][2:]))
 
@@ -215,7 +215,7 @@ class PipelineSmokeTests(unittest.TestCase):
              patch.object(ICLPromptReconstructor, '_generate_with_llm', generate):
             result = w._reverse_engineer(job)
         # obs-errored est écartée par le contrat d'admission (answer vide + error).
-        self.assertEqual(result['executions'], 4)  # 1 run perdant + 3 runs gagnant
+        self.assertEqual(result['executions'], 5)  # 1 perdant + 3 gagnant + 1 baseline
         self.assertEqual(result['validated'], 1)
         # Segmentation moteur : pas de trace Gemini dans le contexte d'une cible ChatGPT.
         self.assertTrue(contexts)

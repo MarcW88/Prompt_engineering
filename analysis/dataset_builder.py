@@ -47,7 +47,9 @@ class DatasetBuildConfig:
     # "faithful" (default): preserve source formulations, group intents/variants.
     # "matrix": explicit experiment mode, persona x stage x specificity cross.
     mode: str = "faithful"
-    intent_similarity_threshold: float = 0.85
+    # Lexical dedup of near-paraphrases: 0.65 merges common reformulations
+    # while constraint tokens still split genuinely different needs.
+    intent_similarity_threshold: float = 0.65
     personas: Sequence[str] = field(default_factory=list)
     stages: Sequence[str] = field(default_factory=lambda: DEFAULT_STAGES)
     specificity_levels: Sequence[int] = field(default_factory=lambda: DEFAULT_SPECIFICITY)
@@ -130,34 +132,43 @@ class DatasetBuilder:
         intents = group_intents(items, config.intent_similarity_threshold)
         candidates = []
         seen = set()
-        for intent_index, intent_items in enumerate(intents, start=1):
-            for rank, item in enumerate(intent_items):
-                normalized = " ".join(item.text.casefold().split())
-                if normalized in seen:
-                    continue
-                seen.add(normalized)
-                is_representative = rank == 0
-                candidates.append(PromptCandidate(
-                    text=item.text.strip(),
-                    provenance=PromptProvenance.OBSERVED if item.provenance == "observed" else PromptProvenance.TRANSFORMED,
-                    source_reference=cluster.id,
-                    confidence=0.9 if item.provenance == "observed" else 0.7,
-                    expected_fan_outs=expected,
-                    metadata={
-                        "method": "intent_preserving",
-                        "cluster_id": cluster.id,
-                        "cluster_label": cluster.label,
-                        "intent_id": f"{cluster.id}:intent:{intent_index}",
-                        "is_representative": is_representative,
-                        "variant_of": None if is_representative else intent_items[0].text.strip(),
-                        "original_provenance": item.provenance,
-                        "language": cluster.language,
-                        "cluster_question_count": cluster.question_count or len(cluster.questions) + 1,
-                        "cluster_source_count": cluster.source_count,
-                    },
-                ))
-                if len(candidates) >= config.candidates_per_cluster:
-                    return candidates
+        # Intent coverage before variants: representatives of every admissible
+        # intent come first; variants only fill the remaining per-cluster
+        # budget. A paraphrase storm must not starve a distinct need.
+        ordered = [item for intent_items in intents for item in intent_items[:1]]
+        ordered += [item for intent_items in intents for item in intent_items[1:]]
+        intent_index_by_id = {id(item): index for index, intent_items in enumerate(intents, start=1) for item in intent_items}
+        representative_text = {index: intent_items[0].text.strip() for index, intent_items in enumerate(intents, start=1)}
+        first_of_intent = {id(intent_items[0]) for intent_items in intents if intent_items}
+        for item in ordered:
+            intent_index = intent_index_by_id[id(item)]
+            rank = 0 if id(item) in first_of_intent else 1
+            normalized = " ".join(item.text.casefold().split())
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            is_representative = rank == 0
+            candidates.append(PromptCandidate(
+                text=item.text.strip(),
+                provenance=PromptProvenance.OBSERVED if item.provenance == "observed" else PromptProvenance.TRANSFORMED,
+                source_reference=cluster.id,
+                confidence=0.9 if item.provenance == "observed" else 0.7,
+                expected_fan_outs=expected,
+                metadata={
+                    "method": "intent_preserving",
+                    "cluster_id": cluster.id,
+                    "cluster_label": cluster.label,
+                    "intent_id": f"{cluster.id}:intent:{intent_index}",
+                    "is_representative": is_representative,
+                    "variant_of": None if is_representative else representative_text[intent_index],
+                    "original_provenance": item.provenance,
+                    "language": cluster.language,
+                    "cluster_question_count": cluster.question_count or len(cluster.questions) + 1,
+                    "cluster_source_count": cluster.source_count,
+                },
+            ))
+            if len(candidates) >= config.candidates_per_cluster:
+                return candidates
         return candidates
 
     def _build_matrix(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:

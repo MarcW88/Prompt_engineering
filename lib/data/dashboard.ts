@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabaseRest } from "./supabase";
+import { traceKind } from "./observations";
 
 export interface DashboardData {
   configured: boolean;
@@ -54,49 +55,59 @@ export async function getDashboardData(projectId?: string): Promise<DashboardDat
   const datasetIds = datasets.map((row) => row.id);
   const observations = await fetchLinked<{ id: string }>("observations", ids, "prompt_id", "id");
   const validations = await fetchLinked<{ id: string; prompt_id: string; stability_score: number }>("validations", ids, "prompt_id", "id,prompt_id,stability_score");
-  const examples = await fetchLinked<{ id: string; manual_review_status: string; prompt_id: string }>("dataset_examples", datasetIds, "dataset_id", "id,manual_review_status,prompt_id");
-  const stability = validations.length ? Math.round(validations.reduce((sum, row) => sum + Number(row.stability_score), 0) / validations.length * 100) : 0;
+  const examples = await fetchLinked<{ id: string; manual_review_status: string; prompt_id: string; stability_score: number | null; completed_runs: number | null; target_runs: number | null }>("dataset_examples", datasetIds, "dataset_id", "id,manual_review_status,prompt_id,stability_score,completed_runs,target_runs");
+  // Stability is only "measured" once the required repetitions actually ran;
+  // below that the honest state is "not measured", not a perfect average.
+  const measuredStability = examples.filter((row) => row.stability_score != null && Number(row.completed_runs ?? 0) >= Math.max(3, Number(row.target_runs ?? 0)));
+  const stability = measuredStability.length ? Math.round(measuredStability.reduce((sum, row) => sum + Number(row.stability_score), 0) / measuredStability.length * 100) : 0;
   const approved = examples.filter((row) => row.manual_review_status === "approved").length;
 
   // Real per-prompt aggregates for the recent-prompts table: engines actually
   // used, trace status (never "0" for an unmeasured metric), stability.
   const recentIds = prompts.map((row) => row.id);
-  const recentObservations = await fetchLinked<{ id: string; prompt_id: string; engine: string; answer: string | null }>("observations", recentIds, "prompt_id", "id,prompt_id,engine,answer");
+  const recentObservations = await fetchLinked<{ id: string; prompt_id: string; engine: string; provider: string; answer: string | null }>("observations", recentIds, "prompt_id", "id,prompt_id,engine,provider,answer");
   const recentObservationIds = recentObservations.map((row) => row.id);
   const recentFanOuts = recentObservationIds.length
     ? await fetchLinked<{ id: string; observation_id: string; source: string }>("fan_outs", recentObservationIds, "observation_id", "id,observation_id,source")
     : [];
-  const fanOutsByObservation = new Map<string, number>();
-  const reexecutionObservations = new Set<string>();
+  const fanOutSourcesByObservation = new Map<string, string[]>();
   for (const row of recentFanOuts) {
-    fanOutsByObservation.set(row.observation_id, (fanOutsByObservation.get(row.observation_id) ?? 0) + 1);
-    if (row.source === "openai_responses_web_search") reexecutionObservations.add(row.observation_id);
+    fanOutSourcesByObservation.set(row.observation_id, [...(fanOutSourcesByObservation.get(row.observation_id) ?? []), String(row.source)]);
   }
   const observationsByPrompt = new Map<string, typeof recentObservations>();
   for (const row of recentObservations) observationsByPrompt.set(row.prompt_id, [...(observationsByPrompt.get(row.prompt_id) ?? []), row]);
-  const validationsByPrompt = new Map<string, number[]>();
-  for (const row of validations.filter((row) => recentIds.includes(row.prompt_id))) {
-    validationsByPrompt.set(row.prompt_id, [...(validationsByPrompt.get(row.prompt_id) ?? []), Number(row.stability_score)]);
-  }
   const reviewByPrompt = new Map(examples.map((row) => [row.prompt_id, row.manual_review_status]));
+  // Stability per prompt comes from scored dataset examples and is only
+  // reported when the required repetitions actually completed.
+  const stabilitySumByPrompt = new Map<string, { sum: number; count: number }>();
+  for (const example of measuredStability) {
+    const entry = stabilitySumByPrompt.get(example.prompt_id) ?? { sum: 0, count: 0 };
+    entry.sum += Number(example.stability_score);
+    entry.count += 1;
+    stabilitySumByPrompt.set(example.prompt_id, entry);
+  }
   const enrichedPrompts = prompts.map((row) => {
-    const promptObservations = (observationsByPrompt.get(row.id) ?? []).filter((o) => o.engine !== "openai_web_search");
+    const promptObservations = observationsByPrompt.get(row.id) ?? [];
     const engines = [...new Set(promptObservations.map((o) => o.engine))];
-    const sameRunFanOuts = promptObservations.reduce((sum, o) => reexecutionObservations.has(o.id) ? sum : sum + (fanOutsByObservation.get(o.id) ?? 0), 0);
-    const hasReexecution = promptObservations.some((o) => reexecutionObservations.has(o.id));
+    // Per-observation classification on its own surface: a same-run OpenAI
+    // web-search trace is provider_reported for openai_web_search even though
+    // the observation is an independent_reexecution relative to its parent.
+    const kinds = promptObservations.map((o) => traceKind(fanOutSourcesByObservation.get(o.id) ?? [], o.provider, o.engine));
+    const sameRunFanOuts = promptObservations.reduce((sum, o, index) => kinds[index] === "provider_reported" ? sum + (fanOutSourcesByObservation.get(o.id) ?? []).length : sum, 0);
+    const hasReexecutionTrace = kinds.some((kind) => kind === "independent_reexecution");
     const hasAnswer = promptObservations.some((o) => (o.answer ?? "").trim().length > 0);
     const trace_status: "provider_reported" | "independent_reexecution" | "none_reported" | "not_measured" =
       !promptObservations.length ? "not_measured"
       : sameRunFanOuts > 0 ? "provider_reported"
-      : hasReexecution ? "independent_reexecution"
+      : hasReexecutionTrace ? "independent_reexecution"
       : hasAnswer ? "none_reported" : "none_reported";
-    const scores = validationsByPrompt.get(row.id) ?? [];
+    const stabilityEntry = stabilitySumByPrompt.get(row.id);
     return {
       ...row,
       engines,
       fan_outs: promptObservations.length ? sameRunFanOuts : null,
       trace_status,
-      stability: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100) : null,
+      stability: stabilityEntry ? Math.round(stabilityEntry.sum / stabilityEntry.count * 100) : null,
       review_status: reviewByPrompt.get(row.id) ?? null,
     };
   });

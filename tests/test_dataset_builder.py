@@ -64,6 +64,21 @@ class DatasetBuilderTests(unittest.TestCase):
         self.assertTrue(other.metadata["is_representative"])
         self.assertNotEqual(paraphrase.metadata["intent_id"], other.metadata["intent_id"])
 
+    def test_variants_do_not_saturate_the_cap(self):
+        # 6 paraphrases de la même intention + 1 intention à contrainte : le
+        # représentant de l'intention contrainte doit survivre au plafond.
+        items = ["trail débutant", "trail pour débutant", "trail débutant conseils",
+                 "trail débutant guide", "trail débutant équipement", "trail débutant avis",
+                 "trail expert montagne 3000m"]
+        cluster = ClusterInput(id="c", label="trail", representative_question=items[0],
+            questions=items[1:], question_count=7, source_count=2)
+        candidates = DatasetBuilder().build([cluster], DatasetBuildConfig(candidates_per_cluster=2))
+        self.assertEqual(len(candidates), 2)
+        texts = [candidate.text for candidate in candidates]
+        self.assertIn("trail débutant", texts)
+        self.assertIn("trail expert montagne 3000m", texts)
+        self.assertTrue(all(c.metadata["is_representative"] for c in candidates))
+
     def test_matrix_mode_remains_explicit(self):
         candidates = DatasetBuilder().build([self.cluster], DatasetBuildConfig(
             mode="matrix", personas=["débutant", "petit budget"], stages=["discovery", "comparison"],

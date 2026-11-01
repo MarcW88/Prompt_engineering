@@ -179,7 +179,7 @@ class ReconstructionTests(unittest.TestCase):
         with patch.dict(os.environ, {'OPENAI_API_KEY': 'test'}), patch('collection_worker.BrightDataProvider', return_value=provider), patch.object(ICLPromptReconstructor, 'reconstruct', return_value=[candidate]) as reconstruct:
             result = w._reverse_engineer({'id': 'j', 'project_id': 'p', 'input': {'target_observation_ids': ['target-o'], 'max_validation_executions': 9, 'validation_runs': 3}})
         self.assertEqual(reconstruct.call_args.args[0], ['observed boots query'])
-        self.assertEqual(provider.execute.call_count, 3)
+        self.assertEqual(provider.execute.call_count, 4)  # 3 runs candidat + 1 run baseline
         self.assertEqual(result['validated'], 1)
         updates = [body for method, table, _, body in calls if method == 'PATCH' and table == 'prompts']
         self.assertEqual(updates[-1]['status'], 'validated')

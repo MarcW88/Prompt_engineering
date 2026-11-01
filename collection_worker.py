@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 
+from analysis.baseline_eval import HeldOutTarget, evaluate_held_out, nearest_baseline
 from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBuilder
 from analysis.dataset_quality import score_dataset_example
 from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
@@ -702,7 +703,7 @@ class CollectionWorker:
         self._report(job, 5, f"Construction des candidats depuis {len(clusters)} clusters")
         candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
             mode=build_config.get("mode", "faithful"),
-            intent_similarity_threshold=float(build_config.get("intent_similarity_threshold", 0.85)),
+            intent_similarity_threshold=float(build_config.get("intent_similarity_threshold", 0.65)),
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
@@ -998,6 +999,7 @@ class CollectionWorker:
         scorer = semantic_scorer()
         threshold = float(options.get("reproduction_threshold", 0.65))
         saved_count = executions = validated = 0
+        held_out_rows = []
 
         def execute_once(prompt, candidate, engine, run_index, parent_observation_id=None):
             nonlocal executions
@@ -1089,7 +1091,32 @@ class CollectionWorker:
                     {"status": final_status, "confidence": scores["reproduction_score"], "metadata": metadata}, "return=minimal")
                 validated += int(final_status == "validated")
                 saved_count += 1
-        return {"examples": len(examples), "reconstructed": saved_count, "executions": executions, "validated": validated}
+            # §8 baseline: the nearest admissible corpus prompt is executed
+            # once on the same surface, under the same bounded plan, so ICL is
+            # compared to a trivially strong alternative — never claimed better
+            # without paired results.
+            icl_row = {"target_id": target["id"], "icl_candidates": [], "baseline_candidates": [], "observed_queries": queries}
+            for entry in pending:
+                icl_row["icl_candidates"].append({
+                    "prompt": entry["candidate"].text,
+                    "observed_queries": entry["observations"][0].fan_outs if entry["observations"] else None,
+                })
+            baseline_text = nearest_baseline(queries, reconstructor.examples, target_prompt=owned[target["prompt_id"]].get("text", ""))
+            if baseline_text and executions < execution_limit:
+                baseline_prompt = next((p for p in owned.values() if p.get("text") == baseline_text), None)
+                if baseline_prompt:
+                    baseline_candidate = PromptCandidate(text=baseline_text, provenance=PromptProvenance.REVERSE_ENGINEERED,
+                        source_reference=target["id"], confidence=0.0, expected_fan_outs=queries,
+                        metadata={"method": "nearest_baseline", "target_observation_id": target["id"]})
+                    baseline_observation = execute_once(baseline_prompt, baseline_candidate, target["engine"], 0, parent_observation_id=target["id"])
+                    icl_row["baseline_candidates"].append({"prompt": baseline_text, "observed_queries": baseline_observation.fan_outs or None})
+            held_out_rows.append(HeldOutTarget(
+                target_id=target["id"], observed_queries=queries,
+                icl_candidates=icl_row["icl_candidates"], baseline_candidates=icl_row["baseline_candidates"]))
+        result = {"examples": len(examples), "reconstructed": saved_count, "executions": executions, "validated": validated}
+        if held_out_rows:
+            result["baseline_evaluation"] = evaluate_held_out(held_out_rows, threshold=threshold)
+        return result
 
 
 def main():
