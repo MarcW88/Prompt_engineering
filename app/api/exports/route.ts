@@ -157,7 +157,8 @@ export async function GET(request: Request) {
       return download(rows, ["id", "dataset_name", "status", "prompt_text", "prompt_provenance", "persona", "journey_stage", "specificity_level", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "validation_tier", "target_runs", "completed_runs", "manual_review_status", "reviewed_at", "review_note", "selected_for_execution", "created_at"], stage, format);
     }
 
-    const observations = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response,web_search_triggered,observed_at");
+    const observationRows = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response_error:raw_response->>error,web_search_triggered,observed_at");
+    const observations: Row[] = observationRows.map((row) => ({ ...row, raw_response: row.raw_response_error ? { error: row.raw_response_error } : null }));
     observations.sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)));
     const observationIds = observations.map((row) => String(row.id));
     const observationById = new Map(observations.map((row) => [String(row.id), row]));

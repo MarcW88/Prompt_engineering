@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const observations: Row[] = [];
     for (let index = 0; index < ids.length; index += 200) {
       observations.push(...await supabaseRest<Row[]>("observations", {
-        query: `select=id,prompt_id,provider,engine,model,answer,raw_response,observed_at&prompt_id=in.(${ids.slice(index, index + 200).join(",")})&order=observed_at.desc`,
+        query: `select=id,prompt_id,provider,engine,model,answer,raw_response_error:raw_response->>error,observed_at&prompt_id=in.(${ids.slice(index, index + 200).join(",")})&order=observed_at.desc`,
       }));
     }
     const observationIds = observations.map((row) => String(row.id));
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     const countByObservation = new Map<string, number>();
     for (const row of fanouts) countByObservation.set(String(row.observation_id), (countByObservation.get(String(row.observation_id)) ?? 0) + 1);
     const rows = observations
-      .filter(isEligibleObservation)
+      .filter((row) => isEligibleObservation({ ...row, raw_response: row.raw_response_error ? { error: row.raw_response_error } : null }))
       .map((row) => ({
         id: row.id,
         prompt_text: promptById.get(String(row.prompt_id)) ?? "",

@@ -159,7 +159,7 @@ class CollectionWorker:
     def _execute_analysis(self, provider, request: AnalysisRequest):
         observation = provider.execute(request)
         observation.metadata["response_source"] = observation.provider
-        if not observation.fan_outs and self.fanout_extractor:
+        if not observation.fan_outs and observation.answer and self.fanout_extractor:
             extracted = self.fanout_extractor.extract(request)
             observation.fan_outs = extracted["queries"]
             observation.metadata.update({
@@ -178,7 +178,7 @@ class CollectionWorker:
             observations = provider.execute_many(requests)
             for observation in observations:
                 observation.metadata["response_source"] = observation.provider
-                if not observation.fan_outs and self.fanout_extractor:
+                if not observation.fan_outs and observation.answer and self.fanout_extractor:
                     request = next((request for request in requests if request.prompt == observation.prompt), requests[0])
                     extracted = self.fanout_extractor.extract(request)
                     observation.fan_outs = extracted["queries"]
@@ -954,9 +954,8 @@ class CollectionWorker:
         def execute_once(prompt, candidate, engine, run_index):
             nonlocal executions
             # No secondary-engine fan-outs: reproduction must come from the target engine.
-            observation = provider.execute(AnalysisRequest(candidate.text, engine=engine,
+            observation = self._execute_analysis(provider, AnalysisRequest(candidate.text, engine=engine,
                 country=project.get("country", "BE"), language=project.get("language", "fr")))
-            observation.metadata["fan_out_source"] = observation.provider
             self._persist_observation(prompt, observation)
             executions += 1
             self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
