@@ -107,9 +107,8 @@ sources:
         method: scrape
         
       - name: google_reviews
-        place_ids:
-          - "ChIJ..."  # À remplir avec vrais IDs magasins
-        method: api  # Places API
+        queries: ["Decathlon France"]
+        method: google_maps_scraper
 
   # --- SERP / PAA ---
   serp:

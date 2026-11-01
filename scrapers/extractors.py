@@ -29,7 +29,7 @@ def extract_forum_thread(url: str, session: Optional[requests.Session] = None, l
     try:
         extractor = Extractor()
         state: Dict[str, Any] = {}
-        result = extractor.get_thread(url, state=state, output=Outputs.threads)
+        result = extractor.get_thread(url, state=state, output=Outputs.threads | Outputs.data)
         threads = (state.get("data") or {}).get("threads") or result
         if isinstance(threads, dict):
             threads = [threads]
@@ -88,7 +88,7 @@ def extract_page_text(url: str, session: Optional[requests.Session] = None,
             url=url,
         )
         if not extracted:
-            return None
+            return _extract_page_bs4(url, session, timeout, logger)
         import json
         data = json.loads(extracted) if isinstance(extracted, str) else extracted
         text = (data.get("text") or "").strip()

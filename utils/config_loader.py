@@ -147,3 +147,17 @@ def load_config(config_path: str) -> Config:
         filters=filters,
         output=output
     )
+
+
+def neutral_config(project: Dict[str, Any]) -> Config:
+    """Cloud jobs start from project identity, never a different client's YAML."""
+    language = project.get("language") or "fr"
+    country = project.get("country") or "BE"
+    return Config(
+        client=ClientConfig(project.get("name") or "Unknown", str(project["id"]), project.get("website") or ""),
+        brand_variants=[], markets=[country], languages=[language], themes=[], competitors=[], seeds=[],
+        sources={"forums": {"enabled": True, "platforms": []},
+                 "reviews": {"enabled": True, "platforms": []},
+                 "serp": {"enabled": True, "query_templates": ["{seed}"]}},
+        scraping=ScrapingConfig(), filters=FiltersConfig(accepted_languages=[language]), output=OutputConfig(),
+    )

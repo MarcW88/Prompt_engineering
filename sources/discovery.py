@@ -43,7 +43,7 @@ class SourceDiscovery:
         """Retourne des URLs candidates pour une requête."""
         if self.searxng_url:
             results = self._searxng_search(query, limit, language)
-            if results or self.searxng_available is False:
+            if results:
                 return results
         return self._dataforseo_search(query, limit, language, country)
 

@@ -76,7 +76,9 @@ class ReviewScraper(BaseScraper):
         if items:
             return items
         if self.auth_header:
-            return self._scrape_trustpilot_dataforseo(platform_config)
+            items = self._scrape_trustpilot_dataforseo(platform_config)
+            if items:
+                return items
         return self._scrape_trustpilot_html(platform_config)
 
     def _scrape_trustpilot_nextdata(self, platform_config: dict) -> List[RawItem]:
@@ -101,20 +103,39 @@ class ReviewScraper(BaseScraper):
                     break
                 soup = BeautifulSoup(response.text, "lxml")
                 script = soup.find("script", id="__NEXT_DATA__")
-                if not script or not script.string:
-                    if page == 1:
-                        return items
-                    break
-                data = _json.loads(script.string)
-                page_props = (data.get("props") or {}).get("pageProps") or {}
-                reviews = page_props.get("reviews") or []
+                reviews = []
+                if script and script.string:
+                    try:
+                        data = _json.loads(script.string)
+                        reviews = ((data.get("props") or {}).get("pageProps") or {}).get("reviews") or []
+                    except (ValueError, TypeError):
+                        pass
+                if not reviews:
+                    def ld_reviews(node):
+                        if isinstance(node, list):
+                            return [r for child in node for r in ld_reviews(child)]
+                        if isinstance(node, dict):
+                            if node.get("@type") == "Review":
+                                return [node]
+                            return [r for child in node.values() for r in ld_reviews(child)]
+                        return []
+                    for ld in soup.find_all("script", type="application/ld+json"):
+                        try:
+                            reviews.extend(ld_reviews(_json.loads(ld.string or ld.get_text())))
+                        except (ValueError, TypeError):
+                            continue
                 if not reviews:
                     break
                 kept_before = len(items)
                 for review in reviews:
-                    rating = int((review.get("rating") or review.get("stars") or 5))
+                    if not isinstance(review, dict):
+                        continue
+                    try:
+                        rating = int(float(review.get("rating") or review.get("stars") or (review.get("reviewRating") or {}).get("ratingValue") or 5))
+                    except (ValueError, TypeError):
+                        continue
                     title = review.get("title") or ""
-                    text = review.get("text") or review.get("reviewText") or ""
+                    text = review.get("text") or review.get("reviewText") or review.get("reviewBody") or ""
                     raw_text = f"{title}\n\n{text}".strip() if title else text.strip()
                     if not raw_text or len(raw_text) < min_length:
                         continue
@@ -122,13 +143,13 @@ class ReviewScraper(BaseScraper):
                         continue
                     date = None
                     dates = review.get("dates") or {}
-                    published = dates.get("publishedDate") or review.get("publishedDate") or review.get("createdAt")
+                    published = dates.get("publishedDate") or review.get("publishedDate") or review.get("createdAt") or review.get("datePublished")
                     if published:
                         try:
                             date = datetime.fromisoformat(str(published).replace("Z", "+00:00"))
                         except ValueError:
                             pass
-                    consumer = review.get("consumer") or {}
+                    consumer = review.get("consumer") or review.get("author") or {}
                     items.append(RawItem(
                         source_type=SourceType.REVIEW,
                         platform="trustpilot",
@@ -139,9 +160,10 @@ class ReviewScraper(BaseScraper):
                         date=date,
                         brand=self.config.client.name,
                         metadata={
-                            "author": consumer.get("displayName", "") if isinstance(consumer, dict) else "",
+                            "author": consumer.get("displayName") or consumer.get("name", "") if isinstance(consumer, dict) else "",
                             "page": page,
-                            "extractor": "next_data",
+                            "extractor": "next_data" if script else "json_ld",
+                            "provider": "trustpilot_structured",
                         },
                         client_slug=self.config.client.slug,
                     ))
@@ -370,6 +392,7 @@ class ReviewScraper(BaseScraper):
             try:
                 response = requests.post(
                     f"{base_url}/api/v1/scrape",
+                    headers={"X-API-Key": os.getenv("GOOGLE_MAPS_SCRAPER_API_KEY", "")},
                     json={
                         "keyword": query,
                         "lang": language,
@@ -379,7 +402,7 @@ class ReviewScraper(BaseScraper):
                     },
                     timeout=30,
                 )
-                if response.status_code != 200:
+                if response.status_code not in (200, 201, 202):
                     self.logger.error(f"google-maps-scraper HTTP {response.status_code}: {response.text[:200]}")
                     continue
                 job_id = response.json().get("job_id")
@@ -399,7 +422,7 @@ class ReviewScraper(BaseScraper):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                response = requests.get(f"{base_url}/api/v1/jobs/{job_id}", timeout=30)
+                response = requests.get(f"{base_url}/api/v1/jobs/{job_id}", headers={"X-API-Key": os.getenv("GOOGLE_MAPS_SCRAPER_API_KEY", "")}, timeout=30)
                 if response.status_code == 200:
                     job = response.json()
                     status = job.get("status")
