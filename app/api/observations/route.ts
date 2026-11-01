@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { isEligibleObservation } from "@/lib/data/observations";
+import { isEligibleObservation, observedFanOutSourceFilter } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     const fanouts: Row[] = [];
     for (let index = 0; index < observationIds.length; index += 200) {
       fanouts.push(...await supabaseRest<Row[]>("fan_outs", {
-        query: `select=observation_id,query&source=eq.brightdata&observation_id=in.(${observationIds.slice(index, index + 200).join(",")})`,
+        query: `select=observation_id,query&${observedFanOutSourceFilter()}&observation_id=in.(${observationIds.slice(index, index + 200).join(",")})`,
       }));
     }
     const countByObservation = new Map<string, number>();

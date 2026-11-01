@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import writeExcelFile from "write-excel-file/node";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { isEligibleObservation } from "@/lib/data/observations";
+import { isEligibleObservation, observedFanOutSourceFilter } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
         fanouts: await countLinkedRows("fan_outs", observationIds, "observation_id"),
         citations: await countLinkedRows("citations", observationIds, "observation_id"),
         validations: await countLinkedRows("validations", promptIds, "prompt_id"),
-        corpus: (await fetchInBatches<{ id: string }>("fan_outs", observationIds, "observation_id", "id&source=eq.brightdata")).length,
+        corpus: (await fetchInBatches<{ id: string }>("fan_outs", observationIds, "observation_id", `id&${observedFanOutSourceFilter()}`)).length,
       };
       return NextResponse.json({ counts });
     } catch (error) {
@@ -166,7 +166,7 @@ export async function GET(request: Request) {
       // Corpus d'apprentissage reconstruction (contrat §7) : uniquement des
       // observations avec fan-outs réellement rapportés par le provider,
       // le prompt exact exécuté, et aucune requête synthétique.
-      const fanRows = await fetchInBatches<Row>("fan_outs", observationIds, "observation_id", "observation_id,query,source&source=eq.brightdata&order=position.asc");
+      const fanRows = await fetchInBatches<Row>("fan_outs", observationIds, "observation_id", `observation_id,query,source&${observedFanOutSourceFilter()}&order=position.asc`);
       const fanByObservation = new Map<string, string[]>();
       for (const row of fanRows) {
         const key = String(row.observation_id);

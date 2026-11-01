@@ -29,6 +29,12 @@ from models.seed import Seed, SeedType, deduplicate_seeds
 from scrapers import ForumScraper, ReviewScraper, SerpScraper, SocialScraper
 from utils.config_loader import load_config, neutral_config
 
+# Fan-out sources admitted into the learning corpus: provider-reported queries
+# only (Bright Data response metadata, or OpenAI web-search fallback when
+# Bright Data does not expose the queries). Mirrors OBSERVED_FAN_OUT_SOURCES
+# in lib/data/observations.ts.
+OBSERVED_FAN_OUT_SOURCES = ("brightdata", "openai_responses_web_search")
+
 
 load_dotenv()
 
@@ -900,7 +906,7 @@ class CollectionWorker:
         observations = [row for row in observations if row.get("provider") == "brightdata"
             and str(row.get("answer") or "").strip() and not (row.get("raw_response") or {}).get("error")]
         observation_ref = {row["id"]: row for row in observations}
-        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=eq.brightdata&observation_id=in.({','.join(observation_ref)})") if observations else []
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=in.({','.join(OBSERVED_FAN_OUT_SOURCES)})&observation_id=in.({','.join(observation_ref)})") if observations else []
         # Examples are segmented by engine: ChatGPT traces never mix with
         # Gemini traces in the same ICL context.
         fan_outs_by_key = {}
@@ -962,7 +968,7 @@ class CollectionWorker:
             if executions >= execution_limit:
                 break
             query_rows = self.db.request("GET", "fan_outs", f"select=query,source&observation_id=eq.{target['id']}&order=position.asc")
-            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") == "brightdata"))
+            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") in OBSERVED_FAN_OUT_SOURCES))
             if not queries:
                 continue
             # Hold out the original prompt and its near-variants: they must not

@@ -46,13 +46,20 @@ class BrightDataProvider(AnalysisProvider):
             raise MissingCredentialsError(
                 f"Bright Data requires BRIGHTDATA_API_KEY and a dataset ID for {first.engine}"
             )
-        payload = [{
-            "url": self._engine_url(first.engine),
-            "prompt": request.prompt,
-            "country": request.country.upper(),
-            "web_search": request.web_search,
-            "additional_prompt": self._language_instruction(request.language),
-        } for request in analysis_requests]
+        # Les datasets Bright Data n'ont pas tous le même schéma d'input :
+        # perplexity/gemini refusent les champs web_search/additional_prompt
+        # propres au dataset ChatGPT.
+        payload = []
+        for request in analysis_requests:
+            record = {
+                "url": self._engine_url(request.engine),
+                "prompt": request.prompt,
+                "country": request.country.upper(),
+            }
+            if request.engine in ("chatgpt", "google_ai_mode"):
+                record["web_search"] = request.web_search
+                record["additional_prompt"] = self._language_instruction(request.language)
+            payload.append(record)
         response = requests.post(
             self.endpoint,
             params={"dataset_id": dataset_id, "format": "json", "include_errors": "true"},
