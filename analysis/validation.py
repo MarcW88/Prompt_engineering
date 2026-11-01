@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Optional, Set
 from urllib.parse import urlparse
 
 from analysis.models import AnalysisObservation, PromptCandidate
@@ -17,17 +17,19 @@ def set_similarity(left: Set[str], right: Set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
-def stability_score(observations: Iterable[AnalysisObservation]) -> float:
+def stability_score(observations: Iterable[AnalysisObservation]) -> Optional[float]:
+    """Stability needs at least two independent runs. A single run returns
+    None (« non mesurée ») — never a fictitious perfect score."""
     observations = list(observations)
     if len(observations) < 2:
-        return 1.0
+        return None
     scores = []
     for index, left in enumerate(observations):
         for right in observations[index + 1:]:
             fan_out_score = signature_similarity(build_signature(left.fan_outs), build_signature(right.fan_outs))
             citation_score = set_similarity(citation_domains(left), citation_domains(right))
             scores.append((fan_out_score + citation_score) / 2)
-    return sum(scores) / len(scores) if scores else 1.0
+    return sum(scores) / len(scores) if scores else None
 
 
 def validate_candidate(candidate: PromptCandidate, observation: AnalysisObservation,
@@ -43,6 +45,6 @@ def validate_candidate(candidate: PromptCandidate, observation: AnalysisObservat
     return {
         "fan_out_reproduction_score": round(fan_out_score, 4),
         "citation_overlap_score": round(citation_score, 4),
-        "stability_score": round(stable, 4),
-        "overall_score": round(0.7 * fan_out_score + 0.3 * stable, 4),
+        "stability_score": round(stable, 4) if stable is not None else None,
+        "overall_score": round(0.7 * fan_out_score + 0.3 * (stable or 0.0), 4),
     }

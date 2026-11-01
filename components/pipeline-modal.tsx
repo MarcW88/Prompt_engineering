@@ -22,15 +22,21 @@ interface WorkflowMetrics {
   approved: number;
 }
 
+const phases = [
+  { id: 1, title: "Phase 1 — Définir l’étude", text: "Marque, sujet, marché, sources pertinentes, surfaces IA et budget." },
+  { id: 2, title: "Phase 2 — Examiner les besoins", text: "Intentions, preuves et contraintes ; correction des regroupements." },
+  { id: 3, title: "Phase 3 — Tester et retenir les prompts", text: "Exécuter, observer, reconstruire si applicable, approuver et exporter." },
+];
+
 const steps = [
-  { kind: "collect_sources", title: "1. Collecte", text: "Récupère Reddit, forums, SERP/PAA, Trustpilot et GSC.", action: "collection" },
-  { kind: "transform_signals", title: "2. Questions", text: "Nettoie les signaux et les transforme en questions utilisateurs.", action: "launch" },
-  { kind: "cluster_questions", title: "3. Clusters", text: "Regroupe les questions par intention avec embeddings.", action: "launch" },
-  { kind: "build_dataset", title: "4. Dataset", text: "Construit le corpus candidat et exécute l’échantillon choisi.", action: "dataset" },
-  { kind: "validate_dataset", title: "5. Validation", text: "Réexécute les exemples acceptés sur 3 ou 5 runs.", action: "validation" },
-  { kind: "reverse_engineer", title: "6. Reverse engineering", text: "Parcours « reconstruction » : reconstruit des prompts uniquement à partir des fan-outs réellement observés (cibles à sélectionner). Distinct de l'étape 4, qui génère depuis les signaux utilisateurs.", action: "launch" },
-  { kind: "manual_review", title: "7. Revue humaine", text: "Approuve, modifie ou rejette les prompts avant export.", action: "review" },
-  { kind: "semactic_export", title: "8. Export", text: "Exporte uniquement les prompts acceptés et approuvés.", action: "export" },
+  { kind: "collect_sources", phase: 1, title: "Sources", text: "Récupère Reddit, forums, SERP/PAA, Trustpilot et GSC.", action: "collection" },
+  { kind: "transform_signals", phase: 2, title: "Questions", text: "Nettoie les signaux et les transforme en questions utilisateurs.", action: "launch" },
+  { kind: "cluster_questions", phase: 2, title: "Intentions", text: "Regroupe les questions par intention avec embeddings.", action: "launch" },
+  { kind: "build_dataset", phase: 3, title: "Sélection et exécution", text: "Construit le corpus candidat et exécute l’échantillon choisi.", action: "dataset" },
+  { kind: "validate_dataset", phase: 3, title: "Validation", text: "Réexécute les exemples acceptés sur 3 ou 5 runs.", action: "validation" },
+  { kind: "reverse_engineer", phase: 3, title: "Reconstruire depuis des recherches observées", text: "Expérimental : reconstruit des prompts uniquement à partir des fan-outs réellement observés (cibles à sélectionner). Non requis par le parcours principal.", action: "launch" },
+  { kind: "manual_review", phase: 3, title: "Revue humaine", text: "Approuve, modifie ou rejette les prompts avant export.", action: "review" },
+  { kind: "semactic_export", phase: 3, title: "Export", text: "Exporte uniquement les prompts acceptés et approuvés.", action: "export" },
 ];
 
 const launchableKinds = new Set(["transform_signals", "cluster_questions", "reverse_engineer"]);
@@ -65,15 +71,18 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
   const [maxCandidates, setMaxCandidates] = useState(3);
   const [validationRuns, setValidationRuns] = useState(3);
   const [executionCeiling, setExecutionCeiling] = useState(0);
+  const [justification, setJustification] = useState<{ summary: string; collection: { deduplicated_extracts: number; source_families: number }; needs: { intents_identified: number }; selection: { retained: number; coverage: number | null } } | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
-    const [jobsResponse, dashboardResponse] = await Promise.all([
+    const [jobsResponse, dashboardResponse, justificationResponse] = await Promise.all([
       fetch(`/api/jobs?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
       fetch(`/api/dashboard?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
+      fetch(`/api/justification?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
     ]);
     if (jobsResponse.ok) setJobs((await jobsResponse.json()).jobs ?? []);
     if (dashboardResponse.ok) setMetrics((await dashboardResponse.json()).metrics ?? { signals: 0, questions: 0, clusters: 0, datasets: 0, observations: 0, validations: 0, approved: 0 });
+    if (justificationResponse.ok) setJustification(await justificationResponse.json());
   }, [projectId]);
 
   useEffect(() => {
@@ -182,11 +191,14 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal docs-modal" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-head">
-          <div><span className="eyebrow">PIPELINE DE PRODUCTION</span><h2>Les 8 étapes du workflow</h2></div>
+          <div><span className="eyebrow">PIPELINE DE PRODUCTION</span><h2>Parcours en trois phases</h2></div>
           <button type="button" className="icon-button" onClick={onClose}><X size={19} /></button>
         </div>
         <div className="pipeline-steps">
-          {steps.map((step) => {
+          {phases.map((phase) => (
+            <div key={phase.id} className="pipeline-phase">
+              <div className="phase-head"><h3>{phase.title}</h3><p>{phase.text}</p></div>
+              {steps.filter((step) => step.phase === phase.id).map((step) => {
             const job = visibleJob(step.kind);
             const launchable = launchableKinds.has(step.kind);
             const done = isDone(step.kind);
@@ -207,13 +219,22 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
                 </button>
               </article>
             );
-          })}
+              })}
+            </div>
+          ))}
         </div>
+        {justification && (
+          <div className="export-item" style={{ padding: "1rem" }}>
+            <strong>Justification du portefeuille</strong>
+            <p>{justification.summary}</p>
+            <small>{justification.collection.deduplicated_extracts} extraits dédupliqués · {justification.collection.source_families} familles de sources · {justification.needs.intents_identified} intentions · {justification.selection.retained} prompts retenus{justification.selection.coverage !== null ? ` · couverture ${justification.selection.coverage}%` : ""}</small>
+          </div>
+        )}
         {rePanel && (
           <div className="export-item" style={{ padding: "1rem" }}>
             <strong>Cibles de reconstruction — observations avec fan-outs rapportés par le provider</strong>
             <p>Seules les observations réelles du projet sont éligibles. Le prompt cible est exclu de son propre contexte ICL et la validation réexécute chaque candidat sur le même moteur.</p>
-            {targets.length === 0 && <p>Aucune observation éligible : exécutez d&apos;abord des prompts via l&apos;étape 4 (build_dataset) pour produire des fan-outs Bright Data.</p>}
+            {targets.length === 0 && <p>Aucune observation éligible : exécutez d&apos;abord des prompts via « Sélection et exécution » (phase 3) pour produire des traces observées.</p>}
             <div style={{ maxHeight: "16rem", overflowY: "auto", margin: "0.75rem 0" }}>
               {targets.map((target) => (
                 <label key={target.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.3rem 0" }}>

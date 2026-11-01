@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from analysis.baseline_eval import HeldOutTarget, evaluate_held_out, nearest_baseline
 from analysis.dataset_builder import ClusterInput, DatasetBuildConfig, DatasetBuilder
 from analysis.dataset_quality import score_dataset_example
-from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_sample
+from analysis.dataset_funnel import estimate_cost, intent_first_order, score_candidates, stratified_sample
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, DataForSEOProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
@@ -253,12 +253,15 @@ class CollectionWorker:
         return float((data.get("total") or {}).get(dataset_id, 0))
 
     def _persist_observation(self, prompt: Dict, observation, job: Optional[Dict] = None, parent_observation_id: Optional[str] = None):
-        row = {"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}
+        raw_response = observation.raw_response
+        if observation.metadata.get("executed_text"):
+            raw_response = {**raw_response, "executed_text": observation.metadata["executed_text"]}
+        row = {"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": raw_response, "observed_at": observation.observed_at.isoformat()}
         fan_relation = "same_run"
         if parent_observation_id:
             row["parent_observation_id"] = parent_observation_id
             row["relation"] = "independent_reexecution"
-            row["raw_response"] = {**observation.raw_response, "relation": "independent_reexecution", "parent_observation_id": parent_observation_id}
+            row["raw_response"] = {**raw_response, "relation": "independent_reexecution", "parent_observation_id": parent_observation_id}
             fan_relation = "independent_reexecution"
         try:
             observation_rows = self.db.request("POST", "observations", body=[row])
@@ -278,11 +281,15 @@ class CollectionWorker:
         return observation_id
 
     def _run_once(self, provider, candidate, example, engine, run_index, project, phase):
-        return self._execute_analysis(provider, AnalysisRequest(
+        observation = self._execute_analysis(provider, AnalysisRequest(
             prompt=candidate.text, engine=engine, country=project.get("country", "BE"),
             language=project.get("language", "fr"),
             metadata={"example_id": example["id"], "run_index": run_index, "phase": phase},
         ))
+        # Version link: the exact text executed is stored with the run so an
+        # edited formulation never inherits the previous version's results.
+        observation.metadata["executed_text"] = candidate.text
+        return observation
 
     def _stored_observations(self, prompt_id: str, engines=None):
         engine_filter = f"&engine=in.({','.join(engines)})" if engines else ""
@@ -701,14 +708,19 @@ class CollectionWorker:
         ) for row in cluster_rows]
         project = self.db.request("GET", "projects", f"select=name&id=eq.{project_id}&limit=1")[0]
         self._report(job, 5, f"Construction des candidats depuis {len(clusters)} clusters")
-        candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
+        built = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
             mode=build_config.get("mode", "faithful"),
             intent_similarity_threshold=float(build_config.get("intent_similarity_threshold", 0.65)),
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
             brand_name=project.get("name", ""),
-        ))[:dataset.get("candidate_pool_size", dataset["target_size"])])
+        )))
+        # The global pool cap follows the same intent-first rule as every
+        # other cap: representatives of every intent first, variants last —
+        # truncating in cluster order would drop a whole need.
+        pool_size = int(dataset.get("candidate_pool_size", dataset["target_size"]))
+        candidates = intent_first_order(built)[:pool_size]
         if not candidates:
             raise RuntimeError("Aucun candidat généré. Vérifiez le nom du projet / marque ou les clusters.")
         sample_size = int(dataset.get("execution_sample_size", len(candidates)))
@@ -886,8 +898,15 @@ class CollectionWorker:
         stored_observations = {}
         for example in examples:
             prompt = prompts[example["prompt_id"]]
-            candidate = PromptCandidate(text=prompt["text"], provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
+            # Execute the current version: an edited text is the formulation
+            # under test; the original prompt keeps its historical runs.
+            executed_text = (example.get("edited_prompt_text") or prompt["text"]).strip()
+            candidate = PromptCandidate(text=executed_text, provenance=PromptProvenance(prompt["provenance"]), source_reference=prompt.get("cluster_id") or "", expected_fan_outs=prompt.get("expected_fan_outs", []), metadata=prompt.get("metadata", {}))
             existing = self._stored_observations(prompt["id"], engines)
+            if example.get("edited_prompt_text"):
+                # Only runs of this exact version count towards its target;
+                # the previous version's observations are history, not proof.
+                existing = [item for item in existing if item.raw_response.get("executed_text") == example["edited_prompt_text"]]
             stored_observations[example["id"]] = existing
             records.append((candidate, prompt, example, existing))
             for engine in engines:
@@ -1084,7 +1103,7 @@ class CollectionWorker:
                 passed = (all(o.fan_outs and not o.raw_response.get("error") for o in observations)
                     and scores["reproduction_score"] >= threshold)
                 # A single run establishes reproduction, not stability.
-                final_status = "validated" if passed and run_count >= 3 and scores["stability_score"] >= 0.65 else "draft"
+                final_status = "validated" if passed and run_count >= 3 and (scores["stability_score"] or 0.0) >= 0.65 else "draft"
                 metadata.update({**scores, "validation_runs": run_count, "reproduction_passed": passed,
                     "stability_measured": run_count >= 2, "adaptive_validation": True})
                 self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}&project_id=eq.{project_id}",

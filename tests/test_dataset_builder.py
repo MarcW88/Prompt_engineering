@@ -79,6 +79,25 @@ class DatasetBuilderTests(unittest.TestCase):
         self.assertIn("trail expert montagne 3000m", texts)
         self.assertTrue(all(c.metadata["is_representative"] for c in candidates))
 
+    def test_global_pool_cap_keeps_every_intent(self):
+        # Reproduit l'audit : plafond global 2, cluster 1 saturé de paraphrases,
+        # cluster 2 avec une intention distincte → les deux représentants
+        # doivent survivre, la variante est évincée.
+        from analysis.dataset_funnel import intent_first_order
+        clusters = [
+            ClusterInput(id="c1", label="a", representative_question="trail débutant",
+                questions=["trail débutant guide", "trail débutant conseils"], question_count=3, source_count=1),
+            ClusterInput(id="c2", label="b", representative_question="trail expert montagne 3000m",
+                questions=[], question_count=1, source_count=1),
+        ]
+        built = DatasetBuilder().build(clusters, DatasetBuildConfig())
+        # Vérification préalable : les variantes partagent bien la même intention.
+        self.assertEqual(len({c.metadata["intent_id"] for c in built if c.metadata["cluster_id"] == "c1"}), 1)
+        capped = intent_first_order(built)[:2]
+        texts = [candidate.text for candidate in capped]
+        self.assertIn("trail débutant", texts)
+        self.assertIn("trail expert montagne 3000m", texts)
+
     def test_matrix_mode_remains_explicit(self):
         candidates = DatasetBuilder().build([self.cluster], DatasetBuildConfig(
             mode="matrix", personas=["débutant", "petit budget"], stages=["discovery", "comparison"],

@@ -43,6 +43,15 @@ def score_candidates(candidates: Iterable[PromptCandidate]) -> List[PromptCandid
     return candidates
 
 
+def intent_first_order(candidates: Iterable[PromptCandidate]) -> List[PromptCandidate]:
+    """Representatives of every intent first, variants last — the ordering all
+    caps must respect so a paraphrase never evicts a distinct need."""
+    candidates = list(candidates)
+    representatives = [candidate for candidate in candidates if candidate.metadata.get("is_representative", True)]
+    variants = [candidate for candidate in candidates if not candidate.metadata.get("is_representative", True)]
+    return representatives + variants
+
+
 def stratified_sample(candidates: Iterable[PromptCandidate], sample_size: int, max_per_cluster: int = 5) -> List[PromptCandidate]:
     groups = defaultdict(list)
     for candidate in candidates:

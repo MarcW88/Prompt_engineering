@@ -150,6 +150,30 @@ export async function GET(request: Request) {
       const fullPrompts = await supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,confidence,status,expected_fan_outs,metadata,created_at&project_id=eq.${project}&limit=20000&order=created_at.asc` });
       const clusterIds = [...new Set(fullPrompts.map((row) => String(row.cluster_id)).filter((id) => id && id !== "null"))];
       const clusterById = new Map((clusterIds.length ? await supabaseRest<Row[]>("clusters", { query: `select=id,label&project_id=eq.${project}` }) : []).map((row) => [String(row.id), String(row.label ?? "")]));
+      // Evidence lineage: prompt → cluster → questions → signal (URL/platform).
+      const clusterQuestions = clusterIds.length
+        ? await fetchInBatches<Row>("cluster_questions", clusterIds, "cluster_id", "cluster_id,question_id")
+        : [];
+      const questionIds = [...new Set(clusterQuestions.map((row) => String(row.question_id)))];
+      const questions = questionIds.length
+        ? await fetchInBatches<Row>("questions", questionIds, "id", "id,text,provenance,signal_id")
+        : [];
+      const signalIds = [...new Set(questions.map((row) => String(row.signal_id)).filter((id) => id && id !== "null"))];
+      const signals = signalIds.length
+        ? await fetchInBatches<Row>("signals", signalIds, "id", "id,url,platform,source_type")
+        : [];
+      const signalById = new Map(signals.map((row) => [String(row.id), row]));
+      const questionById = new Map(questions.map((row) => [String(row.id), row]));
+      const evidenceByCluster = new Map<string, { question_ids: string[]; signal_urls: string[]; platforms: string[] }>();
+      for (const link of clusterQuestions) {
+        const question = questionById.get(String(link.question_id));
+        const signal = question ? signalById.get(String(question.signal_id)) : null;
+        const entry = evidenceByCluster.get(String(link.cluster_id)) ?? { question_ids: [], signal_urls: [], platforms: [] };
+        entry.question_ids.push(String(link.question_id));
+        if (signal?.url) entry.signal_urls.push(String(signal.url));
+        if (signal?.platform) entry.platforms.push(String(signal.platform));
+        evidenceByCluster.set(String(link.cluster_id), entry);
+      }
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
       const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status,manual_review_status,review_note,edited_prompt_text,quality_score,stability_score,reproduction_score,completed_runs,target_runs,validation_tier");
       const exampleByPrompt = new Map<string, Row>();
@@ -167,10 +191,14 @@ export async function GET(request: Request) {
         const meta = (prompt.metadata ?? {}) as Record<string, unknown>;
         const example = exampleByPrompt.get(String(prompt.id));
         const edited = example?.edited_prompt_text ? String(example.edited_prompt_text) : "";
+        const evidence = evidenceByCluster.get(String(prompt.cluster_id)) ?? { question_ids: [], signal_urls: [], platforms: [] };
         return {
           id: prompt.id,
           intent_id: String(meta.intent_id ?? meta.cluster_id ?? ""),
           cluster_label: clusterById.get(String(prompt.cluster_id)) ?? "",
+          question_ids: JSON.stringify([...new Set(evidence.question_ids)]),
+          source_urls: JSON.stringify([...new Set(evidence.signal_urls)]),
+          source_platforms: [...new Set(evidence.platforms)].join(" | "),
           role: meta.is_representative === false ? "variant" : meta.is_representative === true ? "representative" : "candidate",
           variant_of: String(meta.variant_of ?? ""),
           text: prompt.text,
@@ -191,7 +219,7 @@ export async function GET(request: Request) {
           created_at: prompt.created_at,
         };
       });
-      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
+      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "question_ids", "source_urls", "source_platforms", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
     }
 
     if (stage === "dataset") {

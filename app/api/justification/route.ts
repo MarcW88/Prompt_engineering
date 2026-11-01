@@ -36,6 +36,10 @@ export async function GET(request: Request) {
 
     const count = <T,>(rows: T[], predicate: (row: T) => boolean) => rows.filter(predicate).length;
     const uniq = <T,>(rows: T[], key: (row: T) => string | null | undefined) => new Set(rows.map(key).filter(Boolean)).size;
+    // A prompt appearing in several datasets is still one prompt: all counts
+    // are deduplicated by prompt_id so volumes cannot be inflated.
+    const promptHasStatus = (status: string) => new Set(examples.filter((row) => row.status === status).map((row) => String(row.prompt_id))).size;
+    const promptApproved = new Set(examples.filter((row) => row.manual_review_status === "approved").map((row) => String(row.prompt_id))).size;
 
     const collection = {
       raw_extracts: signals.length,
@@ -57,9 +61,9 @@ export async function GET(request: Request) {
       variants: count(prompts, (row) => row.metadata?.is_representative === false && !!row.metadata?.variant_of),
       synthetic: count(prompts, (row) => row.provenance === "synthetic"),
       reconstructed: count(prompts, (row) => row.provenance === "reverse_engineered"),
-      retained: count(examples, (row) => row.status === "accepted"),
-      rejected: count(examples, (row) => row.status === "rejected"),
-      approved: count(examples, (row) => row.manual_review_status === "approved"),
+      retained: promptHasStatus("accepted"),
+      rejected: promptHasStatus("rejected"),
+      approved: promptApproved,
       coverage: needs.intents_identified
         ? Math.round(uniq(examples.filter((row) => row.status === "accepted").map((row) => String(prompts.find((prompt) => prompt.id === row.prompt_id)?.metadata?.intent_id ?? "")).filter(Boolean), (value) => value) / needs.intents_identified * 100)
         : null,
@@ -79,13 +83,19 @@ export async function GET(request: Request) {
       fan_outs_stored: fanOuts.length,
     };
     const reconstructedExamples = examples.filter((row) => prompts.find((prompt) => prompt.id === row.prompt_id)?.provenance === "reverse_engineered");
+    const REPRODUCTION_THRESHOLD = 0.65;
     const result = {
       portfolio_approved: selection.approved,
-      reconstructions_evaluated: reconstructedExamples.length,
-      reconstructions_validated: count(reconstructedExamples, (row) => row.reproduction_score != null && Number(row.completed_runs ?? 0) >= Math.max(3, Number(row.target_runs ?? 0))),
+      reconstructions_evaluated: new Set(reconstructedExamples.map((row) => String(row.prompt_id))).size,
+      // Validated = reproduction above the fixed threshold AND the required
+      // repetitions — a rejected candidate with enough runs is not validated.
+      reconstructions_validated: new Set(reconstructedExamples.filter((row) =>
+        row.status === "accepted" && row.reproduction_score != null && Number(row.reproduction_score) >= REPRODUCTION_THRESHOLD
+        && Number(row.completed_runs ?? 0) >= Math.max(3, Number(row.target_runs ?? 0))).map((row) => String(row.prompt_id))).size,
       measurement_limits: [
         "Les plafonds sont des contraintes d'exécution, pas une preuve de représentativité.",
         "La couverture porte sur les intentions identifiées dans ce corpus, pas sur tous les utilisateurs.",
+        "Le dénominateur d'intentions provient des prompts enregistrés ; les intentions éliminées avant enregistrement n'y figurent pas.",
       ],
     };
     const summary = `${selection.retained} prompts retenus couvrent ${selection.coverage ?? "?"}% des ${needs.intents_identified} intentions admissibles identifiées dans ce corpus, à partir de ${collection.deduplicated_extracts} extraits dédupliqués issus de ${collection.source_families} familles de sources. Les variantes sont regroupées ; les intentions non couvertes restent différées.`;
