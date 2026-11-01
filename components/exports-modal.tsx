@@ -82,6 +82,21 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
         </div>
         <div className="semactic-export">
           <div>
+            <span className="eyebrow">RAPPORT COMPLET §16</span>
+            <h3>Classeur Excel — 12 onglets reliés</h3>
+            <p className="export-intro">Synthèse, prompts finaux, filiation complète, sources/questions, décisions par intention, versions, exécutions, fan-outs/citations, reconstruction, coûts détaillés et synthèse, méthodes et limites.</p>
+          </div>
+          <div className="form-row">
+            <a className="primary export-final" href={`/api/exports/workbook?projectId=${encodeURIComponent(projectId ?? "")}`}><Download size={16} /> Télécharger le rapport complet (.xlsx)</a>
+            <button type="button" className="secondary" disabled={!projectId} onClick={async () => {
+              const response = await fetch("/api/portfolio/finalize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId }) });
+              const data = await response.json().catch(() => ({}));
+              alert(response.ok ? `Portefeuille figé : ${data.version_id} (${data.frozen_versions} versions)` : `Finalisation impossible : ${data.error ?? response.status}`);
+            }}>Finaliser le portefeuille (fige une version)</button>
+          </div>
+        </div>
+        <div className="semactic-export">
+          <div>
             <span className="eyebrow">EXPORT FINAL</span>
             <h3>Semactic — prompts approuvés uniquement</h3>
           </div>
