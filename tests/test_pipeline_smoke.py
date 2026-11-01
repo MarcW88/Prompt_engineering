@@ -131,6 +131,44 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertTrue(any(c['provider'] == 'openai' and c['category'] == 'fan_out_reexecution' for c in w.db.tables['analysis_costs']))
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_openai_surface_target_executes_via_extractor(self):
+        """Une cible de la surface openai_web_search est réexécutée par
+        l'extracteur OpenAI — jamais par Bright Data."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.db.tables['projects'] = [{'id': 'p', 'language': 'fr', 'country': 'BE'}]
+        w.db.tables['prompts'] = [
+            {'id': 'pr-train', 'project_id': 'p', 'text': 'prompt entrainement', 'cluster_id': 'c'},
+            {'id': 'pr-target', 'project_id': 'p', 'text': 'prompt cible', 'cluster_id': 'c'},
+        ]
+        w.db.tables['dataset_examples'] = [{'prompt_id': 'pr-train', 'status': 'accepted'}]
+        w.db.tables['observations'] = [
+            {'id': 'obs-train', 'prompt_id': 'pr-train', 'engine': 'openai_web_search', 'provider': 'openai', 'answer': 'réponse', 'raw_response': {}},
+            {'id': 'obs-target', 'prompt_id': 'pr-target', 'engine': 'openai_web_search', 'provider': 'openai', 'answer': 'réponse', 'raw_response': {}},
+        ]
+        w.db.tables['fan_outs'] = [
+            {'observation_id': 'obs-train', 'query': 'train query', 'source': 'openai_responses_web_search'},
+            {'observation_id': 'obs-target', 'query': 'target query', 'source': 'openai_responses_web_search'},
+        ]
+        w._report = Mock()
+        w._record_cost = Mock()
+        w.fanout_extractor = Mock()
+        w.fanout_extractor.extract.side_effect = lambda request: {
+            'queries': ['target query'], 'answer': 'réponse', 'model': 'm',
+            'response_id': 'r1', 'search_calls': 1, 'usage': {},
+        }
+        job = {'id': 'j', 'project_id': 'p', 'input': {
+            'target_observation_ids': ['obs-target'],
+            'max_validation_executions': 9, 'validation_runs': 3, 'max_targets': 1,
+        }}
+        with patch.object(ICLPromptReconstructor, '_generate_with_llm', return_value=['candidat']):
+            result = w._reverse_engineer(job)
+        self.assertEqual(result['executions'], 3)
+        self.assertEqual(w.fanout_extractor.extract.call_count, 3)
+        self.assertEqual(result['validated'], 1)
+        self.assertTrue(all(o['engine'] == 'openai_web_search' for o in w.db.tables['observations'][2:]))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
     def test_adaptive_validation_mixed_candidates(self):
         """Un candidat qui échoue au premier run ne reçoit aucune répétition ;
         le contexte ICL ne contient que des exemples du même moteur."""

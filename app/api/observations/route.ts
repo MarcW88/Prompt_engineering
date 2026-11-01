@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         model: row.model,
         observed_at: row.observed_at,
         fan_out_count: countByObservation.get(String(row.id)) ?? 0,
-        trace_kind: traceKind(sourceByObservation.get(String(row.id)) ?? []),
+        trace_kind: traceKind(sourceByObservation.get(String(row.id)) ?? [], row.provider, row.engine),
       }))
       .filter((row) => row.fan_out_count > 0);
     return NextResponse.json({ configured: true, observations: rows });

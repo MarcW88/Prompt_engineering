@@ -15,3 +15,15 @@ alter table public.observations
 
 create index if not exists observations_parent_idx
     on public.observations (parent_observation_id);
+
+-- Trace status on scored examples: a run that exposes no searches is
+-- "not_exposed" / "none_reported", never a silent zero reproduction.
+alter table public.dataset_examples
+    add column if not exists trace_status text;
+
+alter table public.dataset_examples
+    drop constraint if exists dataset_examples_trace_status_check;
+
+alter table public.dataset_examples
+    add constraint dataset_examples_trace_status_check
+    check (trace_status is null or trace_status in ('provider_reported', 'independent_reexecution', 'none_reported', 'not_exposed'));

@@ -181,10 +181,12 @@ export async function GET(request: Request) {
       // Corpus éligible : prompts acceptés, trace valide (réponse non vide,
       // pas d'erreur provider), provider cohérent. Les observations rejetées ou
       // en erreur restent visibles dans l'export brut "observations".
+      const strictOnly = new URL(request.url).searchParams.get("strict") === "1";
       const rows = observations
         .filter((observation) => (fanByObservation.get(String(observation.id)) ?? []).length > 0)
         .filter(isEligibleObservation)
         .filter((observation) => acceptedPrompts.has(String(observation.prompt_id)))
+        .filter((observation) => !strictOnly || traceKind(sourceByObservation.get(String(observation.id)) ?? [], observation.provider, observation.engine) === "provider_reported")
         .map((observation) => ({
           project_id: projectId,
           prompt_id: observation.prompt_id,
@@ -197,7 +199,7 @@ export async function GET(request: Request) {
           language: observation.language,
           observed_at: observation.observed_at,
           fan_outs: JSON.stringify(fanByObservation.get(String(observation.id)) ?? []),
-          trace_kind: traceKind(sourceByObservation.get(String(observation.id)) ?? []),
+          trace_kind: traceKind(sourceByObservation.get(String(observation.id)) ?? [], observation.provider, observation.engine),
           status: "accepted",
           raw_response_reference: `observations:${observation.id}`,
         }));

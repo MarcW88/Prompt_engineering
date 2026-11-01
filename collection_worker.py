@@ -34,10 +34,25 @@ from utils.config_loader import load_config, neutral_config
 # Bright Data does not expose the queries). Mirrors OBSERVED_FAN_OUT_SOURCES
 # in lib/data/observations.ts.
 OBSERVED_FAN_OUT_SOURCES = ("brightdata", "openai_responses_web_search")
+
+
+def EXAMPLE_SCORE_COLUMNS(scores):
+    """dataset_examples only has numeric score columns; trace_status and other
+    diagnostics stay in prompt/job metadata, not in the table."""
+    allowed = ("coverage_score", "stability_score", "reproduction_score",
+        "semantic_reproduction_score", "redundancy_score", "quality_score")
+    return {key: scores.get(key) for key in allowed if key in scores}
+
 # ICL examples and reconstruction targets must come from traces observed in the
 # SAME run on the SAME surface. An independent re-execution measures another
-# surface and can never stand in for the target engine's fan-outs.
-SAME_RUN_FAN_OUT_SOURCES = ("brightdata",)
+# surface and can never stand in for the target engine's fan-outs. An
+# openai_web_search observation's own queries ARE same-run for that surface.
+def same_run_fan_out_source(provider: str, engine: str) -> str:
+    if engine == "openai_web_search" or provider == "openai":
+        return "openai_responses_web_search"
+    return provider or "brightdata"
+
+ELIGIBLE_PROVIDERS = ("brightdata", "openai")
 
 
 load_dotenv()
@@ -236,16 +251,26 @@ class CollectionWorker:
         data = response.json()
         return float((data.get("total") or {}).get(dataset_id, 0))
 
-    def _persist_observation(self, prompt: Dict, observation, job: Optional[Dict] = None):
-        observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
+    def _persist_observation(self, prompt: Dict, observation, job: Optional[Dict] = None, parent_observation_id: Optional[str] = None):
+        row = {"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}
+        fan_relation = "same_run"
+        if parent_observation_id:
+            row["parent_observation_id"] = parent_observation_id
+            row["relation"] = "independent_reexecution"
+            row["raw_response"] = {**observation.raw_response, "relation": "independent_reexecution", "parent_observation_id": parent_observation_id}
+            fan_relation = "independent_reexecution"
+        try:
+            observation_rows = self.db.request("POST", "observations", body=[row])
+        except Exception:
+            observation_rows = self.db.request("POST", "observations", body=[{k: v for k, v in row.items() if k not in ("parent_observation_id", "relation")}])
         observation_id = observation_rows[0]["id"]
         if observation.fan_outs:
-            self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id"), "relation": "same_run"}} for index, query in enumerate(observation.fan_outs)])
+            self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id"), "relation": fan_relation, "parent_observation_id": parent_observation_id}} for index, query in enumerate(observation.fan_outs)])
         if observation.citations:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
         # Fallback OpenAI : nouvelle exécution indépendante — observation séparée,
         # jamais fusionnée dans les traces du run parent.
-        if not observation.fan_outs and observation.answer:
+        if not observation.fan_outs and observation.answer and not parent_observation_id:
             reexecution_id = self._persist_reexecution(prompt, observation_id, observation, job=job)
             if reexecution_id:
                 observation.metadata["reexecution_observation_id"] = reexecution_id
@@ -756,7 +781,7 @@ class CollectionWorker:
                     is_accepted = scores["quality_score"] >= threshold
                     accepted += int(is_accepted)
                     rejected += int(not is_accepted)
-                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **EXAMPLE_SCORE_COLUMNS(scores), "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                     self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                 continue
             records.append((candidate, prompt, example, existing))
@@ -800,7 +825,7 @@ class CollectionWorker:
                             is_accepted = scores["quality_score"] >= threshold
                             accepted += int(is_accepted)
                             rejected += int(not is_accepted)
-                            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                            self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **EXAMPLE_SCORE_COLUMNS(scores), "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                             self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                         self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
         else:
@@ -819,7 +844,7 @@ class CollectionWorker:
                         is_accepted = scores["quality_score"] >= threshold
                         accepted += int(is_accepted)
                         rejected += int(not is_accepted)
-                        self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **scores, "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
+                        self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {"status": "accepted" if is_accepted else "rejected", **EXAMPLE_SCORE_COLUMNS(scores), "completed_runs": repetitions, "rejection_reason": None if is_accepted else "quality_below_threshold"}, "return=minimal")
                         self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}", {"status": "validated" if is_accepted else "archived", "confidence": scores["quality_score"]}, "return=minimal")
                     self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / total))}, "return=minimal")
         if completed == 0 and not (accepted or rejected):
@@ -897,7 +922,7 @@ class CollectionWorker:
                 completed += 1
                 if min(sum(item.engine == engine for item in stored_observations[example["id"]]) for engine in engines) >= target_runs:
                     scores = score_dataset_example(candidate, stored_observations[example["id"]])
-                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
+                    self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**EXAMPLE_SCORE_COLUMNS(scores), "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
                 self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / max(1, additional_executions)))}, "return=minimal")
         if openai_search_calls:
             self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", estimated_unit_cost=float(os.getenv("OPENAI_SEARCH_CALL_COST_USD", "0.03")), metadata=openai_usage, dataset_id=dataset_id)
@@ -924,16 +949,16 @@ class CollectionWorker:
         # Same admission contract as the corpus export and the target selector:
         # non-empty answer, no provider error, Bright Data execution only.
         observations = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response&prompt_id=in.({','.join(prompts_by_id)})")
-        observations = [row for row in observations if row.get("provider") == "brightdata"
+        observations = [row for row in observations if row.get("provider") in ELIGIBLE_PROVIDERS
             and str(row.get("answer") or "").strip() and not (row.get("raw_response") or {}).get("error")]
         observation_ref = {row["id"]: row for row in observations}
-        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=in.({','.join(SAME_RUN_FAN_OUT_SOURCES)})&observation_id=in.({','.join(observation_ref)})") if observations else []
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query,source&observation_id=in.({','.join(observation_ref)})") if observations else []
         # Examples are segmented by engine: ChatGPT traces never mix with
-        # Gemini traces in the same ICL context.
+        # Gemini traces in the same ICL context, and only same-run traces count.
         fan_outs_by_key = {}
         for row in fan_out_rows:
             observation = observation_ref.get(row["observation_id"])
-            if observation:
+            if observation and row.get("source") == same_run_fan_out_source(observation.get("provider"), observation.get("engine")):
                 key = (observation["prompt_id"], str(observation.get("engine") or ""))
                 fan_outs_by_key.setdefault(key, []).append(row["query"])
         examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id, engine)
@@ -952,15 +977,16 @@ class CollectionWorker:
             return {"examples": len(examples), "reconstructed": 0, "skipped": "No observed targets selected; use build_dataset for signal-based generation"}
         project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id,text&project_id=eq.{project_id}")
         owned = {row["id"]: row for row in project_prompts}
-        candidates_targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response&prompt_id=in.({','.join(owned)})") if owned else []
+        candidates_targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response->>error&prompt_id=in.({','.join(owned)})") if owned else []
         owned_ids = {row["id"] for row in candidates_targets}
         if not set(target_ids) <= owned_ids:
             raise ValueError("Target observations must belong to this project")
         # Admission contract: valid trace only (non-empty answer, no provider
         # error, Bright Data execution). Ineligible selections are skipped.
+        # NB: `raw_response->>error` is projected flat as `error`.
         targets = [row for row in candidates_targets if row["id"] in target_ids
-            and row.get("provider") == "brightdata" and str(row.get("answer") or "").strip()
-            and not (row.get("raw_response") or {}).get("error")]
+            and row.get("provider") in ELIGIBLE_PROVIDERS and str(row.get("answer") or "").strip()
+            and not row.get("error")]
         max_candidates = max(3, min(5, int(options.get("max_candidates_per_cluster", 3))))
         max_targets = max(1, min(10, int(options.get("max_targets", 1))))
         runs = max(1, min(4, int(options.get("validation_runs", 1))))
@@ -973,12 +999,32 @@ class CollectionWorker:
         threshold = float(options.get("reproduction_threshold", 0.65))
         saved_count = executions = validated = 0
 
-        def execute_once(prompt, candidate, engine, run_index):
+        def execute_once(prompt, candidate, engine, run_index, parent_observation_id=None):
             nonlocal executions
-            # No secondary-engine fan-outs: reproduction must come from the target engine.
-            observation = self._execute_analysis(provider, AnalysisRequest(candidate.text, engine=engine,
-                country=project.get("country", "BE"), language=project.get("language", "fr")))
-            self._persist_observation(prompt, observation, job=job)
+            # No secondary-engine fan-outs: reproduction must come from the
+            # target's real surface (Bright Data engine, or the OpenAI web
+            # search surface for re-execution targets).
+            request = AnalysisRequest(candidate.text, engine=engine,
+                country=project.get("country", "BE"), language=project.get("language", "fr"))
+            if engine == "openai_web_search":
+                if not self.fanout_extractor:
+                    raise RuntimeError("OPENAI_API_KEY is required to validate openai_web_search targets")
+                extracted = self.fanout_extractor.extract(request)
+                observation = AnalysisObservation(candidate.text, "openai", "openai_web_search",
+                    answer=extracted.get("answer") or "", fan_outs=extracted["queries"],
+                    country=request.country, language=request.language, model=extracted["model"],
+                    web_search_triggered=True,
+                    raw_response={"response_id": extracted["response_id"], "relation": "independent_reexecution",
+                        "search_calls": extracted["search_calls"], "usage": extracted["usage"]})
+                observation.metadata["fan_out_source"] = "openai_responses_web_search"
+                self._persist_observation(prompt, observation, job=job, parent_observation_id=parent_observation_id)
+                executions += 1
+                self._record_cost(job, "openai", "reconstruction_validation", quantity=1, unit="executions",
+                    cost_status="pending_reconciliation", estimated_unit_cost=float(options.get("cost_per_execution_eur", 0.05)),
+                    external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
+                return observation
+            observation = self._execute_analysis(provider, request)
+            self._persist_observation(prompt, observation, job=job, parent_observation_id=parent_observation_id)
             executions += 1
             self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
                 cost_status="pending_reconciliation", estimated_unit_cost=float(options.get("cost_per_execution_eur", 0.05)),
@@ -989,7 +1035,8 @@ class CollectionWorker:
             if executions >= execution_limit:
                 break
             query_rows = self.db.request("GET", "fan_outs", f"select=query,source&observation_id=eq.{target['id']}&order=position.asc")
-            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") in SAME_RUN_FAN_OUT_SOURCES))
+            expected_source = same_run_fan_out_source(target.get("provider"), target.get("engine"))
+            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") == expected_source))
             if not queries:
                 continue
             # Hold out the original prompt and its near-variants: they must not
@@ -1018,13 +1065,13 @@ class CollectionWorker:
             for entry in pending:
                 if executions >= execution_limit:
                     break
-                entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], 0))
+                entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], 0, parent_observation_id=target["id"]))
                 entry["passed_first"] = (bool(entry["observations"][0].fan_outs)
                     and not entry["observations"][0].raw_response.get("error")
                     and score_dataset_example(entry["candidate"], entry["observations"], semantic_scorer=scorer)["reproduction_score"] >= threshold)
             for entry in [e for e in pending if e["passed_first"]]:
                 while len(entry["observations"]) < runs and executions < execution_limit:
-                    entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], len(entry["observations"])))
+                    entry["observations"].append(execute_once(entry["prompt"], entry["candidate"], target["engine"], len(entry["observations"]), parent_observation_id=target["id"]))
             for entry in pending:
                 candidate, prompt, metadata = entry["candidate"], entry["prompt"], entry["metadata"]
                 observations = entry["observations"]
