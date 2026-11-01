@@ -186,4 +186,31 @@ class ReconstructionTests(unittest.TestCase):
         self.assertEqual(updates[-1]['metadata']['reproduction_score'], 1)
         self.assertTrue(any(table == 'fan_outs' and method == 'POST' for method, table, _, _ in calls))
 
+    def test_record_cost_estimates_pending_amount(self):
+        calls = []
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = Mock(request=Mock(side_effect=lambda method, table, query='', body=None, prefer='r': calls.append(body) or [{}]))
+        w._record_cost({'id': 'j', 'project_id': 'p'}, 'brightdata', 'reconstruction_validation',
+            quantity=4, unit='executions', cost_status='pending_reconciliation', estimated_unit_cost=0.05)
+        self.assertEqual(calls[0][0]['amount'], 0.2)
+        w._record_cost({'id': 'j', 'project_id': 'p'}, 'brightdata', 'web_scraper_api',
+            amount=0.5, cost_status='account_delta', estimated_unit_cost=0.05)
+        self.assertEqual(calls[1][0]['amount'], 0.5)  # l'estimation ne remplace pas un montant réel
+
+    def test_settle_reservation_holds_pending_and_releases_reconciled(self):
+        rows = [
+            {'amount': 0.4, 'cost_status': 'account_delta'},
+            {'amount': 0.15, 'cost_status': 'pending_reconciliation'},
+            {'amount': 0.09, 'cost_status': 'usage_only'},
+        ]
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = Mock(request=Mock(return_value=rows))
+        settlement = w._settle_reservation({'id': 'j'})
+        self.assertEqual(settlement['reserved_cost_eur'], 0.24)
+        self.assertTrue(settlement['reservation_open'])
+        w.db = Mock(request=Mock(return_value=[{'amount': 0.4, 'cost_status': 'account_delta'}]))
+        settlement = w._settle_reservation({'id': 'j'})
+        self.assertEqual(settlement['reserved_cost_eur'], 0)
+        self.assertFalse(settlement['reservation_open'])
+
 if __name__ == '__main__': unittest.main()

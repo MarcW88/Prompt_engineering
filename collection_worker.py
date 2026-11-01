@@ -188,8 +188,12 @@ class CollectionWorker:
             return observations
         return [self._execute_analysis(provider, request) for request in requests]
 
-    def _record_cost(self, job: Dict, provider: str, category: str, amount=None, quantity=None, unit=None, cost_status="actual", external_reference=None, metadata=None, dataset_id=None):
+    def _record_cost(self, job: Dict, provider: str, category: str, amount=None, quantity=None, unit=None, cost_status="actual", external_reference=None, metadata=None, dataset_id=None, estimated_unit_cost=None):
         reference = external_reference or f"{job['id']}:{provider}:{category}"
+        # Les coûts non rapprochés portent une estimation pour que l'engagement
+        # reste couvert par la provision résiduelle du job (reservation_open).
+        if amount is None and quantity and estimated_unit_cost:
+            amount = round(float(quantity) * float(estimated_unit_cost), 6)
         rows = self.db.request("POST", "analysis_costs", "on_conflict=provider,category,external_reference", [{
             "project_id": job["project_id"], "job_id": job["id"], "dataset_id": dataset_id,
             "provider": provider, "category": category, "amount": amount, "currency": "usd",
@@ -247,6 +251,15 @@ class CollectionWorker:
         pending = any(row.get("cost_status") in {"usage_only", "pending_reconciliation", "unavailable"} for row in rows)
         return round(actual, 6), "partial" if pending else "reconciled"
 
+    def _settle_reservation(self, job: Dict) -> Dict:
+        """Provision résiduelle après fin de job : les coûts non rapprochés
+        (montants estimés) restent engagés tant qu'aucune dépense réelle ne les
+        a remplacés via l'upsert sur (provider, category, external_reference).
+        reservation_open=false libère la réservation une fois tout rapproché."""
+        rows = self.db.request("GET", "analysis_costs", f"select=amount,cost_status&job_id=eq.{job['id']}")
+        residual = round(sum(float(row.get("amount") or 0) for row in rows if row.get("cost_status") in {"pending_reconciliation", "usage_only", "unavailable"}), 6)
+        return {"reserved_cost_eur": residual, "reservation_open": residual > 0}
+
     def _report(self, job: Dict, progress: int, stage: str, extra=None):
         self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {
             "progress": max(0, min(99, progress)),
@@ -280,17 +293,20 @@ class CollectionWorker:
             }
             result = handlers[job["kind"]](job)
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
-            self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "cpu": 2, "memory_gib": 2})
+            self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", estimated_unit_cost=float(os.getenv("CLOUD_RUN_COST_PER_SECOND_USD", "0.0001")), external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "cpu": 2, "memory_gib": 2})
             actual_cost, cost_status = self._job_cost_summary(job["id"])
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result if result is not None else {}, "actual_cost_usd": actual_cost, "cost_status": cost_status, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "completed", "progress": 100, "output": result if result is not None else {}, "actual_cost_usd": actual_cost, "cost_status": cost_status, **self._settle_reservation(job), "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
         except Exception as error:
             runtime_seconds = round(time.monotonic() - started_monotonic, 3)
             try:
-                self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "failed": True, "cpu": 2, "memory_gib": 2})
+                self._record_cost(job, "google_cloud", "cloud_run_job", quantity=runtime_seconds, unit="seconds", cost_status="pending_reconciliation", estimated_unit_cost=float(os.getenv("CLOUD_RUN_COST_PER_SECOND_USD", "0.0001")), external_reference=f"{job['id']}:google_cloud:{self.cloud_execution_id}", metadata={"execution_id": self.cloud_execution_id, "failed": True, "cpu": 2, "memory_gib": 2})
             except Exception:
                 pass
             can_retry = int(job.get("attempt_count", 1)) < int(job.get("max_attempts", 3))
-            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "output": {}, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
+            # Un échec après consommation garde sa provision ; un échec avant
+            # toute consommation la libère (résiduel nul).
+            settlement = self._settle_reservation(job) if not can_retry else {}
+            self.db.request("PATCH", "jobs", f"id=eq.{job['id']}&worker_id=eq.{self.worker_id}&status=eq.running", {"status": "pending" if can_retry else "failed", "error": str(error)[:2000], "output": {}, **settlement, "heartbeat_at": datetime.now(timezone.utc).isoformat(), "completed_at": None if can_retry else datetime.now(timezone.utc).isoformat()}, "return=minimal")
             raise
         finally:
             heartbeat.stop()
@@ -763,7 +779,7 @@ class CollectionWorker:
         if completed == 0 and not (accepted or rejected):
             raise RuntimeError("Aucune observation n'a été produite. Vérifiez les clés API et le provider.")
         if openai_search_calls:
-            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
+            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", estimated_unit_cost=float(os.getenv("OPENAI_SEARCH_CALL_COST_USD", "0.03")), metadata=openai_usage, dataset_id=dataset_id)
         bright_delta = None
         if provider_name == "brightdata":
             bright_cost_after = self._brightdata_account_cost()
@@ -771,7 +787,7 @@ class CollectionWorker:
                 bright_delta = round(bright_cost_after - bright_cost_before, 6)
                 self._record_cost(job, "brightdata", "web_scraper_api", amount=bright_delta, quantity=completed, unit="records", cost_status="account_delta", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
             else:
-                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", estimated_unit_cost=float(dataset.get("cost_per_execution_eur") or 0.05), metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
         statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0}
         confirmed_cost = bright_delta or 0
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "ready", "statistics": statistics, "actual_cost_usd": confirmed_cost, "cost_status": "partial" if openai_search_calls else "reconciled", "completed_at": datetime.now(timezone.utc).isoformat()}, "return=minimal")
@@ -841,7 +857,7 @@ class CollectionWorker:
                     self.db.request("PATCH", "dataset_examples", f"id=eq.{example['id']}", {**scores, "target_runs": target_runs, "completed_runs": target_runs, "validation_tier": 1 if target_runs == 5 else 2}, "return=minimal")
                 self.db.request("PATCH", "jobs", f"id=eq.{job['id']}", {"progress": min(95, 10 + int(85 * completed / max(1, additional_executions)))}, "return=minimal")
         if openai_search_calls:
-            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", metadata=openai_usage, dataset_id=dataset_id)
+            self._record_cost(job, "openai", "web_search", quantity=openai_search_calls, unit="calls", cost_status="usage_only", estimated_unit_cost=float(os.getenv("OPENAI_SEARCH_CALL_COST_USD", "0.03")), metadata=openai_usage, dataset_id=dataset_id)
         bright_delta = None
         if provider_name == "brightdata":
             bright_cost_after = self._brightdata_account_cost()
@@ -849,7 +865,7 @@ class CollectionWorker:
                 bright_delta = round(bright_cost_after - bright_cost_before, 6)
                 self._record_cost(job, "brightdata", "web_scraper_api", amount=bright_delta, quantity=completed, unit="records", cost_status="account_delta", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
             else:
-                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
+                self._record_cost(job, "brightdata", "web_scraper_api", quantity=completed, unit="records", cost_status="pending_reconciliation", estimated_unit_cost=float(dataset.get("cost_per_execution_eur") or 0.05), metadata={"account_cost_before": bright_cost_before, "account_cost_after": bright_cost_after}, dataset_id=dataset_id)
         confirmed_cost = float(dataset.get("actual_cost_usd", 0)) + (bright_delta or 0)
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"estimated_cost_eur": round(projected_cost, 2), "actual_cost_usd": round(confirmed_cost, 6), "cost_status": "partial" if openai_search_calls else "reconciled"}, "return=minimal")
         return {"selected": len(examples), "executions": completed, "concurrency": concurrency, "target_runs": target_runs, "additional_cost_eur": round(additional_cost, 2), "confirmed_brightdata_cost_usd": bright_delta}
@@ -922,7 +938,8 @@ class CollectionWorker:
             self._persist_observation(prompt, observation)
             executions += 1
             self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
-                cost_status="pending_reconciliation", external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
+                cost_status="pending_reconciliation", estimated_unit_cost=float(options.get("cost_per_execution_eur", 0.05)),
+                external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
             return observation
 
         for target in targets[:max_targets]:
