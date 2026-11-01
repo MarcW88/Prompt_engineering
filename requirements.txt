@@ -2,7 +2,10 @@
 requests>=2.28.0
 beautifulsoup4>=4.11.0
 lxml>=4.9.0
+lxml_html_clean>=0.1.0
 praw>=7.6.0
+trafilatura>=2.0.0
+forumscraper>=0.1.21; python_version >= "3.10"
 
 # DataForSEO (uses requests, no extra package needed)
 

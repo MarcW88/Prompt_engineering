@@ -5,7 +5,8 @@ from pathlib import Path
 
 from analysis.models import AnalysisRequest
 from analysis.providers import BrightDataProvider, OxylabsProvider
-from analysis.reconstruction import PromptReconstructor, ReconstructionExample
+from analysis.icl_reconstruction import ICLPromptReconstructor
+from analysis.reconstruction import ReconstructionExample
 from storage import AnalysisStorage
 
 
@@ -64,7 +65,7 @@ def main():
         }, ensure_ascii=False, indent=2))
         return
     examples = load_examples(args.examples) if args.examples else []
-    candidates = PromptReconstructor(examples).reconstruct(args.fan_outs, args.language, args.limit)
+    candidates = ICLPromptReconstructor(examples).reconstruct(args.fan_outs, args.language, args.limit)
     for candidate in candidates:
         storage.save_candidate(candidate)
     print(json.dumps([{

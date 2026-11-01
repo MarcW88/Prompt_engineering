@@ -7,9 +7,12 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from bs4 import BeautifulSoup
 
+from .arctic_shift import ArcticShiftClient
 from .base_scraper import BaseScraper
+from .extractors import extract_url_content
 from models.raw_item import RawItem, SourceType
 from utils.config_loader import Config
+from sources.discovery import SourceDiscovery
 from sources.query_planner import plan_queries
 
 
@@ -36,6 +39,11 @@ class ForumScraper(BaseScraper):
         self.praw_client = None
         self.api_cost_usd = 0.0
         self.auth_header = self._init_dataforseo_auth()
+        self.discovery = SourceDiscovery(
+            delay=self.config.scraping.delay_between_requests,
+            timeout=self.config.scraping.timeout,
+            logger=self.logger,
+        )
         self._init_reddit()
     
     def _init_dataforseo_auth(self) -> Optional[str]:
@@ -53,6 +61,11 @@ class ForumScraper(BaseScraper):
         self.reddit_headers = {
             "User-Agent": "PromptFinder/1.0 (Question scraper for GEO analysis)"
         }
+        self.arctic = ArcticShiftClient(
+            delay=self.config.scraping.delay_between_requests,
+            timeout=self.config.scraping.timeout,
+            logger=self.logger,
+        )
         self.logger.info("Reddit public API initialized (no auth required)")
     
     @property
@@ -100,12 +113,114 @@ class ForumScraper(BaseScraper):
         
         for index, subreddit_name in enumerate(subreddits, start=1):
             self._report_progress(index - 1, len(subreddits), f"Reddit · r/{subreddit_name}")
-            subreddit_items = self._scrape_subreddit_json(subreddit_name, max_threads)
+            subreddit_items = self._scrape_subreddit(subreddit_name, max_threads)
             items.extend(subreddit_items)
             self._report_progress(index, len(subreddits), f"Reddit · r/{subreddit_name} · {len(subreddit_items)} signaux")
         
         return items
     
+    def _scrape_subreddit(self, subreddit_name: str, max_threads: int) -> List[RawItem]:
+        """Scrape un subreddit : Arctic Shift d'abord, API JSON Reddit en fallback."""
+        items = self._scrape_subreddit_arctic(subreddit_name, max_threads)
+        if items:
+            return items
+        self.logger.info(f"Arctic Shift returned nothing for r/{subreddit_name}, falling back to Reddit JSON API")
+        return self._scrape_subreddit_json(subreddit_name, max_threads)
+
+    def _scrape_subreddit_arctic(self, subreddit_name: str, max_threads: int) -> List[RawItem]:
+        """Scrape un subreddit via Arctic Shift (archive Reddit, pas de clé requise).
+
+        Récupère les posts correspondant aux seeds ainsi que les commentaires
+        des threads les plus pertinents, qui contiennent souvent les vraies
+        formulations utilisateurs."""
+        items = []
+        max_comments = int(self.config.scraping.forum.get("max_replies_per_thread", 3))
+        comment_thread_limit = int(self.config.scraping.forum.get("arctic_comment_threads", 5))
+
+        planned_queries = plan_queries(self.config.seeds, "reddit", max_threads)
+        per_query_limit = max(1, min(max_threads // max(len(planned_queries), 1), 100))
+        commented = 0
+        for index, planned in enumerate(planned_queries, start=1):
+            self._report_progress(index - 1, len(planned_queries), f"Reddit · r/{subreddit_name} · {planned.query}")
+            try:
+                posts = self.arctic.search_posts(subreddit_name, planned.query, limit=per_query_limit)
+                for post in posts:
+                    title = post.get("title", "") or ""
+                    selftext = post.get("selftext", "") or ""
+                    full_text = f"{title}\n\n{selftext}".strip()
+                    if len(full_text) < 20:
+                        continue
+                    created = post.get("created_utc")
+                    try:
+                        date = datetime.fromtimestamp(int(created)) if created else None
+                    except (TypeError, ValueError):
+                        date = None
+                    items.append(RawItem(
+                        source_type=SourceType.FORUM,
+                        platform="reddit",
+                        raw_text=full_text,
+                        url=f"https://reddit.com{post.get('permalink', '')}",
+                        title=title,
+                        brand=self._detect_brand(full_text),
+                        theme=self._detect_theme(full_text),
+                        date=date,
+                        metadata={
+                            "subreddit": subreddit_name,
+                            "provider": "arctic_shift",
+                            "score": post.get("score", 0),
+                            "num_comments": post.get("num_comments", 0),
+                            "search_term": planned.seed,
+                            "seed_type": planned.seed_type,
+                            "seed_priority": planned.priority,
+                            "is_question": self._is_question(title) or self._is_question(selftext),
+                        },
+                        client_slug=self.config.client.slug,
+                    ))
+                    if commented < comment_thread_limit and post.get("id"):
+                        comments = self.arctic._get("comments/search", {
+                            "link_id": post["id"], "limit": max_comments
+                        })
+                        commented += 1 if comments else 0
+                        for comment in comments:
+                            body = (comment.get("body") or "").strip()
+                            if len(body) < 20:
+                                continue
+                            c_created = comment.get("created_utc")
+                            try:
+                                c_date = datetime.fromtimestamp(int(c_created)) if c_created else None
+                            except (TypeError, ValueError):
+                                c_date = None
+                            items.append(RawItem(
+                                source_type=SourceType.FORUM,
+                                platform="reddit",
+                                raw_text=body,
+                                url=f"https://reddit.com{comment.get('permalink', '') or post.get('permalink', '')}",
+                                title=f"Commentaire · {title[:80]}",
+                                brand=self._detect_brand(body),
+                                theme=self._detect_theme(body),
+                                date=c_date,
+                                metadata={
+                                    "subreddit": subreddit_name,
+                                    "provider": "arctic_shift",
+                                    "signal_kind": "comment",
+                                    "post_id": post.get("id"),
+                                    "search_term": planned.seed,
+                                    "seed_type": planned.seed_type,
+                                    "seed_priority": planned.priority,
+                                    "is_question": self._is_question(body),
+                                },
+                                client_slug=self.config.client.slug,
+                            ))
+            except Exception as e:
+                self.logger.error(f"Arctic Shift error on r/{subreddit_name} for '{planned.query}': {e}")
+            finally:
+                self._report_progress(index, len(planned_queries), f"Reddit · r/{subreddit_name} · {index}/{len(planned_queries)} requêtes")
+            if self.arctic.available is False:
+                break
+
+        self.logger.info(f"Arctic Shift: {len(items)} items from r/{subreddit_name}")
+        return items
+
     def _scrape_subreddit_json(self, subreddit_name: str, max_threads: int) -> List[RawItem]:
         """Scrape un subreddit via l'API JSON publique de Reddit"""
         items = []
@@ -195,86 +310,100 @@ class ForumScraper(BaseScraper):
         per_query_limit = max(1, min(10, max_threads // max(len(planned_queries), 1)))
         for index, planned in enumerate(planned_queries, start=1):
             self._report_progress(index - 1, len(planned_queries), f"Forum · {name} · {planned.query}")
-            search_items = self._google_search_scrape(planned.query, name, per_query_limit)
+            search_items = self._discover_and_extract(planned.query, name, per_query_limit)
             for item in search_items:
                 item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
             items.extend(search_items)
             self._report_progress(index, len(planned_queries), f"Forum · {name} · {index}/{len(planned_queries)} requêtes")
-        
+
+        self.api_cost_usd += self.discovery.api_cost_usd
         return items
-    
-    def _google_search_scrape(self, query: str, platform_name: str, limit: int) -> List[RawItem]:
-        """Effectue une recherche Google via DataForSEO et scrape les résultats"""
+
+    def _discover_and_extract(self, query: str, platform_name: str, limit: int) -> List[RawItem]:
+        """Découvre des URLs via SearXNG (ou DataForSEO) puis extrait le contenu
+        réel de la page via forumscraper / trafilatura.
+
+        Si l'extraction échoue, le snippet de recherche est conservé comme
+        signal minimal."""
         items = []
-        
-        if not self.auth_header:
-            self.logger.warning("DataForSEO credentials not set, skipping Google search")
-            return items
-        
+        language = (self.config.languages or ["fr"])[0]
+        country = (self.config.markets or ["FR"])[0]
+
         try:
-            payload = [{
-                "keyword": query,
-                "location_code": 2250,  # France
-                "language_code": "fr",
-                "device": "desktop",
-                "os": "windows",
-                "depth": min(limit, 10)
-            }]
-            
-            url = f"{self.DATAFORSEO_BASE_URL}/serp/google/organic/live/advanced"
-            headers = {
-                "Authorization": self.auth_header,
-                "Content-Type": "application/json"
-            }
-            
-            time.sleep(self.config.scraping.delay_between_requests)
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            self.api_cost_usd += float(result.get("cost") or 0)
-            
-            if result.get("status_code") != 20000:
-                self.logger.warning(f"DataForSEO search failed for '{query}'")
-                return items
-            
-            tasks = result.get("tasks", [])
-            if not tasks:
-                return items
-            
-            task_result = tasks[0].get("result") or []
-            if not task_result or not isinstance(task_result[0], dict):
-                return items
-            
-            serp_items = task_result[0].get("items") or []
-            
-            for serp_item in serp_items[:limit]:
-                if serp_item.get("type") == "organic":
-                    title = serp_item.get("title", "")
-                    snippet = serp_item.get("description", "")
-                    item_url = serp_item.get("url", "")
-                    full_text = f"{title}\n\n{snippet}".strip()
-                    
-                    # Collecter tous les résultats (pas seulement les questions)
-                    if len(full_text) >= 20:
-                        item = RawItem(
-                            source_type=SourceType.FORUM,
-                            platform=platform_name,
-                            raw_text=full_text,
-                            url=item_url,
-                            title=title,
-                            brand=self._detect_brand(title + snippet),
-                            theme=self._detect_theme(title + snippet),
-                            metadata={
-                                "query": query,
-                                "is_question": self._is_question(title) or self._is_question(snippet)
-                            },
-                            client_slug=self.config.client.slug
-                        )
-                        items.append(item)
-                
+            results = self.discovery.search(query, limit=limit, language=language, country=country)
         except Exception as e:
-            self.logger.error(f"Google search error: {e}")
-        
+            self.logger.error(f"Source discovery error for '{query}': {e}")
+            return items
+
+        for result in results:
+            item_url = result.get("url", "")
+            title = result.get("title", "")
+            snippet = result.get("snippet", "")
+            if not item_url:
+                continue
+
+            extracted = extract_url_content(
+                item_url, session=self.session,
+                timeout=self.config.scraping.timeout, logger=self.logger,
+            )
+            if extracted and extracted.get("posts"):
+                # Thread de forum structuré : un item par post.
+                thread_title = extracted.get("title") or title
+                for post in extracted["posts"]:
+                    items.append(RawItem(
+                        source_type=SourceType.FORUM,
+                        platform=platform_name,
+                        raw_text=post["text"],
+                        url=item_url,
+                        title=thread_title,
+                        brand=self._detect_brand(post["text"]),
+                        theme=self._detect_theme(post["text"]),
+                        metadata={
+                            "query": query,
+                            "extractor": extracted.get("engine", "forumscraper"),
+                            "signal_kind": "forum_post",
+                            "author": post.get("author", ""),
+                            "is_question": self._is_question(post["text"]),
+                        },
+                        client_slug=self.config.client.slug,
+                    ))
+            elif extracted and extracted.get("text"):
+                full_text = extracted["text"]
+                items.append(RawItem(
+                    source_type=SourceType.FORUM,
+                    platform=platform_name,
+                    raw_text=full_text[:8000],
+                    url=item_url,
+                    title=extracted.get("title") or title,
+                    brand=self._detect_brand(full_text),
+                    theme=self._detect_theme(full_text),
+                    metadata={
+                        "query": query,
+                        "extractor": extracted.get("engine", "trafilatura"),
+                        "signal_kind": "page_content",
+                        "is_question": self._is_question(title) or self._is_question(full_text[:500]),
+                    },
+                    client_slug=self.config.client.slug,
+                ))
+            else:
+                full_text = f"{title}\n\n{snippet}".strip()
+                if len(full_text) >= 20:
+                    items.append(RawItem(
+                        source_type=SourceType.FORUM,
+                        platform=platform_name,
+                        raw_text=full_text,
+                        url=item_url,
+                        title=title,
+                        brand=self._detect_brand(full_text),
+                        theme=self._detect_theme(full_text),
+                        metadata={
+                            "query": query,
+                            "extractor": "serp_snippet",
+                            "is_question": self._is_question(title) or self._is_question(snippet),
+                        },
+                        client_slug=self.config.client.slug,
+                    ))
+
         return items
     
     def _is_question(self, text: str) -> bool:

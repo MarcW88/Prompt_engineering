@@ -68,10 +68,88 @@ class ReviewScraper(BaseScraper):
         return items
     
     def _scrape_trustpilot(self, platform_config: dict) -> List[RawItem]:
-        """Collecte les avis Trustpilot via DataForSEO, avec fallback HTML."""
+        """Collecte les avis Trustpilot.
+
+        Ordre : extraction gratuite depuis les données structurées de la page
+        (__NEXT_DATA__ / JSON-LD) puis DataForSEO en fallback."""
+        items = self._scrape_trustpilot_nextdata(platform_config)
+        if items:
+            return items
         if self.auth_header:
             return self._scrape_trustpilot_dataforseo(platform_config)
         return self._scrape_trustpilot_html(platform_config)
+
+    def _scrape_trustpilot_nextdata(self, platform_config: dict) -> List[RawItem]:
+        """Extrait les avis depuis le JSON __NEXT_DATA__ embarqué dans les pages
+        Trustpilot (plus robuste que les sélecteurs DOM)."""
+        import json as _json
+
+        items = []
+        base_url = platform_config.get("url", "")
+        if not base_url:
+            return items
+        max_pages = self.config.scraping.reviews.get("max_pages", 10)
+        max_rating = self.config.scraping.reviews.get("max_rating", 3)
+        min_length = self.config.scraping.reviews.get("min_text_length", 100)
+        include_all = self.config.scraping.reviews.get("include_all_ratings", False)
+
+        for page in range(1, max_pages + 1):
+            url = f"{base_url}?page={page}" if page > 1 else base_url
+            try:
+                response = self._fetch(url)
+                if not response:
+                    break
+                soup = BeautifulSoup(response.text, "lxml")
+                script = soup.find("script", id="__NEXT_DATA__")
+                if not script or not script.string:
+                    if page == 1:
+                        return items
+                    break
+                data = _json.loads(script.string)
+                page_props = (data.get("props") or {}).get("pageProps") or {}
+                reviews = page_props.get("reviews") or []
+                if not reviews:
+                    break
+                kept_before = len(items)
+                for review in reviews:
+                    rating = int((review.get("rating") or review.get("stars") or 5))
+                    title = review.get("title") or ""
+                    text = review.get("text") or review.get("reviewText") or ""
+                    raw_text = f"{title}\n\n{text}".strip() if title else text.strip()
+                    if not raw_text or len(raw_text) < min_length:
+                        continue
+                    if not include_all and rating > max_rating:
+                        continue
+                    date = None
+                    dates = review.get("dates") or {}
+                    published = dates.get("publishedDate") or review.get("publishedDate") or review.get("createdAt")
+                    if published:
+                        try:
+                            date = datetime.fromisoformat(str(published).replace("Z", "+00:00"))
+                        except ValueError:
+                            pass
+                    consumer = review.get("consumer") or {}
+                    items.append(RawItem(
+                        source_type=SourceType.REVIEW,
+                        platform="trustpilot",
+                        raw_text=raw_text,
+                        url=review.get("reviewUrl") or url,
+                        title=title,
+                        rating=rating,
+                        date=date,
+                        brand=self.config.client.name,
+                        metadata={
+                            "author": consumer.get("displayName", "") if isinstance(consumer, dict) else "",
+                            "page": page,
+                            "extractor": "next_data",
+                        },
+                        client_slug=self.config.client.slug,
+                    ))
+                self.logger.info(f"Trustpilot __NEXT_DATA__ page {page}: {len(items) - kept_before} avis conservés")
+            except Exception as e:
+                self.logger.error(f"Trustpilot __NEXT_DATA__ error page {page}: {e}")
+                break
+        return items
 
     def _trustpilot_domain(self, platform_config: dict) -> str:
         configured = platform_config.get("domain", "")
@@ -266,10 +344,116 @@ class ReviewScraper(BaseScraper):
         return reviews
     
     def _scrape_google_reviews(self, platform_config: dict) -> List[RawItem]:
-        """Scrape Google Reviews (nécessite Places API ou scraping avancé)"""
+        """Google Reviews via l'instance self-hostée gosom/google-maps-scraper.
+
+        Nécessite GOOGLE_MAPS_SCRAPER_URL (ex: http://localhost:8080).
+        API : POST /api/v1/scrape -> job_id, GET /api/v1/jobs/{id} -> résultats."""
         items = []
-        
-        self.logger.warning("Google Reviews scraping requires Places API - not implemented in basic version")
-        self.logger.info("Consider using SERPAPI with 'google_maps_reviews' endpoint")
-        
+        base_url = os.getenv("GOOGLE_MAPS_SCRAPER_URL", "").rstrip("/")
+        if not base_url:
+            self.logger.warning("GOOGLE_MAPS_SCRAPER_URL non défini, Google Reviews ignoré (self-hostez gosom/google-maps-scraper)")
+            return items
+
+        queries = platform_config.get("queries") or []
+        if not queries:
+            market = (self.config.markets or [""])[0]
+            queries = [f"{self.config.client.name} {market}".strip()]
+        language = (self.config.languages or ["fr"])[0]
+        max_rating = self.config.scraping.reviews.get("max_rating", 3)
+        min_length = self.config.scraping.reviews.get("min_text_length", 100)
+        include_all = self.config.scraping.reviews.get("include_all_ratings", False)
+        max_reviews = int(platform_config.get("max_reviews", 100))
+        job_timeout = int(platform_config.get("timeout", 300))
+
+        for query in queries:
+            self._report_progress(0, 1, f"Google Reviews · {query}")
+            try:
+                response = requests.post(
+                    f"{base_url}/api/v1/scrape",
+                    json={
+                        "keyword": query,
+                        "lang": language,
+                        "extra_reviews": True,
+                        "max_depth": 2,
+                        "timeout": min(job_timeout, 300),
+                    },
+                    timeout=30,
+                )
+                if response.status_code != 200:
+                    self.logger.error(f"google-maps-scraper HTTP {response.status_code}: {response.text[:200]}")
+                    continue
+                job_id = response.json().get("job_id")
+                if not job_id:
+                    continue
+                job = self._wait_maps_job(base_url, job_id, job_timeout + 60)
+                if not job:
+                    continue
+                for place in job.get("results") or []:
+                    items.extend(self._maps_place_to_items(place, query, platform_config, max_rating, min_length, include_all, max_reviews))
+            except Exception as e:
+                self.logger.error(f"google-maps-scraper error for '{query}': {e}")
+                self.errors_count += 1
+        return items
+
+    def _wait_maps_job(self, base_url: str, job_id: str, timeout: int) -> Optional[dict]:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                response = requests.get(f"{base_url}/api/v1/jobs/{job_id}", timeout=30)
+                if response.status_code == 200:
+                    job = response.json()
+                    status = job.get("status")
+                    if status == "completed":
+                        return job
+                    if status in {"failed", "cancelled", "discarded"}:
+                        self.logger.warning(f"google-maps-scraper job {job_id}: {status} {job.get('error', '')}")
+                        return None
+            except Exception as e:
+                self.logger.debug(f"google-maps-scraper poll error: {e}")
+            time.sleep(10)
+        self.logger.warning(f"google-maps-scraper job {job_id} timed out")
+        return None
+
+    def _maps_place_to_items(self, place: dict, query: str, platform_config: dict,
+                             max_rating: int, min_length: int,
+                             include_all: bool, max_reviews: int) -> List[RawItem]:
+        """Extrait les avis d'une fiche Google Maps."""
+        items = []
+        place_name = place.get("title") or place.get("name") or ""
+        reviews = place.get("user_reviews") or place.get("reviews") or []
+        if isinstance(reviews, dict):
+            reviews = reviews.get("reviews") or reviews.get("items") or []
+        for review in reviews[:max_reviews]:
+            if not isinstance(review, dict):
+                continue
+            text = str(review.get("description") or review.get("text") or review.get("review") or "").strip()
+            if len(text) < min_length:
+                continue
+            try:
+                rating = int(float(review.get("rating") or 5))
+            except (TypeError, ValueError):
+                rating = 5
+            if not include_all and rating > max_rating:
+                continue
+            date = None
+            when = review.get("when") or review.get("date") or review.get("published_at")
+            if when and not isinstance(when, str):
+                when = str(when)
+            items.append(RawItem(
+                source_type=SourceType.REVIEW,
+                platform="google_reviews",
+                raw_text=text,
+                url=place.get("link") or place.get("url") or "",
+                title=f"{place_name} · {rating}★".strip(),
+                rating=rating,
+                brand=self.config.client.name,
+                metadata={
+                    "query": query,
+                    "place": place_name,
+                    "author": str(review.get("name") or review.get("author") or ""),
+                    "when": when or "",
+                    "extractor": "google_maps_scraper",
+                },
+                client_slug=self.config.client.slug,
+            ))
         return items

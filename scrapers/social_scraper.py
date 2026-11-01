@@ -16,7 +16,6 @@ class SocialScraper(BaseScraper):
     endpoint = "https://api.brightdata.com/datasets/v3/scrape"
 
     dataset_env = {
-        "reddit": "BRIGHTDATA_REDDIT_DATASET_ID",
         "facebook": "BRIGHTDATA_FACEBOOK_DATASET_ID",
         "instagram": "BRIGHTDATA_INSTAGRAM_DATASET_ID",
         "linkedin": "BRIGHTDATA_LINKEDIN_DATASET_ID",
@@ -116,14 +115,6 @@ class SocialScraper(BaseScraper):
         social = self.config.sources.get("social", {})
         configured = social.get(platform, {})
         urls = configured.get("urls", [])
-        if platform == "reddit" and not urls:
-            subreddits = configured.get("subreddits", [])
-            # Cap combinations so adding many subreddits/keywords does not explode cost.
-            max_reddit_combinations = int(self.config.scraping.forum.get("max_threads", 10))
-            seeds = [seed.value for seed in self.config.seeds if seed.enabled]
-            combinations = [{"url": f"https://www.reddit.com/r/{subreddit}/search/?q={seed}&restrict_sr=1", "label": f"r/{subreddit} · {seed}", "query": seed, "subreddit": subreddit} for subreddit in subreddits for seed in seeds]
-            # Prefer high-priority seeds and keep variety across subreddits.
-            return combinations[:max_reddit_combinations]
         seen = set()
         targets = []
         for url in urls:
@@ -144,8 +135,6 @@ class SocialScraper(BaseScraper):
         return valid
 
     def _payload(self, platform: str, target: Dict[str, str]) -> List[Dict[str, Any]]:
-        if platform == "reddit" and target.get("query"):
-            return [{"keyword": target["query"], "date": "Past month", "num_of_posts": self.post_limit}]
         payload: Dict[str, Any] = {"url": target["url"]}
         if platform == "instagram":
             payload["num_of_posts"] = self.post_limit
@@ -153,8 +142,6 @@ class SocialScraper(BaseScraper):
 
     @staticmethod
     def _discovery_params(platform: str, targets: List[Dict[str, str]]) -> Dict[str, str]:
-        if platform == "reddit":
-            return {"type": "discover_new", "discover_by": "keyword"}
         if platform == "instagram":
             return {"type": "discover_new", "discover_by": "url"}
         if platform == "linkedin":

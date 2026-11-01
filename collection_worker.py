@@ -21,7 +21,8 @@ from analysis.dataset_funnel import estimate_cost, score_candidates, stratified_
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, DataForSEOProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
-from analysis.reconstruction import PromptReconstructor, ReconstructionExample
+from analysis.icl_reconstruction import ICLPromptReconstructor
+from analysis.reconstruction import ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
 from scrapers import ForumScraper, ReviewScraper, SerpScraper, SocialScraper
 from utils.config_loader import load_config
@@ -306,7 +307,8 @@ class CollectionWorker:
         source_budgets = self._allocate_source_budgets(sorted(requested), budget, sample_mode)
         minimum_source_signals = int(input_config.get("source_config", {}).get("minimum_source_signals", 5))
         config.scraping.serp["query_budget"] = max(minimum_source_signals, source_budgets.get("serp", budget))
-        config.scraping.forum["max_threads"] = max(minimum_source_signals, source_budgets.get("forum", budget))
+        forum_budget = max(source_budgets.get("forum", 0), source_budgets.get("reddit", 0)) or budget
+        config.scraping.forum["max_threads"] = max(minimum_source_signals, forum_budget)
         config.scraping.reviews["max_pages"] = max(minimum_source_signals // 4, min(10, source_budgets.get("review", budget)))
         source_config = input_config.get("source_config", {}) if isinstance(input_config.get("source_config"), dict) else {}
 
@@ -353,6 +355,18 @@ class CollectionWorker:
                 } for url in clean_list("forum_urls"))
             else:
                 platforms.extend(platform for platform in configured_platforms if platform.get("name") != "reddit")
+        # Reddit passe par l'adaptateur gratuit (Arctic Shift + API JSON),
+        # plus par Bright Data.
+        if "reddit" in requested:
+            reddit_social = source_config.get("subreddits")
+            subreddits = clean_list("subreddits")
+            if not subreddits:
+                for platform in configured_platforms:
+                    if platform.get("name") == "reddit":
+                        subreddits = list(platform.get("subreddits") or [])
+            platforms.append({"name": "reddit", "subreddits": subreddits})
+            if "forum" not in requested:
+                requested.add("forum")
         forum_config["platforms"] = platforms
 
         if "trustpilot_url" in source_config:
@@ -361,7 +375,8 @@ class CollectionWorker:
         if "serp_templates" in source_config:
             config.sources.setdefault("serp", {})["query_templates"] = clean_list("serp_templates")
 
-        social_platforms = [platform for platform in ("reddit", "facebook", "instagram", "linkedin", "x") if platform in requested]
+        # Bright Data est réservé aux plateformes sans alternative gratuite.
+        social_platforms = [platform for platform in ("facebook", "instagram", "linkedin", "x") if platform in requested]
         if social_platforms:
             social_post_limit = bounded_int("social_post_limit", 10, 1, 50)
             social_minimum_factor = max(1, minimum_source_signals // max(1, social_post_limit))
@@ -800,7 +815,7 @@ class CollectionWorker:
         examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id) for prompt_id, fan_outs in fan_outs_by_prompt.items() if fan_outs]
         if not examples:
             return {"examples": 0, "reconstructed": 0}
-        reconstructor = PromptReconstructor(examples)
+        reconstructor = ICLPromptReconstructor(examples)
         clusters = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true")
         links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text)")
         questions_by_cluster = {}

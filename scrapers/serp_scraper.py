@@ -69,11 +69,7 @@ class SerpScraper(BaseScraper):
         if not self.is_enabled:
             self.logger.info("SERP scraper disabled")
             return []
-        
-        if not self.auth_header:
-            self.logger.warning("DataForSEO credentials not set, SERP scraping disabled")
-            return []
-        
+
         items = []
         serp_config = self.config.sources.get("serp", {})
         query_templates = serp_config.get("query_templates", [])
@@ -84,7 +80,7 @@ class SerpScraper(BaseScraper):
         for index, planned in enumerate(queries, start=1):
             self._report_progress(index - 1, len(queries), f"SERP/PAA · {planned.query}")
             try:
-                query_items = [*self._scrape_paa_dataforseo(planned.query), *self._scrape_suggestions_dataforseo(planned.query)]
+                query_items = self._scrape_query(planned.query)
                 for item in query_items:
                     item.metadata.update({"search_term": planned.seed, "seed_type": planned.seed_type, "seed_priority": planned.priority})
                 items.extend(query_items)
@@ -102,6 +98,117 @@ class SerpScraper(BaseScraper):
         budget = int(self.config.scraping.serp.get("query_budget", 50))
         return expand_serp_templates(self.config.seeds, templates, budget, self.config.client.name)
     
+    def _scrape_query(self, query: str) -> List[RawItem]:
+        """PAA + Autocomplete : collecteur gratuit d'abord, DataForSEO en fallback."""
+        items = [*self._scrape_paa_free(query), *self._scrape_suggestions_free(query)]
+        if items:
+            return items
+        if self.auth_header:
+            return [*self._scrape_paa_dataforseo(query), *self._scrape_suggestions_dataforseo(query)]
+        return items
+
+    def _make_serp_item(self, text: str, query: str, platform: str, extra: Dict) -> Optional[RawItem]:
+        key = text.lower()
+        if not text or key in self.seen_questions:
+            return None
+        self.seen_questions.add(key)
+        return RawItem(
+            source_type=SourceType.SERP,
+            platform=platform,
+            raw_text=text,
+            url=f"https://google.fr/search?q={requests.utils.quote(text)}",
+            title=text,
+            brand=self._detect_brand(text),
+            theme=self._detect_theme(text),
+            metadata=extra,
+            client_slug=self.config.client.slug,
+        )
+
+    def _scrape_paa_free(self, query: str) -> List[RawItem]:
+        """People Also Ask via scraping direct de la SERP Google.
+
+        Best-effort : si Google sert un CAPTCHA ou une page sans PAA,
+        retourne [] et l'appelant bascule sur DataForSEO."""
+        items = []
+        max_depth = self.config.scraping.serp.get("max_paa_depth", 3)
+        try:
+            time.sleep(self.config.scraping.delay_between_requests)
+            response = requests.get(
+                "https://www.google.com/search",
+                params={"q": query, "hl": "fr", "gl": "fr", "num": 10},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept-Language": "fr-FR,fr;q=0.9",
+                },
+                timeout=self.config.scraping.timeout,
+            )
+            if response.status_code != 200:
+                return items
+            if "unusual traffic" in response.text or "captcha" in response.text.lower():
+                self.logger.info("Google CAPTCHA détecté, fallback DataForSEO")
+                return items
+
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, "lxml")
+            questions = []
+            # PAA : divs related-question-pair et titres d'accordéons terminant par ?
+            for node in soup.select("div.related-question-pair, div[jsname='yEVEwb'], g-accordion div[role='button'], div[data-initq]"):
+                text = node.get_text(" ", strip=True)
+                if text:
+                    questions.append(text)
+            for heading in soup.find_all(["div", "span"], role="heading"):
+                text = heading.get_text(" ", strip=True)
+                if text.endswith("?"):
+                    questions.append(text)
+            # Requêtes associées
+            for node in soup.select("div[data-sgrd], a[href^='/search?'] div"):
+                text = node.get_text(" ", strip=True)
+                if text and "?" in text:
+                    questions.append(text)
+
+            for i, q_text in enumerate(dict.fromkeys(questions)):
+                if len(q_text) < 10 or len(q_text) > 300:
+                    continue
+                item = self._make_serp_item(q_text, query, "google_paa", {
+                    "query": query, "position": i + 1, "type": "paa", "extractor": "free",
+                })
+                if item:
+                    items.append(item)
+                if len(items) >= max_depth * 2:
+                    break
+        except Exception as e:
+            self.logger.debug(f"Free PAA scraping failed for '{query}': {e}")
+        return items
+
+    def _scrape_suggestions_free(self, query: str) -> List[RawItem]:
+        """Autocomplete via l'endpoint public Google Suggest (client=firefox)."""
+        items = []
+        max_suggestions = self.config.scraping.serp.get("max_suggestions", 10)
+        question_keywords = ["comment", "pourquoi", "quel", "quelle", "où", "quand", "combien", "est-ce"]
+        try:
+            time.sleep(self.config.scraping.delay_between_requests)
+            response = requests.get(
+                "https://suggestqueries.google.com/complete/search",
+                params={"client": "firefox", "hl": "fr", "gl": "fr", "q": query},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=self.config.scraping.timeout,
+            )
+            if response.status_code != 200:
+                return items
+            suggestions = response.json()[1] if isinstance(response.json(), list) else []
+            for i, s_text in enumerate(suggestions[:max_suggestions]):
+                s_text = str(s_text)
+                if "?" in s_text or any(kw in s_text.lower() for kw in question_keywords):
+                    item = self._make_serp_item(s_text, query, "google_suggest", {
+                        "original_query": query, "position": i + 1,
+                        "type": "suggestion", "extractor": "free",
+                    })
+                    if item:
+                        items.append(item)
+        except Exception as e:
+            self.logger.debug(f"Free suggestions scraping failed for '{query}': {e}")
+        return items
+
     def _scrape_paa_dataforseo(self, query: str) -> List[RawItem]:
         """Scrape les People Also Ask via DataForSEO"""
         items = []

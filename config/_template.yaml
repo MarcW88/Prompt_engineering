@@ -73,6 +73,18 @@ sources:
     enabled: false
 
 # ============================================
+# CONNECTEURS EXTERNES (variables d'environnement)
+# ============================================
+# SEARXNG_URL              -> métamoteur self-hosté pour la découverte d'URLs
+#                           (fallback automatique : DataForSEO)
+# GOOGLE_MAPS_SCRAPER_URL  -> instance self-hostée gosom/google-maps-scraper
+#                           pour Google Reviews (POST /api/v1/scrape)
+# Reddit : collecté gratuitement via Arctic Shift (aucune clé requise),
+#          fallback API JSON publique. Bright Data n'est utilisé que pour
+#          facebook/instagram/linkedin/x et les moteurs IA.
+# PAA/Autocomplete : collecteur gratuit d'abord, DataForSEO en fallback.
+#
+# ============================================
 # PARAMÈTRES SCRAPING
 # ============================================
 
