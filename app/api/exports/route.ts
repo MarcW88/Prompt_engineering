@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import writeExcelFile from "write-excel-file/node";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { isEligibleObservation, observedFanOutSourceFilter } from "@/lib/data/observations";
+import { isEligibleObservation, observedFanOutSourceFilter, traceKind } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
@@ -169,9 +169,11 @@ export async function GET(request: Request) {
       // le prompt exact exécuté, et aucune requête synthétique.
       const fanRows = await fetchInBatches<Row>("fan_outs", observationIds, "observation_id", `observation_id,query,source&${observedFanOutSourceFilter()}&order=position.asc`);
       const fanByObservation = new Map<string, string[]>();
+      const sourceByObservation = new Map<string, Set<string>>();
       for (const row of fanRows) {
         const key = String(row.observation_id);
         fanByObservation.set(key, [...(fanByObservation.get(key) ?? []), String(row.query)]);
+        sourceByObservation.set(key, (sourceByObservation.get(key) ?? new Set()).add(String(row.source)));
       }
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
       const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status");
@@ -195,7 +197,7 @@ export async function GET(request: Request) {
           language: observation.language,
           observed_at: observation.observed_at,
           fan_outs: JSON.stringify(fanByObservation.get(String(observation.id)) ?? []),
-          trace_kind: "provider_reported",
+          trace_kind: traceKind(sourceByObservation.get(String(observation.id)) ?? []),
           status: "accepted",
           raw_response_reference: `observations:${observation.id}`,
         }));

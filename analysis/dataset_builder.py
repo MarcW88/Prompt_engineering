@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
 from itertools import product
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Union
 
 from analysis.models import PromptCandidate, PromptProvenance
+from analysis.signatures import build_signature, signature_similarity
 
 
 DEFAULT_PERSONAS = {
@@ -13,25 +14,84 @@ DEFAULT_PERSONAS = {
 DEFAULT_STAGES = ["discovery", "comparison"]
 DEFAULT_SPECIFICITY = [0, 1, 2]
 
+# Tokens that change the expected answer: a different budget, audience or usage
+# must never be merged into the same intent, nor added without a source.
+_CONSTRAINT_TERMS = {
+    "débutant", "débutante", "beginner", "novice", "expert", "expérimenté", "experienced",
+    "enfant", "enfants", "child", "children", "kids", "adulte", "adult", "senior",
+    "femme", "homme", "women", "men", "pro", "professionnel", "professional",
+    "budget", "pas cher", "cheap", "premium", "gratuit", "free",
+}
+
+
+@dataclass(frozen=True)
+class QuestionItem:
+    text: str
+    provenance: str = "observed"  # observed | transformed
+
 
 @dataclass(frozen=True)
 class ClusterInput:
     id: str
     label: str
     representative_question: str
-    questions: Sequence[str] = field(default_factory=list)
+    questions: Sequence[Union[str, QuestionItem, Mapping]] = field(default_factory=list)
     language: str = "fr"
     question_count: int = 0
     source_count: int = 0
+    representative_provenance: str = "observed"
 
 
 @dataclass(frozen=True)
 class DatasetBuildConfig:
+    # "faithful" (default): preserve source formulations, group intents/variants.
+    # "matrix": explicit experiment mode, persona x stage x specificity cross.
+    mode: str = "faithful"
+    intent_similarity_threshold: float = 0.85
     personas: Sequence[str] = field(default_factory=list)
     stages: Sequence[str] = field(default_factory=lambda: DEFAULT_STAGES)
     specificity_levels: Sequence[int] = field(default_factory=lambda: DEFAULT_SPECIFICITY)
     candidates_per_cluster: int = 9
     brand_name: str = ""
+
+
+def _question_items(cluster: ClusterInput) -> List[QuestionItem]:
+    items = [QuestionItem(cluster.representative_question, cluster.representative_provenance)]
+    for question in cluster.questions:
+        if isinstance(question, QuestionItem):
+            items.append(question)
+        elif isinstance(question, Mapping):
+            text = str(question.get("text", "")).strip()
+            if text:
+                items.append(QuestionItem(text, str(question.get("provenance", "observed"))))
+        else:
+            items.append(QuestionItem(str(question)))
+    return items
+
+
+def _constraint_tokens(text: str) -> frozenset:
+    tokens = set(build_signature([text]).tokens)
+    constraints = {token for token in tokens & _CONSTRAINT_TERMS}
+    constraints.update(token for token in tokens if any(char.isdigit() for char in token))
+    return frozenset(constraints)
+
+
+def group_intents(items: Sequence[QuestionItem], threshold: float = 0.85) -> List[List[QuestionItem]]:
+    """Greedy intent grouping: two formulations merge only when lexically close
+    AND carrying the same budget/audience/numeric constraints."""
+    intents: List[Dict] = []
+    for item in items:
+        signature = build_signature([item.text])
+        constraints = _constraint_tokens(item.text)
+        placed = False
+        for intent in intents:
+            if intent["constraints"] == constraints and signature_similarity(signature, intent["signature"]) >= threshold:
+                intent["items"].append(item)
+                placed = True
+                break
+        if not placed:
+            intents.append({"signature": signature, "constraints": constraints, "items": [item]})
+    return [intent["items"] for intent in intents]
 
 
 class DatasetBuilder:
@@ -47,6 +107,7 @@ class DatasetBuilder:
         if not candidates and config.brand_name:
             for cluster in clusters:
                 candidates.extend(self.build_cluster(cluster, DatasetBuildConfig(
+                    mode=config.mode, intent_similarity_threshold=config.intent_similarity_threshold,
                     personas=config.personas, stages=config.stages,
                     specificity_levels=config.specificity_levels,
                     candidates_per_cluster=config.candidates_per_cluster,
@@ -55,6 +116,51 @@ class DatasetBuilder:
         return candidates
 
     def build_cluster(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:
+        if config.mode == "matrix":
+            return self._build_matrix(cluster, config)
+        return self._build_faithful(cluster, config)
+
+    def _build_faithful(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:
+        # Faithful mode: source formulations stay untouched (a short query stays
+        # a short query), variants are grouped under one representative intent.
+        items = [item for item in _question_items(cluster) if item.text.strip()]
+        if not self._is_relevant_for_brand(cluster.representative_question, config.brand_name or ""):
+            return []
+        expected = self._expected_sub_intents(cluster)
+        intents = group_intents(items, config.intent_similarity_threshold)
+        candidates = []
+        seen = set()
+        for intent_index, intent_items in enumerate(intents, start=1):
+            for rank, item in enumerate(intent_items):
+                normalized = " ".join(item.text.casefold().split())
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                is_representative = rank == 0
+                candidates.append(PromptCandidate(
+                    text=item.text.strip(),
+                    provenance=PromptProvenance.OBSERVED if item.provenance == "observed" else PromptProvenance.TRANSFORMED,
+                    source_reference=cluster.id,
+                    confidence=0.9 if item.provenance == "observed" else 0.7,
+                    expected_fan_outs=expected,
+                    metadata={
+                        "method": "intent_preserving",
+                        "cluster_id": cluster.id,
+                        "cluster_label": cluster.label,
+                        "intent_id": f"{cluster.id}:intent:{intent_index}",
+                        "is_representative": is_representative,
+                        "variant_of": None if is_representative else intent_items[0].text.strip(),
+                        "original_provenance": item.provenance,
+                        "language": cluster.language,
+                        "cluster_question_count": cluster.question_count or len(cluster.questions) + 1,
+                        "cluster_source_count": cluster.source_count,
+                    },
+                ))
+                if len(candidates) >= config.candidates_per_cluster:
+                    return candidates
+        return candidates
+
+    def _build_matrix(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:
         personas = list(config.personas) or DEFAULT_PERSONAS.get(cluster.language, DEFAULT_PERSONAS["en"])
         combinations = product(personas, config.stages, config.specificity_levels)
         expected = self._expected_sub_intents(cluster)
@@ -93,7 +199,7 @@ class DatasetBuilder:
 
     @staticmethod
     def _expected_sub_intents(cluster: ClusterInput) -> List[str]:
-        values = [cluster.representative_question, *cluster.questions]
+        values = [cluster.representative_question] + [item.text for item in _question_items(cluster)[1:]]
         seen = set()
         result = []
         for value in values:

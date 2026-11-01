@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { isEligibleObservation, observedFanOutSourceFilter } from "@/lib/data/observations";
+import { isEligibleObservation, observedFanOutSourceFilter, traceKind } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
@@ -26,11 +26,15 @@ export async function GET(request: Request) {
     const fanouts: Row[] = [];
     for (let index = 0; index < observationIds.length; index += 200) {
       fanouts.push(...await supabaseRest<Row[]>("fan_outs", {
-        query: `select=observation_id,query&${observedFanOutSourceFilter()}&observation_id=in.(${observationIds.slice(index, index + 200).join(",")})`,
+        query: `select=observation_id,query,source&${observedFanOutSourceFilter()}&observation_id=in.(${observationIds.slice(index, index + 200).join(",")})`,
       }));
     }
     const countByObservation = new Map<string, number>();
-    for (const row of fanouts) countByObservation.set(String(row.observation_id), (countByObservation.get(String(row.observation_id)) ?? 0) + 1);
+    const sourceByObservation = new Map<string, Set<string>>();
+    for (const row of fanouts) {
+      countByObservation.set(String(row.observation_id), (countByObservation.get(String(row.observation_id)) ?? 0) + 1);
+      sourceByObservation.set(String(row.observation_id), (sourceByObservation.get(String(row.observation_id)) ?? new Set()).add(String(row.source)));
+    }
     const rows = observations
       .filter((row) => isEligibleObservation({ ...row, raw_response: row.raw_response_error ? { error: row.raw_response_error } : null }))
       .map((row) => ({
@@ -41,6 +45,7 @@ export async function GET(request: Request) {
         model: row.model,
         observed_at: row.observed_at,
         fan_out_count: countByObservation.get(String(row.id)) ?? 0,
+        trace_kind: traceKind(sourceByObservation.get(String(row.id)) ?? []),
       }))
       .filter((row) => row.fan_out_count > 0);
     return NextResponse.json({ configured: true, observations: rows });

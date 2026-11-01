@@ -57,7 +57,11 @@ class PipelineSmokeTests(unittest.TestCase):
         w._brightdata_account_cost = Mock(return_value=None)
         job = {'id': 'j', 'project_id': 'p', 'input': {'sources': ['reddit', 'forum', 'serp'], 'query_budget': 3, 'source_config': {'subreddits': ['hiking'], 'forum_urls': ['https://forum.test']}}}
         question = 'Comment choisir des chaussures confortables pour la randonnée ?'
-        fixture_items = [RawItem(source_type=SourceType.FORUM, platform=platform, raw_text=question, title=question, url=f'https://{platform}.test', metadata={'language': 'fr'}) for platform in ('reddit', 'forum')]
+        question_budget = 'Quel budget prévoir pour des chaussures de randonnée ?'
+        fixture_items = [
+            RawItem(source_type=SourceType.FORUM, platform='reddit', raw_text=question, title=question, url='https://reddit.test', metadata={'language': 'fr'}),
+            RawItem(source_type=SourceType.FORUM, platform='forum', raw_text=question_budget, title=question_budget, url='https://forum.test', metadata={'language': 'fr'}),
+        ]
         with patch('collection_worker.ForumScraper.run', return_value=fixture_items), patch('collection_worker.SerpScraper.run', return_value=[RawItem(source_type=SourceType.SERP, platform='paa', url='https://google.test', raw_text=question, title=question, metadata={'language': 'fr'})]):
             w._collect(job)
         self.assertEqual(len(w.db.tables['signals']), 3)
@@ -75,8 +79,13 @@ class PipelineSmokeTests(unittest.TestCase):
         provider.execute.side_effect = observe
         with patch('collection_worker.BrightDataProvider', return_value=provider):
             built = w._build_dataset({**job, 'input': {'dataset_id': 'd'}})
+        # Deux intentions distinctes (confort vs budget) → deux candidats fidèles,
+        # formulations sources conservées sans préambule.
         self.assertEqual(built['executions'], 2)
         self.assertEqual(built['accepted'], 2)
+        texts = [p['text'] for p in w.db.tables['prompts']]
+        self.assertIn(question, texts)
+        self.assertIn(question_budget, texts)
         self.assertTrue(w.db.tables['fan_outs'])
         target_id = w.db.tables['observations'][0]['id']
         # Mock network generation, keep the actual ICL candidate construction and worker validation.
@@ -88,6 +97,38 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertEqual(final['metadata']['target_observation_id'], target_id)
         self.assertEqual(final['expected_fan_outs'], ['chaussures randonnée confort semelle', 'chaussures randonnée comparatif'])
         self.assertNotIn('Decathlon', repr(w.db.tables))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_reexecution_is_a_separate_observation(self):
+        """Le fallback OpenAI produit sa propre observation liée au run parent ;
+        les fan-outs du run Bright Data restent vides (traces non exposées)."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        extractor = Mock()
+        extractor.extract.return_value = {
+            'queries': ['fallback query'], 'answer': 'réponse fallback',
+            'model': 'gpt-5.4-mini', 'response_id': 'resp-1',
+            'search_calls': 1, 'usage': {'input_tokens': 10, 'output_tokens': 5},
+        }
+        w.fanout_extractor = extractor
+        prompt = {'id': 'pr-1'}
+        parent = AnalysisObservation('prompt test', 'brightdata', 'chatgpt', answer='réponse', fan_outs=[])
+        job = {'id': 'j', 'project_id': 'p'}
+        parent_id = w._persist_observation(prompt, parent, job=job)
+        observations = w.db.tables['observations']
+        self.assertEqual(len(observations), 2)
+        child = observations[1]
+        self.assertEqual(child['provider'], 'openai')
+        self.assertEqual(child['engine'], 'openai_web_search')
+        self.assertEqual(child['raw_response']['relation'], 'independent_reexecution')
+        self.assertEqual(child['raw_response']['parent_observation_id'], parent_id)
+        # Les fan-outs vivent sur la réexécution, pas sur le run Bright Data.
+        fan_outs = w.db.tables['fan_outs']
+        self.assertTrue(all(f['observation_id'] == child['id'] for f in fan_outs))
+        self.assertTrue(all(f['metadata']['relation'] == 'independent_reexecution' for f in fan_outs))
+        self.assertEqual(child['answer'], 'réponse fallback')
+        # Le coût de la réexécution est comptabilisé.
+        self.assertTrue(any(c['provider'] == 'openai' and c['category'] == 'fan_out_reexecution' for c in w.db.tables['analysis_costs']))
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
     def test_adaptive_validation_mixed_candidates(self):

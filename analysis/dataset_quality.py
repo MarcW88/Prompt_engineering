@@ -10,8 +10,11 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
     if not observations:
         return {"coverage_score": 0.0, "stability_score": 0.0, "reproduction_score": 0.0, "redundancy_score": 0.0, "quality_score": 0.0}
     expected = build_signature(candidate.expected_fan_outs)
-    reproduction = sum(signature_similarity(expected, build_signature(observation.fan_outs)) for observation in observations) / len(observations)
-    observed_queries = {query.casefold() for observation in observations for query in observation.fan_outs}
+    # Reproduction is only measured on same-run provider-reported traces; a run
+    # without exposed searches is "not_exposed", not a zero score.
+    traced = [observation for observation in observations if observation.fan_outs]
+    reproduction = (sum(signature_similarity(expected, build_signature(observation.fan_outs)) for observation in traced) / len(traced)) if traced else None
+    observed_queries = {query.casefold() for observation in traced for query in observation.fan_outs}
     expected_queries = expected.normalized_queries
     # Mesure sémantique complémentaire (le lexical reste la référence) :
     # similarité moyenne du meilleur appariement attendu ↔ observé.
@@ -21,7 +24,7 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
             semantic_reproduction = semantic_scorer(list(expected_queries), sorted(observed_queries))
         except Exception:
             semantic_reproduction = None
-    coverage = sum(any(signature_similarity(build_signature([query]), build_signature([observed])) >= 0.45 for observed in observed_queries) for query in expected_queries) / len(expected_queries) if expected_queries else 0.0
+    coverage = sum(any(signature_similarity(build_signature([query]), build_signature([observed])) >= 0.45 for observed in observed_queries) for query in expected_queries) / len(expected_queries) if expected_queries and observed_queries else None
     stability = stability_score(observations)
     prompt_signature = build_signature([candidate.text])
     similarities = [signature_similarity(prompt_signature, build_signature([prompt])) for prompt in similar_prompts if prompt != candidate.text]
@@ -31,15 +34,16 @@ def score_dataset_example(candidate: PromptCandidate, observations: Iterable[Ana
     avg_citations = sum(len(observation.citations) for observation in observations) / len(observations)
     citation_score = min(1.0, avg_citations / 3)
     if has_fan_outs:
-        quality = 0.35 * coverage + 0.30 * reproduction + 0.15 * stability + 0.15 * answer_score + 0.05 * (1 - redundancy)
+        quality = 0.35 * (coverage or 0.0) + 0.30 * (reproduction or 0.0) + 0.15 * stability + 0.15 * answer_score + 0.05 * (1 - redundancy)
     else:
         # Engines like Google AI Mode never return fan-out queries: score the
         # answer itself and its citations instead of forcing coverage to 0.
         quality = 0.50 * answer_score + 0.25 * citation_score + 0.20 * stability + 0.05 * (1 - redundancy)
     result = {
-        "coverage_score": round(coverage, 4),
+        "coverage_score": round(coverage, 4) if coverage is not None else None,
         "stability_score": round(stability, 4),
-        "reproduction_score": round(reproduction, 4),
+        "reproduction_score": round(reproduction, 4) if reproduction is not None else None,
+        "trace_status": "provider_reported" if has_fan_outs else "not_exposed",
         "redundancy_score": round(redundancy, 4),
         "quality_score": round(quality, 4),
     }

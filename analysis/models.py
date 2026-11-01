@@ -7,6 +7,7 @@ import uuid
 
 class PromptProvenance(str, Enum):
     OBSERVED = "observed"
+    TRANSFORMED = "transformed"
     REVERSE_ENGINEERED = "reverse_engineered"
     SYNTHETIC = "synthetic"
 

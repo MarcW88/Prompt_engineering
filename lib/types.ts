@@ -1,6 +1,6 @@
 export type Provider = "brightdata" | "oxylabs";
 export type Engine = "chatgpt" | "perplexity" | "gemini" | "google_ai_mode";
-export type Provenance = "observed" | "reverse_engineered" | "synthetic";
+export type Provenance = "observed" | "transformed" | "reverse_engineered" | "synthetic";
 
 export interface Citation {
   url: string;
@@ -25,8 +25,10 @@ export interface PromptRecord {
   provenance: Provenance;
   confidence: number;
   status: "validated" | "testing" | "draft";
-  engine: Engine;
-  fanOuts: number;
+  engines: string[];
+  fanOuts: number | null;
+  traceStatus: "provider_reported" | "independent_reexecution" | "none_reported" | "not_measured";
   citations: number;
-  stability: number;
+  stability: number | null;
+  reviewStatus: string | null;
 }

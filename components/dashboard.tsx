@@ -31,8 +31,16 @@ const nav = [
 
 const provenanceLabel: Record<Provenance, string> = {
   observed: "Observé",
+  transformed: "Transformée",
   reverse_engineered: "Reconstruit",
-  synthetic: "Synthétique",
+  synthetic: "Hypothèse",
+};
+
+const traceLabel: Record<PromptRecord["traceStatus"], string> = {
+  provider_reported: "",
+  independent_reexecution: "réexécution",
+  none_reported: "aucune recherche rapportée",
+  not_measured: "non mesuré",
 };
 
 export function Dashboard() {
@@ -93,9 +101,10 @@ export function Dashboard() {
     setMetrics(data.metrics);
     setSources(data.sources);
     setJobs(data.jobs ?? []);
-    setRecords(data.prompts.map((item: { id: string; text: string; provenance: Provenance; confidence: number; status: PromptRecord["status"] }) => ({
+    setRecords(data.prompts.map((item: { id: string; text: string; provenance: Provenance; confidence: number; status: PromptRecord["status"]; engines?: string[]; fan_outs?: number | null; trace_status?: PromptRecord["traceStatus"]; stability?: number | null; review_status?: string | null }) => ({
       id: item.id.slice(0, 8), prompt: item.text, provenance: item.provenance, confidence: Math.round(Number(item.confidence) * 100), status: item.status,
-      engine: "chatgpt", fanOuts: 0, citations: 0, stability: 0,
+      engines: item.engines ?? [], fanOuts: item.fan_outs ?? null, traceStatus: item.trace_status ?? "not_measured",
+      citations: 0, stability: item.stability ?? null, reviewStatus: item.review_status ?? null,
     })));
   }, []);
 
@@ -135,7 +144,7 @@ export function Dashboard() {
     { n: "03", title: "Clusters", text: "Intentions regroupées par similarité.", value: metrics.clusters, label: "clusters", icon: Layers3, status: stepState("cluster_questions", metrics.clusters > 0, metrics.questions > 0), action: () => setPipelineModal(true) },
     { n: "04", title: "Dataset + exécution", text: "Échantillon contrôlé et premières réponses moteurs.", value: metrics.observations, label: "observations", icon: FlaskConical, status: stepState("build_dataset", metrics.observations > 0, metrics.clusters > 0), action: () => setDatasetModal(true) },
     { n: "05", title: "Validation", text: "Runs répétés, reproduction et stabilité.", value: metrics.validations, label: "validations", icon: ShieldCheck, status: stepState("validate_dataset", metrics.validations > 0, metrics.observations > 0), action: () => setPipelineModal(true) },
-    { n: "06", title: "Reverse engineering", text: "Prompts plausibles reconstruits depuis les fan-outs.", value: metrics.prompts, label: "prompts", icon: Sparkles, status: stepState("reverse_engineer", false, metrics.validations > 0 || metrics.observations > 0), action: () => setPipelineModal(true) },
+    { n: "06", title: "Reconstruction (expérimental)", text: "Optionnel — prompts reconstruits depuis les traces observées, quand elles existent.", value: metrics.prompts, label: "prompts", icon: Sparkles, status: stepState("reverse_engineer", false, metrics.validations > 0 || metrics.observations > 0), action: () => setPipelineModal(true) },
     { n: "07", title: "Revue humaine", text: "Approbation, modification ou rejet avant export.", value: metrics.approved, label: "approuvés", icon: FileSearch, status: metrics.approved > 0 ? "Terminé" : metrics.datasets > 0 ? "Prêt" : "À faire", action: () => setReviewModal(true) },
     { n: "08", title: "Export Semactic", text: "Export final des prompts acceptés et approuvés.", value: metrics.approved, label: "exportables", icon: Download, status: metrics.approved > 0 ? "Prêt" : "À faire", action: () => setExportsModal(true) },
   ];
@@ -281,9 +290,9 @@ export function Dashboard() {
           </section>
 
           <section className="panel table-panel">
-            <div className="panel-head"><div><span className="eyebrow">PROMPTS RÉCENTS</span><h2>Dernières reconstructions</h2></div><button className="text-button">Voir tous les prompts <ArrowRight size={16} /></button></div>
+            <div className="panel-head"><div><span className="eyebrow">PROMPTS RÉCENTS</span><h2>Prompts récents</h2></div><button className="text-button">Voir tous les prompts <ArrowRight size={16} /></button></div>
             <div className="table-scroll"><table><thead><tr><th>Prompt</th><th>Provenance</th><th>Confiance</th><th>Moteur</th><th>Fan-outs</th><th>Stabilité</th><th /></tr></thead><tbody>
-              {filtered.map((item) => <tr key={item.id}><td><span className="prompt-id">{item.id}</span><strong>{item.prompt}</strong></td><td><span className={`badge ${item.provenance}`}>{provenanceLabel[item.provenance]}</span></td><td><span className="confidence"><i style={{ width: `${item.confidence}%` }} /></span><b>{item.confidence}%</b></td><td><span className="engine">{item.engine.replaceAll("_", " ")}</span></td><td>{item.fanOuts || "—"}</td><td><span className={item.stability >= 80 ? "score good" : item.stability ? "score medium" : "score"}>{item.stability ? `${item.stability}%` : "—"}</span></td><td><button className="icon-button"><MoreHorizontal size={17} /></button></td></tr>)}
+              {filtered.map((item) => <tr key={item.id}><td><span className="prompt-id">{item.id}</span><strong>{item.prompt}</strong></td><td><span className={`badge ${item.provenance}`}>{provenanceLabel[item.provenance]}</span></td><td><span className="confidence"><i style={{ width: `${item.confidence}%` }} /></span><b>{item.confidence}%</b></td><td><span className="engine">{item.engines.length ? item.engines.map((e) => e.replaceAll("_", " ")).join(" · ") : "—"}</span></td><td>{item.fanOuts !== null ? item.fanOuts : traceLabel[item.traceStatus] || "—"}{item.traceStatus === "independent_reexecution" ? ` (${traceLabel[item.traceStatus]})` : ""}</td><td><span className={item.stability !== null && item.stability >= 80 ? "score good" : item.stability !== null ? "score medium" : "score"}>{item.stability !== null ? `${item.stability}%` : "—"}</span></td><td><button className="icon-button"><MoreHorizontal size={17} /></button></td></tr>)}
             </tbody></table>{filtered.length === 0 && <div className="empty-state"><FileSearch size={28} /><p>Aucun prompt ne correspond à votre recherche.</p></div>}</div>
           </section>
         </div>

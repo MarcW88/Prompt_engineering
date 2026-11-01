@@ -42,6 +42,7 @@ interface TargetObservation {
   engine: string;
   observed_at: string;
   fan_out_count: number;
+  trace_kind?: string;
 }
 
 interface PipelineModalProps {
@@ -218,7 +219,7 @@ export function PipelineModal({ projectId, onClose, onOpenCollection, onOpenData
                 <label key={target.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.3rem 0" }}>
                   <input type="checkbox" checked={selectedTargets.includes(target.id)} onChange={() => toggleTarget(target.id)} />
                   <span style={{ flex: 1 }}>{target.prompt_text}</span>
-                  <small>{target.engine} · {target.fan_out_count} fan-outs · {String(target.observed_at).slice(0, 10)}</small>
+                  <small>{target.engine} · {target.fan_out_count} fan-outs{target.trace_kind && target.trace_kind !== "provider_reported" ? ` · ${target.trace_kind === "independent_reexecution" ? "réexécution indépendante" : target.trace_kind}` : " · même run"} · {String(target.observed_at).slice(0, 10)}</small>
                 </label>
               ))}
             </div>

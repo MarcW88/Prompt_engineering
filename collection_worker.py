@@ -10,7 +10,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -34,6 +34,10 @@ from utils.config_loader import load_config, neutral_config
 # Bright Data does not expose the queries). Mirrors OBSERVED_FAN_OUT_SOURCES
 # in lib/data/observations.ts.
 OBSERVED_FAN_OUT_SOURCES = ("brightdata", "openai_responses_web_search")
+# ICL examples and reconstruction targets must come from traces observed in the
+# SAME run on the SAME surface. An independent re-execution measures another
+# surface and can never stand in for the target engine's fan-outs.
+SAME_RUN_FAN_OUT_SOURCES = ("brightdata",)
 
 
 load_dotenv()
@@ -159,18 +163,7 @@ class CollectionWorker:
     def _execute_analysis(self, provider, request: AnalysisRequest):
         observation = provider.execute(request)
         observation.metadata["response_source"] = observation.provider
-        if not observation.fan_outs and observation.answer and self.fanout_extractor:
-            extracted = self.fanout_extractor.extract(request)
-            observation.fan_outs = extracted["queries"]
-            observation.metadata.update({
-                "fan_out_source": "openai_responses_web_search",
-                "fan_out_model": extracted["model"],
-                "fan_out_response_id": extracted["response_id"],
-                "fan_out_search_calls": extracted["search_calls"],
-                "fan_out_usage": extracted["usage"],
-            })
-        else:
-            observation.metadata["fan_out_source"] = observation.provider
+        observation.metadata["fan_out_source"] = observation.provider
         return observation
 
     def _execute_analysis_batch(self, provider, requests: list[AnalysisRequest]) -> list:
@@ -178,21 +171,45 @@ class CollectionWorker:
             observations = provider.execute_many(requests)
             for observation in observations:
                 observation.metadata["response_source"] = observation.provider
-                if not observation.fan_outs and observation.answer and self.fanout_extractor:
-                    request = next((request for request in requests if request.prompt == observation.prompt), requests[0])
-                    extracted = self.fanout_extractor.extract(request)
-                    observation.fan_outs = extracted["queries"]
-                    observation.metadata.update({
-                        "fan_out_source": "openai_responses_web_search",
-                        "fan_out_model": extracted["model"],
-                        "fan_out_response_id": extracted["response_id"],
-                        "fan_out_search_calls": extracted["search_calls"],
-                        "fan_out_usage": extracted["usage"],
-                    })
-                else:
-                    observation.metadata["fan_out_source"] = observation.provider
+                observation.metadata["fan_out_source"] = observation.provider
             return observations
         return [self._execute_analysis(provider, request) for request in requests]
+
+    def _persist_reexecution(self, prompt: Dict, parent_observation_id: str, parent: AnalysisObservation, job: Optional[Dict] = None):
+        """Persist the OpenAI web-search fallback as its own observation, linked
+        to the run it complements. It never merges into the parent's traces."""
+        if not self.fanout_extractor:
+            return None
+        request = AnalysisRequest(parent.prompt, engine=parent.engine, country=parent.country, language=parent.language)
+        try:
+            extracted = self.fanout_extractor.extract(request)
+        except Exception:
+            return None
+        link = {"relation": "independent_reexecution", "parent_observation_id": parent_observation_id,
+                "response_id": extracted["response_id"], "search_calls": extracted["search_calls"], "usage": extracted["usage"]}
+        row = {"prompt_id": prompt["id"], "provider": "openai", "engine": "openai_web_search",
+            "model": extracted["model"], "country": parent.country, "language": parent.language,
+            "answer": extracted.get("answer") or "", "web_search_triggered": True,
+            "raw_response": link, "observed_at": datetime.now(timezone.utc).isoformat()}
+        try:
+            rows = self.db.request("POST", "observations", body=[{**row, "parent_observation_id": parent_observation_id, "relation": "independent_reexecution"}])
+        except Exception:
+            rows = self.db.request("POST", "observations", body=[row])
+        reexecution_id = rows[0]["id"]
+        if extracted["queries"]:
+            self.db.request("POST", "fan_outs", body=[{
+                "observation_id": reexecution_id, "position": index + 1, "query": query,
+                "normalized_query": " ".join(query.casefold().split()), "source": "openai_responses_web_search",
+                "metadata": {"model": extracted["model"], "response_id": extracted["response_id"],
+                             "relation": "independent_reexecution", "parent_observation_id": parent_observation_id}}
+                for index, query in enumerate(extracted["queries"])])
+        if job:
+            usage = extracted.get("usage") or {}
+            self._record_cost(job, "openai", "fan_out_reexecution", quantity=1, unit="executions",
+                cost_status="usage_only", external_reference=f"{job['id']}:{reexecution_id}",
+                metadata={"model": extracted["model"], "search_calls": extracted["search_calls"],
+                          "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens")})
+        return reexecution_id
 
     def _record_cost(self, job: Dict, provider: str, category: str, amount=None, quantity=None, unit=None, cost_status="actual", external_reference=None, metadata=None, dataset_id=None, estimated_unit_cost=None):
         reference = external_reference or f"{job['id']}:{provider}:{category}"
@@ -219,13 +236,19 @@ class CollectionWorker:
         data = response.json()
         return float((data.get("total") or {}).get(dataset_id, 0))
 
-    def _persist_observation(self, prompt: Dict, observation):
+    def _persist_observation(self, prompt: Dict, observation, job: Optional[Dict] = None):
         observation_rows = self.db.request("POST", "observations", body=[{"prompt_id": prompt["id"], "provider": observation.provider, "engine": observation.engine, "model": observation.model, "country": observation.country, "language": observation.language, "answer": observation.answer, "web_search_triggered": observation.web_search_triggered, "raw_response": observation.raw_response, "observed_at": observation.observed_at.isoformat()}])
         observation_id = observation_rows[0]["id"]
         if observation.fan_outs:
-            self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id")}} for index, query in enumerate(observation.fan_outs)])
+            self.db.request("POST", "fan_outs", body=[{"observation_id": observation_id, "position": index + 1, "query": query, "normalized_query": " ".join(query.casefold().split()), "source": observation.metadata.get("fan_out_source", observation.provider), "metadata": {"model": observation.metadata.get("fan_out_model"), "response_id": observation.metadata.get("fan_out_response_id"), "relation": "same_run"}} for index, query in enumerate(observation.fan_outs)])
         if observation.citations:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
+        # Fallback OpenAI : nouvelle exécution indépendante — observation séparée,
+        # jamais fusionnée dans les traces du run parent.
+        if not observation.fan_outs and observation.answer:
+            reexecution_id = self._persist_reexecution(prompt, observation_id, observation, job=job)
+            if reexecution_id:
+                observation.metadata["reexecution_observation_id"] = reexecution_id
         return observation_id
 
     def _run_once(self, provider, candidate, example, engine, run_index, project, phase):
@@ -632,22 +655,29 @@ class CollectionWorker:
         cluster_rows = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true&order=question_count.desc")
         if not cluster_rows:
             raise RuntimeError("Aucun cluster GEO exploitable. Lancez d'abord le clustering.")
-        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text)")
+        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text,provenance)")
         questions_by_cluster = {}
+        provenance_by_text = {}
         cluster_ids = {row["id"] for row in cluster_rows}
         for link in links:
-            if link["cluster_id"] in cluster_ids and link.get("questions"):
-                questions_by_cluster.setdefault(link["cluster_id"], []).append(link["questions"]["text"])
+            question = link.get("questions") or {}
+            if link["cluster_id"] in cluster_ids and question.get("text"):
+                questions_by_cluster.setdefault(link["cluster_id"], []).append(
+                    {"text": question["text"], "provenance": question.get("provenance", "observed")})
+                provenance_by_text[" ".join(question["text"].casefold().split())] = question.get("provenance", "observed")
         language = self.db.request("GET", "projects", f"select=language,country&id=eq.{project_id}&limit=1")[0]
         build_config = dataset.get("build_config", {})
         clusters = [ClusterInput(
             id=row["id"], label=row["label"], representative_question=row["representative_question"],
             questions=questions_by_cluster.get(row["id"], []), language=language.get("language", "fr"),
-            question_count=row.get("question_count", 0), source_count=row.get("source_count", 0)
+            question_count=row.get("question_count", 0), source_count=row.get("source_count", 0),
+            representative_provenance=provenance_by_text.get(" ".join(row["representative_question"].casefold().split()), "observed"),
         ) for row in cluster_rows]
         project = self.db.request("GET", "projects", f"select=name&id=eq.{project_id}&limit=1")[0]
         self._report(job, 5, f"Construction des candidats depuis {len(clusters)} clusters")
         candidates = score_candidates(DatasetBuilder().build(clusters, DatasetBuildConfig(
+            mode=build_config.get("mode", "faithful"),
+            intent_similarity_threshold=float(build_config.get("intent_similarity_threshold", 0.85)),
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
@@ -680,8 +710,8 @@ class CollectionWorker:
         example_payload = [{
             "dataset_id": dataset_id, "prompt_id": prompts_by_text[candidate.text]["id"], "cluster_id": prompts_by_text[candidate.text]["cluster_id"],
             "status": "executing" if candidate.id in selected_ids else "candidate",
-            "persona": candidate.metadata["persona"], "journey_stage": candidate.metadata["stage"],
-            "specificity_level": candidate.metadata["specificity_level"],
+            "persona": candidate.metadata.get("persona"), "journey_stage": candidate.metadata.get("stage"),
+            "specificity_level": candidate.metadata.get("specificity_level"),
             "expected_sub_intents": candidate.expected_fan_outs,
             "pre_execution_score": candidate.confidence,
             "selected_for_execution": candidate.id in selected_ids,
@@ -760,13 +790,10 @@ class CollectionWorker:
                     if len(observations) != len(batch):
                         raise RuntimeError(f"Batch {engine}: {len(observations)} observations pour {len(batch)} requêtes")
                     for (candidate, prompt, example, run_index), observation in zip(batch, observations):
-                        self._persist_observation(prompt, observation)
+                        self._persist_observation(prompt, observation, job=job)
                         stored_observations[example["id"]].append(observation)
                         received[example["id"]] += 1
-                        usage = observation.metadata.get("fan_out_usage") or {}
-                        openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                        for key in openai_usage:
-                            openai_usage[key] += int(usage.get(key) or 0)
+                        openai_search_calls += int(bool(observation.metadata.get("reexecution_observation_id")))
                         completed += 1
                         if len(stored_observations[example["id"]]) == expected[example["id"]]:
                             scores = score_dataset_example(candidate, stored_observations[example["id"]], all_prompts)
@@ -782,13 +809,10 @@ class CollectionWorker:
                 for future in as_completed(futures):
                     candidate, prompt, example = futures[future]
                     observation = future.result()
-                    self._persist_observation(prompt, observation)
+                    self._persist_observation(prompt, observation, job=job)
                     stored_observations[example["id"]].append(observation)
                     received[example["id"]] += 1
-                    usage = observation.metadata.get("fan_out_usage") or {}
-                    openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                    for key in openai_usage:
-                        openai_usage[key] += int(usage.get(key) or 0)
+                    openai_search_calls += int(bool(observation.metadata.get("reexecution_observation_id")))
                     completed += 1
                     if len(stored_observations[example["id"]]) == expected[example["id"]]:
                         scores = score_dataset_example(candidate, stored_observations[example["id"]], all_prompts)
@@ -867,12 +891,9 @@ class CollectionWorker:
             for future in as_completed(futures):
                 candidate, prompt, example = futures[future]
                 observation = future.result()
-                self._persist_observation(prompt, observation)
+                self._persist_observation(prompt, observation, job=job)
                 stored_observations[example["id"]].append(observation)
-                usage = observation.metadata.get("fan_out_usage") or {}
-                openai_search_calls += int(observation.metadata.get("fan_out_search_calls") or 0)
-                for key in openai_usage:
-                    openai_usage[key] += int(usage.get(key) or 0)
+                openai_search_calls += int(bool(observation.metadata.get("reexecution_observation_id")))
                 completed += 1
                 if min(sum(item.engine == engine for item in stored_observations[example["id"]]) for engine in engines) >= target_runs:
                     scores = score_dataset_example(candidate, stored_observations[example["id"]])
@@ -906,7 +927,7 @@ class CollectionWorker:
         observations = [row for row in observations if row.get("provider") == "brightdata"
             and str(row.get("answer") or "").strip() and not (row.get("raw_response") or {}).get("error")]
         observation_ref = {row["id"]: row for row in observations}
-        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=in.({','.join(OBSERVED_FAN_OUT_SOURCES)})&observation_id=in.({','.join(observation_ref)})") if observations else []
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=in.({','.join(SAME_RUN_FAN_OUT_SOURCES)})&observation_id=in.({','.join(observation_ref)})") if observations else []
         # Examples are segmented by engine: ChatGPT traces never mix with
         # Gemini traces in the same ICL context.
         fan_outs_by_key = {}
@@ -918,7 +939,8 @@ class CollectionWorker:
         examples = [ReconstructionExample(prompts_by_id[prompt_id]["text"], fan_outs, prompt_id, engine)
             for (prompt_id, engine), fan_outs in fan_outs_by_key.items() if fan_outs]
         if not examples:
-            return {"examples": 0, "reconstructed": 0}
+            return {"examples": 0, "reconstructed": 0,
+                "skipped": "No same-run provider-reported traces on this surface; reconstruction unavailable"}
         reconstructor = ICLPromptReconstructor(examples)
         if not reconstructor.icl_available:
             raise RuntimeError("OPENAI_API_KEY and observed examples are required for ICL; use build_dataset for generation from user signals")
@@ -956,7 +978,7 @@ class CollectionWorker:
             # No secondary-engine fan-outs: reproduction must come from the target engine.
             observation = self._execute_analysis(provider, AnalysisRequest(candidate.text, engine=engine,
                 country=project.get("country", "BE"), language=project.get("language", "fr")))
-            self._persist_observation(prompt, observation)
+            self._persist_observation(prompt, observation, job=job)
             executions += 1
             self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
                 cost_status="pending_reconciliation", estimated_unit_cost=float(options.get("cost_per_execution_eur", 0.05)),
@@ -967,7 +989,7 @@ class CollectionWorker:
             if executions >= execution_limit:
                 break
             query_rows = self.db.request("GET", "fan_outs", f"select=query,source&observation_id=eq.{target['id']}&order=position.asc")
-            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") in OBSERVED_FAN_OUT_SOURCES))
+            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") in SAME_RUN_FAN_OUT_SOURCES))
             if not queries:
                 continue
             # Hold out the original prompt and its near-variants: they must not
