@@ -25,7 +25,7 @@ from analysis.icl_reconstruction import ICLPromptReconstructor
 from analysis.reconstruction import ReconstructionExample
 from models.seed import Seed, SeedType, deduplicate_seeds
 from scrapers import ForumScraper, ReviewScraper, SerpScraper, SocialScraper
-from utils.config_loader import load_config
+from utils.config_loader import load_config, neutral_config
 
 
 load_dotenv()
@@ -282,7 +282,8 @@ class CollectionWorker:
 
     def _collect(self, job: Dict) -> Dict:
         project_id = job["project_id"]
-        config = load_config(self.config_path)
+        project = self.db.request("GET", "projects", f"select=*&id=eq.{project_id}&limit=1")[0]
+        config = neutral_config(project)
         input_config = job.get("input", {})
         budget = clamp_collection_budget(input_config.get("query_budget", 10))
         sample_mode = bool(input_config.get("source_config", {}).get("sample_mode"))
@@ -343,7 +344,7 @@ class CollectionWorker:
             config.languages = accepted_languages or config.languages
             config.filters.accepted_languages = config.languages
 
-        forum_config = config.sources.get("forums", {})
+        forum_config = config.sources.setdefault("forums", {"enabled": True})
         configured_platforms = forum_config.get("platforms", [])
         platforms = []
         if "forum" in requested:
@@ -372,6 +373,11 @@ class CollectionWorker:
         if "trustpilot_url" in source_config:
             trustpilot_url = str(source_config.get("trustpilot_url") or "").strip()
             config.sources.setdefault("reviews", {})["platforms"] = [{"name": "trustpilot", "url": trustpilot_url, "method": "api"}] if trustpilot_url else []
+        if clean_list("google_maps_queries"):
+            config.sources["reviews"]["platforms"].append({"name": "google_reviews", "queries": clean_list("google_maps_queries"), "method": "google_maps_scraper"})
+        for key in ("after", "before", "time_filter"):
+            if source_config.get(f"reddit_{key}"):
+                config.scraping.forum[key] = str(source_config[f"reddit_{key}"])
         if "serp_templates" in source_config:
             config.sources.setdefault("serp", {})["query_templates"] = clean_list("serp_templates")
 
@@ -393,7 +399,6 @@ class CollectionWorker:
             }
             config.sources["social"] = {
                 "limits": social_limits,
-                "reddit": {"subreddits": clean_list("subreddits"), "dataset_id": str(source_config.get("reddit_dataset_id") or "").strip()},
                 "facebook": {"urls": clean_list("facebook_urls"), "dataset_id": str(source_config.get("facebook_dataset_id") or "").strip()},
                 "instagram": {"urls": clean_list("instagram_urls"), "dataset_id": str(source_config.get("instagram_dataset_id") or "").strip()},
                 "linkedin": {"urls": clean_list("linkedin_urls"), "dataset_id": str(source_config.get("linkedin_dataset_id") or "").strip()},
@@ -540,6 +545,8 @@ class CollectionWorker:
         dataset_id = job["input"]["dataset_id"]
         dataset = self.db.request("GET", "datasets", f"select=*&id=eq.{dataset_id}&limit=1")[0]
         project_id = dataset["project_id"]
+        if project_id != job["project_id"]:
+            raise ValueError("Dataset does not belong to job project")
         self._report(job, 2, "Chargement des clusters")
         cluster_rows = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true&order=question_count.desc")
         if not cluster_rows:
@@ -733,6 +740,8 @@ class CollectionWorker:
         target_runs = int(job["input"].get("target_runs", 3))
         limit = int(job["input"].get("limit", 100))
         dataset = self.db.request("GET", "datasets", f"select=*&id=eq.{dataset_id}&limit=1")[0]
+        if dataset["project_id"] != job["project_id"]:
+            raise ValueError("Dataset does not belong to job project")
         examples = self.db.request("GET", "dataset_examples", f"select=*&dataset_id=eq.{dataset_id}&status=eq.accepted&completed_runs=lt.{target_runs}&order=quality_score.desc&limit={limit}")
         if not examples:
             return {"selected": 0, "executions": 0, "target_runs": target_runs}
@@ -812,7 +821,7 @@ class CollectionWorker:
             return {"examples": 0, "reconstructed": 0}
         observations = self.db.request("GET", "observations", f"select=id,prompt_id&prompt_id=in.({','.join(prompts_by_id)})")
         observation_prompt = {row["id"]: row["prompt_id"] for row in observations}
-        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&observation_id=in.({','.join(observation_prompt)})") if observations else []
+        fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query&source=eq.brightdata&observation_id=in.({','.join(observation_prompt)})") if observations else []
         fan_outs_by_prompt = {}
         for row in fan_out_rows:
             prompt_id = observation_prompt.get(row["observation_id"])
@@ -822,28 +831,72 @@ class CollectionWorker:
         if not examples:
             return {"examples": 0, "reconstructed": 0}
         reconstructor = ICLPromptReconstructor(examples)
-        clusters = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true")
-        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text)")
-        questions_by_cluster = {}
-        for link in links:
-            if link.get("questions"):
-                questions_by_cluster.setdefault(link["cluster_id"], []).append(link["questions"]["text"])
-        project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
-        max_per_cluster = int(job.get("input", {}).get("max_candidates_per_cluster", 3))
-        candidates = []
-        for cluster in clusters:
-            target = [cluster["representative_question"], *questions_by_cluster.get(cluster["id"], [])]
-            for candidate in reconstructor.reconstruct(target, project.get("language", "fr"), max_per_cluster):
-                candidate.source_reference = cluster["id"]
-                candidate.metadata.update({"target_cluster_id": cluster["id"], "training_examples": len(examples)})
-                candidates.append(candidate)
-        rows = [{
-            "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
-            "provenance": "reverse_engineered", "confidence": candidate.confidence, "status": "draft",
-            "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
-        } for candidate in candidates]
-        saved = self.db.request("POST", "prompts", "on_conflict=project_id,text", rows, "resolution=ignore-duplicates,return=representation") if rows else []
-        return {"examples": len(examples), "clusters": len(clusters), "candidates": len(rows), "reconstructed": len(saved or [])}
+        if not reconstructor.icl_available:
+            raise RuntimeError("OPENAI_API_KEY and observed examples are required for ICL; use build_dataset for generation from user signals")
+        project = self.db.request("GET", "projects", f"select=language,country&id=eq.{project_id}&limit=1")[0]
+        options = job.get("input") or {}
+        # Only persisted observations belonging to this project can be targets.
+        target_ids = options.get("target_observation_ids") or []
+        if not target_ids:
+            return {"examples": len(examples), "reconstructed": 0, "skipped": "No observed targets selected; use build_dataset for signal-based generation"}
+        project_prompts = self.db.request("GET", "prompts", f"select=id,cluster_id&project_id=eq.{project_id}")
+        owned = {row["id"]: row for row in project_prompts}
+        targets = self.db.request("GET", "observations", f"select=id,prompt_id,engine&prompt_id=in.({','.join(owned)})") if owned else []
+        targets = [row for row in targets if row["id"] in target_ids]
+        if len(targets) != len(set(target_ids)):
+            raise ValueError("Target observations must belong to this project")
+        max_candidates = max(3, min(5, int(options.get("max_candidates_per_cluster", 3))))
+        max_targets = max(1, min(10, int(options.get("max_targets", 1))))
+        runs = max(1, min(4, int(options.get("validation_runs", 1))))
+        # Paid validation is bounded and opt-in with a declared execution ceiling.
+        execution_limit = int(options.get("max_validation_executions", 0))
+        if execution_limit < min(len(targets), max_targets) * max_candidates * runs:
+            raise ValueError("Set max_validation_executions to cover the bounded reconstruction validation plan")
+        provider = BrightDataProvider()
+        saved_count = executions = validated = 0
+        for target in targets[:max_targets]:
+            query_rows = self.db.request("GET", "fan_outs", f"select=query,source&observation_id=eq.{target['id']}&order=position.asc")
+            queries = list(dict.fromkeys(row["query"] for row in query_rows if row.get("query") and row.get("source") == "brightdata"))
+            if not queries:
+                continue
+            # Hold out the original prompt: it must not leak into its own ICL context.
+            reconstructor.examples = [e for e in examples if e.source_reference != target["prompt_id"]]
+            if not reconstructor.icl_available:
+                continue
+            for candidate in reconstructor.reconstruct(queries, project.get("language", "fr"), max_candidates):
+                if candidate.metadata.get("method") != "icl_retrieval":
+                    raise RuntimeError("ICL generation failed; deterministic fallback is not accepted by this job")
+                metadata = {**candidate.metadata, "target_observation_id": target["id"], "target_engine": target["engine"]}
+                rows = self.db.request("POST", "prompts", "on_conflict=project_id,text", [{
+                    "project_id": project_id, "cluster_id": owned[target["prompt_id"]].get("cluster_id"),
+                    "text": candidate.text, "provenance": "reverse_engineered", "confidence": candidate.confidence,
+                    "status": "testing", "expected_fan_outs": queries, "metadata": metadata,
+                }], "resolution=ignore-duplicates,return=representation")
+                if not rows:
+                    continue
+                prompt = rows[0]
+                observations = []
+                for run_index in range(runs):
+                    # No secondary-engine fan-outs: reproduction must come from the target engine.
+                    observation = provider.execute(AnalysisRequest(candidate.text, engine=target["engine"],
+                        country=project.get("country", "BE"), language=project.get("language", "fr")))
+                    observation.metadata["fan_out_source"] = observation.provider
+                    self._persist_observation(prompt, observation)
+                    observations.append(observation)
+                    executions += 1
+                    self._record_cost(job, "brightdata", "reconstruction_validation", quantity=1, unit="executions",
+                        cost_status="pending_reconciliation", external_reference=f"{job['id']}:{prompt['id']}:{run_index}")
+                scores = score_dataset_example(candidate, observations)
+                passed = all(o.fan_outs and not o.raw_response.get("error") for o in observations) and scores["reproduction_score"] >= float(options.get("reproduction_threshold", 0.65))
+                # A single run establishes reproduction, not stability.
+                final_status = "validated" if passed and runs >= 3 and scores["stability_score"] >= 0.65 else "draft"
+                metadata.update({**scores, "validation_runs": runs, "reproduction_passed": passed,
+                    "stability_measured": runs >= 2})
+                self.db.request("PATCH", "prompts", f"id=eq.{prompt['id']}&project_id=eq.{project_id}",
+                    {"status": final_status, "confidence": scores["reproduction_score"], "metadata": metadata}, "return=minimal")
+                validated += int(final_status == "validated")
+                saved_count += 1
+        return {"examples": len(examples), "reconstructed": saved_count, "executions": executions, "validated": validated}
 
 
 def main():

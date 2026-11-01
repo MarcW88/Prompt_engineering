@@ -29,6 +29,9 @@ export async function POST(request: Request) {
   }
   try {
     if (kind === "reverse_engineer") {
+      if (!Array.isArray(input.target_observation_ids) || !input.target_observation_ids.length || !(Number(input.max_validation_executions) > 0)) {
+        return NextResponse.json({ error: "Sélectionnez des target_observation_ids réels et un plafond max_validation_executions. Pour générer depuis les signaux utilisateurs, utilisez build_dataset." }, { status: 400 });
+      }
       const encoded = encodeURIComponent(body.projectId);
       const [projects, costs] = await Promise.all([
         supabaseRest<Array<{ budget_total_eur: number }>>("projects", { query: `select=budget_total_eur&id=eq.${encoded}&limit=1` }),

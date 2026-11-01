@@ -100,12 +100,14 @@ class SerpScraper(BaseScraper):
     
     def _scrape_query(self, query: str) -> List[RawItem]:
         """PAA + Autocomplete : collecteur gratuit d'abord, DataForSEO en fallback."""
-        items = [*self._scrape_paa_free(query), *self._scrape_suggestions_free(query)]
-        if items:
-            return items
+        paa = self._scrape_paa_free(query)
+        suggestions = self._scrape_suggestions_free(query)
         if self.auth_header:
-            return [*self._scrape_paa_dataforseo(query), *self._scrape_suggestions_dataforseo(query)]
-        return items
+            if not paa:
+                paa = self._scrape_paa_dataforseo(query)
+            if not suggestions:
+                suggestions = self._scrape_suggestions_dataforseo(query)
+        return [*paa, *suggestions]
 
     def _make_serp_item(self, text: str, query: str, platform: str, extra: Dict) -> Optional[RawItem]:
         key = text.lower()

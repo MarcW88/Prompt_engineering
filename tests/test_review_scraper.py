@@ -33,6 +33,7 @@ class ReviewScraperTests(unittest.TestCase):
             config.scraping.reviews["max_pages"] = 1
             config.scraping.reviews["min_text_length"] = 10
             scraper = ReviewScraper(config)
+            scraper._fetch = Mock(return_value=None)  # No live Trustpilot access in a provider unit test.
             items = scraper._scrape_trustpilot({"url": "https://fr.trustpilot.com/review/www.decathlon.fr"})
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].platform, "trustpilot")

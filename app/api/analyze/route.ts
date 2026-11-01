@@ -19,63 +19,30 @@ const engineUrls: Record<string, string> = {
   google_ai_mode: "https://www.google.com/",
 };
 
-function list(value: unknown, keys: string[]) {
-  if (typeof value === "string") return [value];
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => {
-    if (typeof item === "string") return item;
-    if (item && typeof item === "object") {
-      const record = item as Record<string, unknown>;
-      for (const key of keys) if (typeof record[key] === "string") return record[key] as string;
-    }
-    return "";
-  }).filter(Boolean);
-}
-
 function deepSearchQueries(node: unknown, depth = 0): string[] {
-  // ChatGPT exposes its real search queries under metadata.search_model_queries
-  // (and variants), nested anywhere in the provider response.
-  if (depth > 8 || node === null || node === undefined) return [];
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      const found = deepSearchQueries(item, depth + 1);
-      if (found.length) return found;
+  if (depth > 32 || node == null) return [];
+  if (Array.isArray(node)) return [...new Set(node.flatMap(item => deepSearchQueries(item, depth + 1)))];
+  if (typeof node !== "object") return [];
+  const keys = new Set(["query_fan_out", "query_fan_outs", "web_search_query", "search_model_queries", "search_queries", "web_search_queries", "queries"]);
+  function values(value: unknown): string[] {
+    if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+    if (Array.isArray(value)) return value.flatMap(values);
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      for (const key of ["q", "query", "search_query", "text", "keyword"]) {
+        if (typeof record[key] === "string") return values(record[key]);
+      }
     }
     return [];
   }
-  if (typeof node === "object") {
-    const record = node as Record<string, unknown>;
-    for (const key of ["search_model_queries", "search_queries", "web_search_queries"]) {
-      const value = record[key];
-      if (value === undefined) continue;
-      const queries = typeof value === "object" && value !== null && !Array.isArray(value)
-        ? (value as Record<string, unknown>).queries
-        : value;
-      if (Array.isArray(queries)) {
-        const flattened = queries.map((item) => {
-          if (typeof item === "string") return item;
-          if (item && typeof item === "object") {
-            const q = item as Record<string, unknown>;
-            return String(q.q ?? q.query ?? q.search_query ?? "");
-          }
-          return "";
-        }).filter(Boolean);
-        if (flattened.length) return flattened;
-      }
-    }
-    for (const value of Object.values(record)) {
-      const found = deepSearchQueries(value, depth + 1);
-      if (found.length) return found;
-    }
-  }
-  return [];
+  return [...new Set(Object.entries(node).flatMap(([key, value]) => [
+    ...(keys.has(key) ? values(value) : []), ...deepSearchQueries(value, depth + 1),
+  ]))];
 }
 
 function normalize(prompt: string, provider: string, engine: string, record: Record<string, unknown>) {
   const answer = ["answer_text_markdown", "answer_text", "answer", "response", "content", "text"].map((key) => record[key]).find((value) => typeof value === "string") ?? "";
-  const fanOutValue = ["query_fan_out", "query_fan_outs", "web_search_query", "search_queries", "queries"].map((key) => record[key]).find((value) => Array.isArray(value) || typeof value === "string");
-  const fanOuts = list(fanOutValue, ["query", "text", "title", "keyword"]);
-  if (!fanOuts.length) fanOuts.push(...deepSearchQueries(record));
+  const fanOuts = deepSearchQueries(record);
   const citationValue = ["citations", "search_sources", "references", "sources", "links"].map((key) => record[key]).find(Array.isArray);
   return {
     id: randomUUID(), prompt, provider, engine, answer,

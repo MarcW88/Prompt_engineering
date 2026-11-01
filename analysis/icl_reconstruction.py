@@ -7,7 +7,7 @@ donne en exemples à un LLM qui génère les candidats.
 
 Pipeline :
     fan-outs cibles
-        -> retrieval (similarité de signatures, cf. signatures.py)
+        -> retrieval (embeddings, signature lexicale secondaire)
         -> top-k exemples (prompt, fan-outs) en contexte
         -> LLM génère N prompts candidats
         -> chaque candidat est destiné à être exécuté puis comparé
@@ -18,6 +18,8 @@ reconstructeur déterministe existant (PromptReconstructor).
 """
 
 import json
+import math
+import warnings
 import os
 from typing import Iterable, List, Optional
 
@@ -41,6 +43,8 @@ class ICLPromptReconstructor(PromptReconstructor):
         self.max_context_examples = max(1, max_context_examples)
         self.temperature = temperature
         self.last_usage = {}
+        self.embedding_cache = {}
+        self.retrieval_method = "lexical"
 
     @property
     def icl_available(self) -> bool:
@@ -49,6 +53,7 @@ class ICLPromptReconstructor(PromptReconstructor):
     def reconstruct(self, fan_outs: List[str], language: str = "fr", max_candidates: int = 3) -> List[PromptCandidate]:
         ranked = self._rank_examples(fan_outs)
         if not self.icl_available:
+            warnings.warn("ICL unavailable or generation failed: explicit deterministic fallback", RuntimeWarning)
             return super().reconstruct(fan_outs, language, max_candidates)
 
         context = ranked[:self.max_context_examples]
@@ -68,17 +73,48 @@ class ICLPromptReconstructor(PromptReconstructor):
                     "context_examples": len(context),
                     "top_similarity": round(base_confidence, 4),
                     "model": self.chat_model,
+                    "retrieval_method": self.retrieval_method,
                 },
             ))
         if not candidates:
+            warnings.warn("ICL unavailable or generation failed: explicit deterministic fallback", RuntimeWarning)
             return super().reconstruct(fan_outs, language, max_candidates)
         return candidates
 
     def _rank_examples(self, fan_outs: List[str]):
         target = build_signature(fan_outs)
+        texts = ["\n".join(fan_outs), *["\n".join(e.fan_outs) for e in self.examples]]
+        semantic = None
+        if self.api_key and self.examples:
+            missing = list(dict.fromkeys(t for t in texts if t not in self.embedding_cache))
+            try:
+                if missing:
+                    response = requests.post(
+                        "https://api.openai.com/v1/embeddings",
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        json={"model": os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"), "input": missing},
+                        timeout=60,
+                    )
+                    response.raise_for_status()
+                    data = response.json()["data"]
+                    if len(data) != len(missing):
+                        raise ValueError("Incomplete embeddings response")
+                    for row in data:
+                        self.embedding_cache[missing[row["index"]]] = row["embedding"]
+                vectors = [self.embedding_cache[t] for t in texts]
+                def cosine(a, b):
+                    if len(a) != len(b) or not a or not any(a) or not any(b):
+                        raise ValueError("Invalid embedding vector")
+                    return sum(x*y for x,y in zip(a,b)) / math.sqrt(sum(x*x for x in a)*sum(y*y for y in b))
+                semantic = [cosine(vectors[0], v) for v in vectors[1:]]
+                self.retrieval_method = "embeddings_cosine_with_lexical_tiebreak"
+            except Exception as error:
+                warnings.warn(f"Semantic retrieval unavailable: {type(error).__name__}; lexical fallback", RuntimeWarning)
+                self.retrieval_method = "lexical_fallback"
         ranked = []
-        for example in self.examples:
-            score = signature_similarity(target, build_signature(example.fan_outs))
+        for index, example in enumerate(self.examples):
+            lexical = signature_similarity(target, build_signature(example.fan_outs))
+            score = 0.95 * semantic[index] + 0.05 * lexical if semantic is not None else lexical
             ranked.append((score, example))
         ranked.sort(key=lambda item: item[0], reverse=True)
         return ranked

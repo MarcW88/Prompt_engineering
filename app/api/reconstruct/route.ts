@@ -23,5 +23,7 @@ export async function POST(request: Request) {
     confidence: 0.2,
     expectedFanOuts: fanOuts,
     method: "deterministic_fallback",
+    validated: false,
+    warning: "Aperçu par template uniquement. Pour ICL et validation, utilisez le job reverse_engineer avec des target_observation_ids observés.",
   });
 }

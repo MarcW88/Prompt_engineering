@@ -107,11 +107,7 @@ class BrightDataProvider(AnalysisProvider):
         if not isinstance(record, dict):
             raise ProviderError("Bright Data returned an unsupported response")
         answer = first_value(record, ["answer_text_markdown", "answer_text", "answer", "response", "content", "text"])
-        fan_outs = first_value(record, ["query_fan_out", "query_fan_outs", "web_search_query", "search_queries", "queries"], [])
-        if not fan_outs:
-            # ChatGPT exposes its real search queries under
-            # metadata.search_model_queries (and variants), nested in the record.
-            fan_outs = self._deep_search_queries(record)
+        fan_outs = self._deep_search_queries(record)
         citations = first_value(record, ["citations", "search_sources", "references", "sources", "links"], [])
         return AnalysisObservation(
             prompt=request.prompt,
@@ -130,45 +126,31 @@ class BrightDataProvider(AnalysisProvider):
 
     @classmethod
     def _deep_search_queries(cls, node: Any, depth: int = 0) -> List[str]:
-        """Cherche récursivement les requêtes de recherche du moteur dans la
-        réponse, notamment metadata.search_model_queries.queries (format ChatGPT
-        observé dans les conversations et dans les datasets Bright Data)."""
-        if depth > 8 or node is None:
+        """Collect every recognized query block, preserving order and deduplicating."""
+        if depth > 32 or node is None:
+            return []
+        keys = {"query_fan_out", "query_fan_outs", "web_search_query",
+                "search_model_queries", "search_queries", "web_search_queries", "queries"}
+        found = []
+        def values(value):
+            if isinstance(value, str):
+                return [value] if value.strip() else []
+            if isinstance(value, list):
+                return [q for item in value for q in values(item)]
+            if isinstance(value, dict):
+                for key in ("q", "query", "search_query", "text", "keyword"):
+                    if isinstance(value.get(key), str):
+                        return values(value[key])
             return []
         if isinstance(node, dict):
-            for key in ("search_model_queries", "search_queries", "web_search_queries"):
-                if key in node:
-                    value = node[key]
-                    if isinstance(value, dict):
-                        queries = value.get("queries")
-                        if isinstance(queries, list):
-                            flattened = []
-                            for query in queries:
-                                if isinstance(query, dict):
-                                    flattened.append(str(query.get("q") or query.get("query") or query.get("search_query") or ""))
-                                else:
-                                    flattened.append(str(query))
-                            flattened = [query for query in flattened if query]
-                            if flattened:
-                                return flattened
-                    if isinstance(value, list):
-                        flattened = [
-                            str(item.get("q") or item.get("query") or item.get("search_query") or item)
-                            for item in value
-                        ]
-                        flattened = [query for query in flattened if query]
-                        if flattened:
-                            return flattened
-            for value in node.values():
-                found = cls._deep_search_queries(value, depth + 1)
-                if found:
-                    return found
+            for key, value in node.items():
+                if key in keys:
+                    found.extend(values(value))
+                found.extend(cls._deep_search_queries(value, depth + 1))
         elif isinstance(node, list):
             for item in node:
-                found = cls._deep_search_queries(item, depth + 1)
-                if found:
-                    return found
-        return []
+                found.extend(cls._deep_search_queries(item, depth + 1))
+        return list(dict.fromkeys(q.strip() for q in found if q.strip()))
 
     @staticmethod
     def _language_instruction(language: str) -> str:

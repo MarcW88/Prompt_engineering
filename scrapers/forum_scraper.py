@@ -143,7 +143,8 @@ class ForumScraper(BaseScraper):
         for index, planned in enumerate(planned_queries, start=1):
             self._report_progress(index - 1, len(planned_queries), f"Reddit · r/{subreddit_name} · {planned.query}")
             try:
-                posts = self.arctic.search_posts(subreddit_name, planned.query, limit=per_query_limit)
+                posts = self.arctic.search_posts(subreddit_name, planned.query, limit=per_query_limit,
+                    after=self.config.scraping.forum.get("after", ""), before=self.config.scraping.forum.get("before", ""))
                 for post in posts:
                     title = post.get("title", "") or ""
                     selftext = post.get("selftext", "") or ""
@@ -167,6 +168,7 @@ class ForumScraper(BaseScraper):
                         metadata={
                             "subreddit": subreddit_name,
                             "provider": "arctic_shift",
+                            "signal_kind": "post",
                             "score": post.get("score", 0),
                             "num_comments": post.get("num_comments", 0),
                             "search_term": planned.seed,
@@ -234,7 +236,7 @@ class ForumScraper(BaseScraper):
                     "q": planned.query,
                     "restrict_sr": "on",
                     "sort": "relevance",
-                    "t": "year",
+                    "t": self.config.scraping.forum.get("time_filter", "year"),
                     "limit": max(1, min(max_threads // max(len(planned_queries), 1), 25))
                 }
                 
@@ -273,6 +275,8 @@ class ForumScraper(BaseScraper):
                             date=datetime.fromtimestamp(post.get("created_utc", 0)) if post.get("created_utc") else None,
                             metadata={
                                 "subreddit": subreddit_name,
+                                "provider": "reddit_public_json",
+                                "signal_kind": "post",
                                 "score": post.get("score", 0),
                                 "num_comments": post.get("num_comments", 0),
                                 "search_term": planned.seed,
