@@ -5,7 +5,7 @@ export interface DashboardData {
   configured: boolean;
   projectId: string | null;
   projectName: string | null;
-  metrics: { seeds: number; signals: number; questions: number; clusters: number; prompts: number; datasets: number; observations: number; validations: number; approved: number; stability: number };
+  metrics: { seeds: number; signals: number; questions: number; clusters: number; geoClusters: number; prompts: number; reconstructed: number; datasets: number; observations: number; validations: number; approved: number; stability: number; executionTarget: number };
   sources: Array<{ id: string; name: string; kind: string; enabled: boolean; last_synced_at: string | null }>;
   jobs: Array<{ kind: string; status: string }>;
   prompts: Array<{
@@ -19,7 +19,7 @@ const empty: DashboardData = {
   configured: false,
   projectId: null,
   projectName: null,
-  metrics: { seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, datasets: 0, observations: 0, validations: 0, approved: 0, stability: 0 },
+  metrics: { seeds: 0, signals: 0, questions: 0, clusters: 0, geoClusters: 0, prompts: 0, reconstructed: 0, datasets: 0, observations: 0, validations: 0, approved: 0, stability: 0, executionTarget: 0 },
   sources: [],
   jobs: [],
   prompts: [],
@@ -44,12 +44,12 @@ export async function getDashboardData(projectId?: string): Promise<DashboardDat
     supabaseRest<Array<{ id: string }>>("seeds", { query: `select=id&project_id=eq.${encoded}&enabled=eq.true` }),
     supabaseRest<Array<{ id: string }>>("signals", { query: `select=id&project_id=eq.${encoded}` }),
     supabaseRest<Array<{ id: string }>>("questions", { query: `select=id&project_id=eq.${encoded}` }),
-    supabaseRest<Array<{ id: string }>>("clusters", { query: `select=id&project_id=eq.${encoded}` }),
-    supabaseRest<Array<{ id: string }>>("prompts", { query: `select=id&project_id=eq.${encoded}` }),
+    supabaseRest<Array<{ id: string; is_geo_relevant: boolean }>>("clusters", { query: `select=id,is_geo_relevant&project_id=eq.${encoded}` }),
+    supabaseRest<Array<{ id: string; provenance: string }>>("prompts", { query: `select=id,provenance&project_id=eq.${encoded}` }),
     supabaseRest<DashboardData["prompts"]>("prompts", { query: `select=id,text,provenance,confidence,status,created_at&project_id=eq.${encoded}&order=created_at.desc&limit=10` }),
     supabaseRest<DashboardData["sources"]>("sources", { query: `select=id,name,kind,enabled,last_synced_at&project_id=eq.${encoded}&order=created_at.asc` }),
     supabaseRest<DashboardData["jobs"]>("jobs", { query: `select=kind,status&project_id=eq.${encoded}&order=created_at.desc&limit=20` }),
-    supabaseRest<Array<{ id: string }>>("datasets", { query: `select=id&project_id=eq.${encoded}` }),
+    supabaseRest<Array<{ id: string; execution_sample_size: number | null }>>("datasets", { query: `select=id,execution_sample_size&project_id=eq.${encoded}` }),
   ]);
   const ids = promptIds.map((row) => row.id);
   const datasetIds = datasets.map((row) => row.id);
@@ -111,5 +111,8 @@ export async function getDashboardData(projectId?: string): Promise<DashboardDat
       review_status: reviewByPrompt.get(row.id) ?? null,
     };
   });
-  return { configured: true, projectId: id, projectName: project?.name ?? "Workspace GEO", metrics: { seeds: seeds.length, signals: signals.length, questions: questions.length, clusters: clusters.length, prompts: promptIds.length, datasets: examples.length, observations: observations.length, validations: validations.length, approved, stability }, sources, jobs, prompts: enrichedPrompts };
+  const reconstructed = promptIds.filter((row) => row.provenance === "reverse_engineered").length;
+  const geoClusters = clusters.filter((row) => row.is_geo_relevant).length;
+  const executionTarget = Math.max(0, ...datasets.map((row) => Number(row.execution_sample_size ?? 0)));
+  return { configured: true, projectId: id, projectName: project?.name ?? "Workspace GEO", metrics: { seeds: seeds.length, signals: signals.length, questions: questions.length, clusters: clusters.length, geoClusters, prompts: promptIds.length, reconstructed, datasets: examples.length, observations: observations.length, validations: validations.length, approved, stability, executionTarget }, sources, jobs, prompts: enrichedPrompts };
 }

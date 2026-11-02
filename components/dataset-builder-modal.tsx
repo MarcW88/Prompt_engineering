@@ -26,6 +26,9 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
   const [maxBudgetEur, setMaxBudgetEur] = useState(1);
   const [datasetId, setDatasetId] = useState("");
   const [existingDatasets, setExistingDatasets] = useState<Array<{ id: string; name: string; status: string; statistics?: Record<string, unknown> }>>([]);
+  const [geoClusters, setGeoClusters] = useState(0);
+  const [fanoutFallback, setFanoutFallback] = useState(true);
+  const [projectBudget, setProjectBudget] = useState<number | null>(null);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,10 +39,15 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
       .then((data) => {
         const datasets = data.datasets ?? [];
         setExistingDatasets(datasets);
+        setGeoClusters(Number(data.geoClusters ?? 0));
         if (datasets.length && !datasetId) {
           setDatasetId(datasets[0].id);
         }
       });
+    fetch(`/api/budget?projectId=${encodeURIComponent(projectId)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (data?.configuredTotal != null) setProjectBudget(Number(data.configuredTotal)); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -96,7 +104,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
     setLoading(true);
     setStatus("Création du corpus candidat…");
     try {
-      const response = await fetch("/api/datasets/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, name, candidatePoolSize, executionSampleSize, repetitions, candidatesPerCluster, engines, qualityThreshold, costPerExecutionEur, maxBudgetEur, stages: ["discovery", "comparison"], specificityLevels: [0, 1, 2] }) });
+      const response = await fetch("/api/datasets/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, name, candidatePoolSize, executionSampleSize, repetitions, candidatesPerCluster, engines, qualityThreshold, costPerExecutionEur, maxBudgetEur, fanoutFallback, stages: ["discovery", "comparison"], specificityLevels: [0, 1, 2] }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Construction impossible.");
       setDatasetId(data.dataset.id);
@@ -190,10 +198,16 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
           <div className={`dataset-estimate ${highCost ? "warn" : realism.tone}`}>
             <p className="estimate-title">{executions.toLocaleString("fr-FR")} observations prévues</p>
             <p><strong>{candidatePoolSize.toLocaleString("fr-FR")}</strong> candidats · <strong>{executionSampleSize.toLocaleString("fr-FR")}</strong> exécutés · <strong>{candidatesPerCluster}</strong> variants/cluster · seuil <strong>{qualityThreshold}</strong></p>
-            <p>Moteurs : {engines.map((engine) => engineLabels[engine] ?? engine).join(", ") || "aucun"}</p>
-            <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond :</strong> {maxBudgetEur.toFixed(2)} €</p>
+            <p>Moteurs : {engines.map((engine) => engineLabels[engine] ?? engine).join(", ") || "aucun"} · {repetitions} passage{repetitions > 1 ? "s" : ""}</p>
+            {geoClusters > 0 && geoClusters < executionSampleSize && (
+              <p className="warning"><AlertTriangle size={14} /> Seuls <strong>{geoClusters} clusters éligibles</strong> (≥ {2} questions) existent — l'exécution produira au maximum ~{geoClusters * candidatesPerCluster} prompts, pas {executionSampleSize}.</p>
+            )}
+            <p><strong>Passage principal :</strong> {executionSampleSize.toLocaleString("fr-FR")} prompts × {engines.length} moteur{engines.length > 1 ? "s" : ""} × {repetitions} passage{repetitions > 1 ? "s" : ""} = {executions.toLocaleString("fr-FR")} appels.</p>
+            <p><strong>Appels auxiliaires :</strong> {fanoutFallback ? `jusqu'à ~${executionSampleSize} appels OpenAI web search si le provider ne rapporte pas de traces (~0,03 $/appel, facturés séparément)` : "désactivés — les traces manquantes resteront « non rapportées »."}</p>
+            <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond job :</strong> {maxBudgetEur.toFixed(2)} €{projectBudget != null ? <> · <strong>Plafond projet :</strong> {projectBudget.toFixed(2)} €</> : ""}</p>
+            <p><label className="check-option"><input type="checkbox" checked={fanoutFallback} onChange={(event) => setFanoutFallback(event.target.checked)} /> Autoriser les appels auxiliaires OpenAI pour récupérer les traces de recherche manquantes</label></p>
             <p><strong>{realism.label}</strong> — {realism.text}</p>
-            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes (~10 s par exécution via DataForSEO). Facturé sur ta balance DataForSEO, pas OpenAI. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
+            <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes (~10 s par exécution). Le provider est configuré côté worker (variable DATASET_PROVIDER) ; l'estimation du simulateur de collecte ne couvre pas ces exécutions. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>
             {highCost && <p className="cost-alert"><strong>Alerte budget :</strong> l’estimation dépasse 10 €. Le lancement demandera une confirmation explicite.</p>}
             {estimatedCost > maxBudgetEur && <p className="warning"><AlertTriangle size={14} /> Le coût estimé dépasse le budget maximum. Retourne à l’étape 2 pour augmenter le plafond ou réduire les moteurs.</p>}
           </div>

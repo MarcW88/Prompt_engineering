@@ -175,6 +175,10 @@ class CollectionWorker:
         self.worker_id = re.sub(r"[^a-zA-Z0-9_-]", "-", raw_worker_id)[:64]
         self.cloud_execution_id = cloud_execution_id or os.getenv("CLOUD_RUN_EXECUTION") or os.getenv("CLOUD_RUN_TASK_ID") or "local"
         self.fanout_extractor = OpenAIWebSearchExtractor() if os.getenv("OPENAI_API_KEY") else None
+        # Auxiliary fan-out extraction: an OpenAI web-search re-execution is
+        # fired per observation whose provider reported no searches. Désactiver
+        # via OPENAI_FANOUT_FALLBACK=0 ou build_config.fanout_fallback=false.
+        self.fanout_fallback_enabled = os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0"
 
     def _execute_analysis(self, provider, request: AnalysisRequest):
         observation = provider.execute(request)
@@ -274,7 +278,7 @@ class CollectionWorker:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
         # Fallback OpenAI : nouvelle exécution indépendante — observation séparée,
         # jamais fusionnée dans les traces du run parent.
-        if not observation.fan_outs and observation.answer and not parent_observation_id:
+        if getattr(self, "fanout_fallback_enabled", os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0") and not observation.fan_outs and observation.answer and not parent_observation_id:
             reexecution_id = self._persist_reexecution(prompt, observation_id, observation, job=job)
             if reexecution_id:
                 observation.metadata["reexecution_observation_id"] = reexecution_id
@@ -714,7 +718,7 @@ class CollectionWorker:
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
-            brand_name=project.get("name", ""),
+            brand_name=str(build_config.get("brand_name") or project.get("name", "")),
         )))
         # The global pool cap follows the same intent-first rule as every
         # other cap: representatives of every intent first, variants last —
@@ -763,6 +767,9 @@ class CollectionWorker:
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         self._report(job, 10, "Démarrage des exécutions moteur")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
+        # Auxiliary fan-out re-executions can be disabled per dataset; they are
+        # billed OpenAI calls, never part of the main screening pass.
+        self.fanout_fallback_enabled = bool(build_config.get("fanout_fallback", getattr(self, "fanout_fallback_enabled", True)))
         if provider_name == "dataforseo":
             provider = DataForSEOProvider()
         elif provider_name == "openai":
@@ -883,6 +890,12 @@ class CollectionWorker:
         })
         intents_selected = sorted({str(c.metadata.get("intent_id")) for c in selected if c.metadata.get("intent_id")})
         statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0,
+            "execution_provider": provider_name,
+            "execution_target": int(dataset.get("execution_sample_size", len(candidates))),
+            "clusters_available": len(clusters),
+            "auxiliary_openai_calls": openai_search_calls,
+            "fanout_fallback": getattr(self, "fanout_fallback_enabled", True),
+            "worker_version": os.getenv("WORKER_VERSION") or os.getenv("GIT_SHA") or "unknown",
             "intents_identified": intent_inventory,
             "intents_selected": intents_selected,
             "intents_deferred": [i for i in intent_inventory if i not in intents_selected],
