@@ -49,11 +49,18 @@ export async function getDashboardData(projectId?: string): Promise<DashboardDat
     supabaseRest<DashboardData["prompts"]>("prompts", { query: `select=id,text,provenance,confidence,status,created_at&project_id=eq.${encoded}&order=created_at.desc&limit=10` }),
     supabaseRest<DashboardData["sources"]>("sources", { query: `select=id,name,kind,enabled,last_synced_at&project_id=eq.${encoded}&order=created_at.asc` }),
     supabaseRest<DashboardData["jobs"]>("jobs", { query: `select=kind,status&project_id=eq.${encoded}&order=created_at.desc&limit=20` }),
-    supabaseRest<Array<{ id: string; execution_sample_size: number | null }>>("datasets", { query: `select=id,execution_sample_size&project_id=eq.${encoded}` }),
+    supabaseRest<Array<{ id: string; execution_sample_size: number | null; created_at: string }>>("datasets", { query: `select=id,execution_sample_size,created_at&project_id=eq.${encoded}&order=created_at.desc` }),
   ]);
   const ids = promptIds.map((row) => row.id);
-  const datasetIds = datasets.map((row) => row.id);
-  const observations = await fetchLinked<{ id: string }>("observations", ids, "prompt_id", "id");
+  // Counters are bounded to the most recent dataset: mixing observations from
+  // older datasets into the metrics made "Terminé" look achieved when the
+  // latest run had produced far fewer observations than requested.
+  const datasetIds = datasets.length ? [datasets[0].id] : [];
+  const datasetExamplesForObs = datasetIds.length
+    ? await fetchLinked<{ id: string; prompt_id: string }>("dataset_examples", datasetIds, "dataset_id", "id,prompt_id")
+    : [];
+  const datasetPromptIds = datasetExamplesForObs.map((row) => row.prompt_id);
+  const observations = datasetPromptIds.length ? await fetchLinked<{ id: string }>("observations", datasetPromptIds, "prompt_id", "id") : [];
   const validations = await fetchLinked<{ id: string; prompt_id: string; stability_score: number }>("validations", ids, "prompt_id", "id,prompt_id,stability_score");
   const examples = await fetchLinked<{ id: string; manual_review_status: string; prompt_id: string; stability_score: number | null; completed_runs: number | null; target_runs: number | null }>("dataset_examples", datasetIds, "dataset_id", "id,manual_review_status,prompt_id,stability_score,completed_runs,target_runs");
   // Stability is only "measured" once the required repetitions actually ran;

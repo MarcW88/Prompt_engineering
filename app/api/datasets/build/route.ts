@@ -16,7 +16,10 @@ export async function POST(request: Request) {
   if (!engines.length) return NextResponse.json({ error: "Sélectionnez au moins un moteur." }, { status: 400 });
   const costPerExecutionEur = Math.max(0, Number(body.costPerExecutionEur ?? 0));
   const maxBudgetEur = Math.max(0, Number(body.maxBudgetEur ?? 20));
-  const estimatedCostEur = Math.round(executionSampleSize * repetitions * engines.length * costPerExecutionEur * 100) / 100;
+  // Auxiliary OpenAI fan-out calls (~1 per execution without provider traces)
+  // are billed separately — they must be part of the reserved budget too.
+  const auxCostEur = body.fanoutFallback === false ? 0 : executionSampleSize * Number(process.env.AUXILIARY_CALL_COST_EUR ?? 0.03);
+  const estimatedCostEur = Math.round((executionSampleSize * repetitions * engines.length * costPerExecutionEur + auxCostEur) * 100) / 100;
   if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €. Augmentez le plafond ou réduisez les moteurs/l'échantillon.` }, { status: 422 });
   try {
     const encoded = encodeURIComponent(body.projectId);

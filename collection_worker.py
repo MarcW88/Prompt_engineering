@@ -617,7 +617,7 @@ class CollectionWorker:
     def _transform_signals(self, job: Dict) -> Dict:
         project_id = job["project_id"]
         self._report(job, 3, "Chargement des signaux")
-        project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
+        project = self.db.request("GET", "projects", f"select=language,name,website&id=eq.{project_id}&limit=1")[0]
         signals = self.db.request("GET", "signals", f"select=*&project_id=eq.{project_id}&order=collected_at.asc")
         existing = self.db.request("GET", "questions", f"select=signal_id&project_id=eq.{project_id}&signal_id=not.is.null")
         processed_ids = {row["signal_id"] for row in existing}
@@ -635,6 +635,8 @@ class CollectionWorker:
             project.get("language", "fr"),
             transform,
             lambda processed, total: self._report(job, 10 + int(55 * processed / max(total, 1)), f"Transformation des signaux · {processed}/{total}"),
+            client_domain=project.get("website", ""),
+            client_names=[project.get("name", "")],
         )
         self._report(job, 68, f"Enregistrement de {len(questions)} questions")
         rows = [{
@@ -680,7 +682,7 @@ class CollectionWorker:
                 "cluster_id": cluster_id, "question_id": member["question_id"], "similarity": member["similarity"],
             } for member in cluster["members"]])
             saved_count += 1
-        return {"questions": len(rows), "clusters": saved_count, "geo_relevant": sum(cluster["is_geo_relevant"] for cluster in clusters)}
+        return {"questions": len(rows), "clusters": saved_count, "geo_relevant": sum(cluster["is_geo_relevant"] for cluster in clusters), "corporate_excluded": sum(not cluster["is_geo_relevant"] and cluster["question_count"] >= int(input_config.get("min_cluster_size", 2)) for cluster in clusters), "singletons_admitted": sum(cluster["is_geo_relevant"] and cluster["question_count"] == 1 for cluster in clusters)}
 
     def _build_dataset(self, job: Dict) -> Dict:
         dataset_id = job["input"]["dataset_id"]
@@ -784,8 +786,15 @@ class CollectionWorker:
         accepted = rejected = completed = openai_search_calls = 0
         tasks = []
         stored_observations = {}
+        duplicate_texts_skipped = 0
+        seen_texts = set()
         all_prompts = [candidate.text for candidate in candidates]
         for candidate in selected:
+            normalized = " ".join(candidate.text.casefold().split())
+            if normalized in seen_texts:
+                duplicate_texts_skipped += 1
+                continue
+            seen_texts.add(normalized)
             prompt = prompts_by_text.get(candidate.text)
             example = examples_by_prompt.get(prompt["id"]) if prompt else None
             if not prompt or not example:
@@ -894,6 +903,7 @@ class CollectionWorker:
             "execution_target": int(dataset.get("execution_sample_size", len(candidates))),
             "clusters_available": len(clusters),
             "auxiliary_openai_calls": openai_search_calls,
+            "duplicate_texts_skipped": duplicate_texts_skipped,
             "fanout_fallback": getattr(self, "fanout_fallback_enabled", True),
             "worker_version": os.getenv("WORKER_VERSION") or os.getenv("GIT_SHA") or "unknown",
             "intents_identified": intent_inventory,
