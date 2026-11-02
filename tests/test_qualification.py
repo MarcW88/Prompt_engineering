@@ -130,3 +130,42 @@ class BrandPrefilterTests(unittest.TestCase):
         )
         built = DatasetBuilder().build([cluster], DatasetBuildConfig(brand_name="Be-Life", candidates_per_cluster=3))
         self.assertTrue(built)  # avant : exclu car "Be-Life" absent du texte
+
+
+class BusinessQualificationTests(unittest.TestCase):
+    THEMES = ["gestion du stress", "compléments alimentaires", "magnésium"]
+
+    def test_generic_word_does_not_trigger_theme(self):
+        """« gestion de projet » ne doit plus matcher « gestion du stress »."""
+        result = qualify_question("quel outil de gestion de projet choisir ?", ["Be-Life"], [], self.THEMES)
+        self.assertEqual(result["category"], "hors_périmètre")
+
+    def test_full_theme_still_matches(self):
+        result = qualify_question("comment gérer mon stress au quotidien ?", [], [], ["gestion du stress"])
+        self.assertEqual(result["category"], "non_brand_kickoff")
+        self.assertEqual(result["kickoff_theme"], "gestion du stress")
+
+    def test_substring_is_not_a_word_match(self):
+        result = qualify_question("quel magnésium marin choisir ?", [], [], self.THEMES)
+        self.assertEqual(result["category"], "non_brand_kickoff")
+        self.assertEqual(result["kickoff_theme"], "magnésium")
+
+    def test_brand_off_kickoff_declarative_is_off_scope(self):
+        result = qualify_question("Be-Life annonce sa croissance sur un marché concurrentiel", ["Be-Life"], [], self.THEMES)
+        self.assertEqual(result["category"], "hors_périmètre")
+
+    def test_pure_brand_question_remains_brand(self):
+        result = qualify_question("quel est votre avis sur Be-Life ?", ["Be-Life"], [], self.THEMES)
+        self.assertEqual(result["category"], "brand")
+
+    def test_competitor_alone_is_not_a_comparison(self):
+        result = qualify_question("quel avis sur Nutergia ?", ["Be-Life"], ["Nutergia"], self.THEMES)
+        self.assertEqual(result["category"], "brand")  # famille marque, pas comparaison
+
+    def test_generic_comparison_with_brand_is_comparaison(self):
+        result = qualify_question("Be-Life ou Nutergia : lequel choisir ?", ["Be-Life"], ["Nutergia"], self.THEMES)
+        self.assertEqual(result["category"], "comparaison_standard")
+
+    def test_generic_comparison_without_brand_goes_kickoff_or_off(self):
+        result = qualify_question("quel complément choisir pour le stress ?", [], [], self.THEMES)
+        self.assertEqual(result["category"], "non_brand_kickoff")

@@ -27,6 +27,16 @@ _STOPWORDS = {
     "une", "un", "au", "aux", "the", "and", "for", "bien", "être", "etre",
 }
 
+# Mots trop génériques pour justifier à eux seuls une correspondance de thème
+# (« gestion de projet » ≠ « gestion du stress »).
+_GENERIC_TOKENS = {
+    "gestion", "projet", "marché", "marche", "entreprise", "croissance",
+    "stratégie", "strategie", "développement", "developpement", "produit",
+    "produits", "conseil", "conseils", "solution", "solutions", "service",
+    "services", "question", "besoin", "besoins", "choisir", "meilleur",
+    "meilleure", "meilleurs", "outil", "outils", "formation", "avis",
+}
+
 
 def _norm(text: str) -> str:
     return " ".join(re.findall(r"[\wÀ-ÿ]+", text.casefold()))
@@ -45,20 +55,34 @@ def _mentions_brand(normalized: str, variants: Sequence[str]) -> Optional[str]:
 
 
 def match_kickoff_theme(text: str, themes: Sequence[str]) -> Optional[str]:
-    """Thème kickoff le plus proche : majorité des jetons significatifs du
-    thème présents dans la question, ou jeton distinctif unique (≥7 lettres)."""
-    normalized = _norm(text)
+    """Thème kickoff le plus proche.
+
+    - correspondance par mot entier, avec tolérance au « s » final ;
+    - un seul jeton ne suffit que s'il est distinctif (≥6 lettres) et non
+      générique (« gestion », « projet » ne qualifient pas à eux seuls) ;
+    - sinon, majorité des jetons du thème requise.
+    """
     best, best_score = None, 0.0
     for theme in themes:
         tokens = _significant_tokens(theme)
         if not tokens:
             continue
-        hits = sum(1 for token in tokens if token in normalized)
-        distinctive = any(len(token) >= 7 and token in normalized for token in tokens)
+        hits, distinctive_hits = 0, 0
+        for token in tokens:
+            base = token[:-1] if token.endswith("s") else token
+            pattern = rf"(?<![\wÀ-ÿ]){re.escape(base)}s?(?![\wÀ-ÿ])"
+            if re.search(pattern, text, re.IGNORECASE):
+                hits += 1
+                if len(token) >= 6 and token.casefold() not in _GENERIC_TOKENS:
+                    distinctive_hits += 1
         score = hits / len(tokens)
-        if (score >= 0.5 or distinctive) and score > best_score:
+        matched = score > 0.5 or (score > 0 and distinctive_hits > 0)
+        if matched and score > best_score:
             best, best_score = theme, score
     return best
+
+
+_INTERROGATIVE_RE = re.compile(r"\?|\b(quel(?:le|s)?|comment|pourquoi|combien|est-ce|où|quand|lequel|laquelle)\b", re.IGNORECASE)
 
 
 def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequence[str], kickoff_themes: Sequence[str]) -> Dict[str, str]:
@@ -66,21 +90,33 @@ def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequ
     brand_hit = _mentions_brand(normalized, brand_variants)
     competitor_hit = _mentions_brand(normalized, competitors)
     comparative = bool(COMPARATIVE_RE.search(text))
+    interrogative = bool(_INTERROGATIVE_RE.search(text))
     theme = match_kickoff_theme(text, kickoff_themes)
 
     if comparative and (brand_hit or competitor_hit):
         which = brand_hit or competitor_hit
         return {"category": "comparaison_standard", "kickoff_theme": theme or "",
                 "justification": f"comparaison impliquant « {which} »"}
+    if brand_hit and theme:
+        return {"category": "brand", "kickoff_theme": theme,
+                "justification": f"mentionne la marque « {brand_hit} » sur le thème « {theme} »"}
+    if brand_hit and interrogative:
+        return {"category": "brand", "kickoff_theme": "",
+                "justification": f"question de marque « {brand_hit} » (sans thème kickoff)"}
     if brand_hit:
-        return {"category": "brand", "kickoff_theme": theme or "",
-                "justification": f"mentionne la marque « {brand_hit} »"}
+        return {"category": "hors_périmètre", "kickoff_theme": "",
+                "justification": f"contenu de marque « {brand_hit} » hors kickoff et non interrogatif"}
     if theme:
         return {"category": "non_brand_kickoff", "kickoff_theme": theme,
                 "justification": f"correspond au thème kickoff « {theme} »"}
     if competitor_hit:
-        return {"category": "comparaison_standard", "kickoff_theme": theme or "",
-                "justification": f"mentionne le concurrent « {competitor_hit} »"}
+        # Mention d'un concurrent sans intention comparative : famille
+        # marque, pas comparaison — si c'est une vraie question.
+        if interrogative:
+            return {"category": "brand", "kickoff_theme": "",
+                    "justification": f"question sur le concurrent « {competitor_hit} » (sans comparaison ni thème kickoff)"}
+        return {"category": "hors_périmètre", "kickoff_theme": "",
+                "justification": f"contenu concurrent « {competitor_hit} » hors kickoff et non interrogatif"}
     if not kickoff_themes:
         return {"category": "hors_périmètre", "kickoff_theme": "",
                 "justification": "aucun thème kickoff déclaré — impossible de qualifier la pertinence"}
