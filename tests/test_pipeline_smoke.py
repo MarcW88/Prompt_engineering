@@ -59,7 +59,7 @@ class PipelineSmokeTests(unittest.TestCase):
         w._report = Mock()
         w._brightdata_account_cost = Mock(return_value=None)
         job = {'id': 'j', 'project_id': 'p', 'input': {'sources': ['reddit', 'forum', 'serp'], 'query_budget': 3, 'source_config': {'subreddits': ['hiking'], 'forum_urls': ['https://forum.test']}}}
-        question = 'Comment choisir des chaussures confortables pour la randonnée ?'
+        question = 'Quelles chaussures confortables pour la randonnée ?'
         question_budget = 'Quel budget prévoir pour des chaussures de randonnée ?'
         fixture_items = [
             RawItem(source_type=SourceType.FORUM, platform='reddit', raw_text=question, title=question, url='https://reddit.test', metadata={'language': 'fr'}),

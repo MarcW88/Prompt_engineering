@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     const [seeds, signals, questions, clusters, clusterQuestions, prompts, datasets, costRows, jobs] = await Promise.all([
       supabaseRest<Row[]>("seeds", { query: `select=id,value,seed_type,priority,language,market,enabled,created_at&project_id=eq.${project}` }),
       supabaseRest<Row[]>("signals", { query: `select=id,source_type,platform,title,raw_text,url,language,theme,collected_at&project_id=eq.${project}&order=collected_at.asc` }),
-      supabaseRest<Row[]>("questions", { query: `select=id,signal_id,text,provenance,language,confidence,created_at&project_id=eq.${project}` }),
+      supabaseRest<Row[]>("questions", { query: `select=id,signal_id,text,provenance,language,confidence,metadata,created_at&project_id=eq.${project}` }),
       supabaseRest<Row[]>("clusters", { query: `select=id,label,representative_question,question_count,is_geo_relevant&project_id=eq.${project}` }),
       supabaseRest<Row[]>("cluster_questions", { query: `select=cluster_id,question_id&order=cluster_id` }),
       supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,confidence,status,expected_fan_outs,metadata,created_at&project_id=eq.${project}&order=created_at.asc` }),
@@ -584,6 +584,31 @@ export async function GET(request: Request) {
       { rubrique: "Export", valeur: METHOD_VERSION, limite: "textes >32 000 caractères découpés en lignes identifiées" },
     ];
 
+    // ---- 12-14 Dataset complet ----------------------------------------------------------
+    const completeJob = [...jobs].reverse().find((row) => String(row.kind) === "dataset_complete" && row.status === "completed");
+    const completeOut = (completeJob?.output ?? {}) as Row;
+    const priorityItems = Array.isArray(completeOut.priority_items) ? completeOut.priority_items as Row[] : [];
+    const priorityByQuestion = new Map(priorityItems.map((row) => [String(row.question_id), row]));
+    const signalUrl = new Map(signals.map((row) => [String(row.id), String(row.url ?? "")]));
+    const completeRows = questions.map((q) => {
+      const meta = (q.metadata ?? {}) as Row;
+      const qual = (meta.qualification ?? {}) as Row;
+      return {
+        question_id: q.id, text: q.text, provenance: q.provenance ?? "observed",
+        category: String(qual.category ?? "non qualifiée"), kickoff_theme: String(qual.kickoff_theme ?? ""),
+        qualification_justification: String(qual.justification ?? ""),
+        batch_id: String(meta.batch_id ?? ""), formulation_id: String(meta.formulation_id ?? ""),
+        source_url: signalUrl.get(String(q.signal_id)) ?? "",
+      };
+    });
+    const priorityRows = [
+      ...priorityItems.map((row) => ({ ...row, defer_reason: "" })),
+      ...((completeOut.deferred_items as Row[] | undefined) ?? []),
+    ];
+    const coverageRows = ((completeOut.coverage as Row[] | undefined) ?? []).map((cell) => ({
+      ...cell, action: cell.covered ? "" : "lot de complément planifié (proposed, jamais présenté comme observé)",
+    }));
+
     // ---- Assemble sheets ---------------------------------------------------------------
     const sheets: SheetSpec[] = [
       { name: "00_Synthese", columns: [{ header: "champ", key: "champ", width: 34 }, { header: "valeur", key: "valeur", width: 90 }], rows: syntheseRows, wrapColumns: ["valeur"] },
@@ -599,6 +624,10 @@ export async function GET(request: Request) {
       { name: "09_Couts_detail", columns: ["cost_event_id", "provider", "service_category", "job_id", "dataset_id", "quantity", "unit", "status", "currency", "amount", "estimated_unit_cost", "conversion_eur", "billing_reference", "created_at", "note"].map((key) => ({ header: key, key, width: key === "note" || key === "billing_reference" ? 45 : 20 })), rows: costDetail, wrapColumns: ["note"] },
       { name: "10_Couts_synthese", columns: ["provider", "service_category", "statut", "total", "currency", "total_eur", "events", "plafond", "disponible"].map((key) => ({ header: key, key, width: 26 })), rows: synthesisRows },
       { name: "11_Methodes_limites", columns: [{ header: "rubrique", key: "rubrique", width: 30 }, { header: "valeur", key: "valeur", width: 60 }, { header: "limite", key: "limite", width: 60 }], rows: methodRows, wrapColumns: ["valeur", "limite"] },
+      // ---- 12-14 Dataset complet (job dataset_complete : couverture, lots, priorités) --
+      { name: "12_Dataset_complet", columns: ["question_id", "text", "provenance", "category", "kickoff_theme", "qualification_justification", "batch_id", "formulation_id", "source_url"].map((key) => ({ header: key, key, width: key === "text" || key === "source_url" ? 55 : 26 })), rows: completeRows, wrapColumns: ["text", "qualification_justification"] },
+      { name: "13_Selection_priorite", columns: ["question_id", "text", "category", "kickoff_theme", "provenance", "selection_reason", "defer_reason", "qualification_justification"].map((key) => ({ header: key, key, width: key === "text" ? 60 : 32 })), rows: priorityRows, wrapColumns: ["text", "qualification_justification"] },
+      { name: "14_Matrice_couverture", columns: ["dimension", "value", "observed", "proposed", "covered", "action"].map((key) => ({ header: key, key, width: key === "value" || key === "action" ? 55 : 18 })), rows: coverageRows, wrapColumns: ["action"] },
     ];
 
     const workbook = new ExcelJS.Workbook();

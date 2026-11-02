@@ -26,9 +26,10 @@ class QualificationTests(unittest.TestCase):
         self.assertEqual(result["category"], "comparaison_standard")
         self.assertIn("Be-Life", result["justification"])
 
-    def test_generic_comparative_without_brand_stays_kickoff(self):
+    def test_generic_comparative_without_brand_is_comparaison_standard(self):
+        # « quel est le meilleur… » du périmètre : comparaison standard (famille des 30).
         result = qualify_question("quel est le meilleur complément pour le stress ?", VARIANTS, COMPETITORS, THEMES)
-        self.assertEqual(result["category"], "non_brand_kickoff")
+        self.assertEqual(result["category"], "comparaison_standard")
         self.assertEqual(result["kickoff_theme"], "Stress et gestion du stress")
 
     def test_kickoff_theme_matching(self):
@@ -146,9 +147,13 @@ class BusinessQualificationTests(unittest.TestCase):
         self.assertEqual(result["kickoff_theme"], "gestion du stress")
 
     def test_substring_is_not_a_word_match(self):
+        # « choisir » + thème → comparaison standard ; le mot entier reste requis
+        # pour le thème (« magnésium » entier, pas un préfixe).
         result = qualify_question("quel magnésium marin choisir ?", [], [], self.THEMES)
-        self.assertEqual(result["category"], "non_brand_kickoff")
+        self.assertEqual(result["category"], "comparaison_standard")
         self.assertEqual(result["kickoff_theme"], "magnésium")
+        result2 = qualify_question("informations sur la magnétothérapie", [], [], self.THEMES)
+        self.assertEqual(result2["category"], "hors_périmètre")
 
     def test_brand_off_kickoff_declarative_is_off_scope(self):
         result = qualify_question("Be-Life annonce sa croissance sur un marché concurrentiel", ["Be-Life"], [], self.THEMES)
@@ -167,5 +172,9 @@ class BusinessQualificationTests(unittest.TestCase):
         self.assertEqual(result["category"], "comparaison_standard")
 
     def test_generic_comparison_without_brand_goes_kickoff_or_off(self):
+        # « choisir » + thème kickoff → comparaison standard générique (famille des 30)
         result = qualify_question("quel complément choisir pour le stress ?", [], [], self.THEMES)
-        self.assertEqual(result["category"], "non_brand_kickoff")
+        self.assertEqual(result["category"], "comparaison_standard")
+        # Une demande non comparative sans marque reste non_brand_kickoff.
+        result2 = qualify_question("comment gérer mon stress au quotidien ?", [], [], self.THEMES)
+        self.assertEqual(result2["category"], "non_brand_kickoff")

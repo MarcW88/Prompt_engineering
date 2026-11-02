@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Sequence
 
 COMPARATIVE_RE = re.compile(
     r"\b(vs\.?|versus|ou bien|différence entre|compar(?:er|é|atif|aison)|"
-    r"meilleur(?:e|s)? que|plutôt que|lequel|laquelle|lesquels|choisir entre)\b",
+    r"meilleur(?:e|s)?|plutôt que|lequel|laquelle|lesquels|choisir)\b",
     re.IGNORECASE,
 )
 
@@ -97,6 +97,11 @@ def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequ
         which = brand_hit or competitor_hit
         return {"category": "comparaison_standard", "kickoff_theme": theme or "",
                 "justification": f"comparaison impliquant « {which} »"}
+    if comparative and theme:
+        # « meilleur… vs alternatives » dans le périmètre kickoff : une
+        # comparaison standard même sans marque citée (règle des 30).
+        return {"category": "comparaison_standard", "kickoff_theme": theme,
+                "justification": f"comparaison générique du périmètre « {theme} »"}
     if brand_hit and theme:
         return {"category": "brand", "kickoff_theme": theme,
                 "justification": f"mentionne la marque « {brand_hit} » sur le thème « {theme} »"}

@@ -1,0 +1,1564 @@
+{
+  "input_version": "81af3a3aaefe",
+  "questions_total": 280,
+  "coverage": [
+    {
+      "dimension": "theme",
+      "value": "Compléments alimentaires naturels",
+      "observed": 14,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Vitamines et minéraux",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Magnésium et bisglycinate de magnésium",
+      "observed": 3,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Vitamine D et vitamine D3",
+      "observed": 10,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Vitamine B12 et complexe de vitamines B",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Oméga-3 et acides gras essentiels",
+      "observed": 18,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Probiotiques et microbiotiques",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Digestion et santé intestinale",
+      "observed": 1,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Stress et gestion du stress",
+      "observed": 9,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Sommeil et endormissement",
+      "observed": 3,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Ashwagandha et plantes adaptogènes",
+      "observed": 14,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Immunité et défenses naturelles",
+      "observed": 1,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Fatigue",
+      "observed": 6,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "énergie et vitalité",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Articulations et mobilité",
+      "observed": 2,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Curcuma et confort articulaire",
+      "observed": 2,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Sport et récupération musculaire",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Circulation sanguine et cholestérol",
+      "observed": 1,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Peau",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "cheveux et ongles",
+      "observed": 3,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Bien-être féminin et équilibre hormonal",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Bien-être masculin",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Santé du foie et fonction hépatique",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Compléments alimentaires sans additifs",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "theme",
+      "value": "Compléments alimentaires fabriqués en Belgique",
+      "observed": 2,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Qualité et biodisponibilité des compléments alimentaires",
+      "observed": 1,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "competitor",
+      "value": "Metagenics",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Nutergia",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "PiLeJe",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Lepivits",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Trenker",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Pharma Nord",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Pure Encapsulations",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Forté Pharma",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Biover",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "competitor",
+      "value": "Physalis",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    },
+    {
+      "dimension": "family",
+      "value": "brand",
+      "observed": 4,
+      "proposed": 0,
+      "covered": true
+    },
+    {
+      "dimension": "family",
+      "value": "comparaison_standard",
+      "observed": 0,
+      "proposed": 0,
+      "covered": false
+    }
+  ],
+  "uncovered": [
+    "Vitamines et minéraux",
+    "Vitamine B12 et complexe de vitamines B",
+    "Probiotiques et microbiotiques",
+    "énergie et vitalité",
+    "Sport et récupération musculaire",
+    "Peau",
+    "Bien-être féminin et équilibre hormonal",
+    "Bien-être masculin",
+    "Santé du foie et fonction hépatique",
+    "Compléments alimentaires sans additifs",
+    "Metagenics",
+    "Nutergia",
+    "PiLeJe",
+    "Lepivits",
+    "Trenker",
+    "Pharma Nord",
+    "Pure Encapsulations",
+    "Forté Pharma",
+    "Biover",
+    "Physalis",
+    "comparaison_standard"
+  ],
+  "batches": [
+    {
+      "batch_id": "theme:vitamines et minéraux:81af3a3a",
+      "objective": "couverture du thème kickoff « Vitamines et minéraux »",
+      "dimension": "theme",
+      "value": "Vitamines et minéraux",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:magnésium et bisglycinate de m:81af3a3a",
+      "objective": "couverture du thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "dimension": "theme",
+      "value": "Magnésium et bisglycinate de magnésium",
+      "count": 7,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:vitamine b12 et complexe de vi:81af3a3a",
+      "objective": "couverture du thème kickoff « Vitamine B12 et complexe de vitamines B »",
+      "dimension": "theme",
+      "value": "Vitamine B12 et complexe de vitamines B",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:probiotiques et microbiotiques:81af3a3a",
+      "objective": "couverture du thème kickoff « Probiotiques et microbiotiques »",
+      "dimension": "theme",
+      "value": "Probiotiques et microbiotiques",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:digestion et santé intestinale:81af3a3a",
+      "objective": "couverture du thème kickoff « Digestion et santé intestinale »",
+      "dimension": "theme",
+      "value": "Digestion et santé intestinale",
+      "count": 9,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:sommeil et endormissement:81af3a3a",
+      "objective": "couverture du thème kickoff « Sommeil et endormissement »",
+      "dimension": "theme",
+      "value": "Sommeil et endormissement",
+      "count": 7,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:immunité et défenses naturelle:81af3a3a",
+      "objective": "couverture du thème kickoff « Immunité et défenses naturelles »",
+      "dimension": "theme",
+      "value": "Immunité et défenses naturelles",
+      "count": 9,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:énergie et vitalité:81af3a3a",
+      "objective": "couverture du thème kickoff « énergie et vitalité »",
+      "dimension": "theme",
+      "value": "énergie et vitalité",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:articulations et mobilité:81af3a3a",
+      "objective": "couverture du thème kickoff « Articulations et mobilité »",
+      "dimension": "theme",
+      "value": "Articulations et mobilité",
+      "count": 8,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:curcuma et confort articulaire:81af3a3a",
+      "objective": "couverture du thème kickoff « Curcuma et confort articulaire »",
+      "dimension": "theme",
+      "value": "Curcuma et confort articulaire",
+      "count": 8,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:sport et récupération musculai:81af3a3a",
+      "objective": "couverture du thème kickoff « Sport et récupération musculaire »",
+      "dimension": "theme",
+      "value": "Sport et récupération musculaire",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:circulation sanguine et choles:81af3a3a",
+      "objective": "couverture du thème kickoff « Circulation sanguine et cholestérol »",
+      "dimension": "theme",
+      "value": "Circulation sanguine et cholestérol",
+      "count": 9,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:peau:81af3a3a",
+      "objective": "couverture du thème kickoff « Peau »",
+      "dimension": "theme",
+      "value": "Peau",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:cheveux et ongles:81af3a3a",
+      "objective": "couverture du thème kickoff « cheveux et ongles »",
+      "dimension": "theme",
+      "value": "cheveux et ongles",
+      "count": 7,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:bien-être féminin et équilibre:81af3a3a",
+      "objective": "couverture du thème kickoff « Bien-être féminin et équilibre hormonal »",
+      "dimension": "theme",
+      "value": "Bien-être féminin et équilibre hormonal",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:bien-être masculin:81af3a3a",
+      "objective": "couverture du thème kickoff « Bien-être masculin »",
+      "dimension": "theme",
+      "value": "Bien-être masculin",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:santé du foie et fonction hépa:81af3a3a",
+      "objective": "couverture du thème kickoff « Santé du foie et fonction hépatique »",
+      "dimension": "theme",
+      "value": "Santé du foie et fonction hépatique",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:compléments alimentaires sans :81af3a3a",
+      "objective": "couverture du thème kickoff « Compléments alimentaires sans additifs »",
+      "dimension": "theme",
+      "value": "Compléments alimentaires sans additifs",
+      "count": 10,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:compléments alimentaires fabri:81af3a3a",
+      "objective": "couverture du thème kickoff « Compléments alimentaires fabriqués en Belgique »",
+      "dimension": "theme",
+      "value": "Compléments alimentaires fabriqués en Belgique",
+      "count": 8,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:qualité et biodisponibilité de:81af3a3a",
+      "objective": "couverture du thème kickoff « Qualité et biodisponibilité des compléments alimentaires »",
+      "dimension": "theme",
+      "value": "Qualité et biodisponibilité des compléments alimentaires",
+      "count": 9,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:metagenics:81af3a3a",
+      "objective": "comparaisons standards avec « Metagenics »",
+      "dimension": "competitor",
+      "value": "Metagenics",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:nutergia:81af3a3a",
+      "objective": "comparaisons standards avec « Nutergia »",
+      "dimension": "competitor",
+      "value": "Nutergia",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:pileje:81af3a3a",
+      "objective": "comparaisons standards avec « PiLeJe »",
+      "dimension": "competitor",
+      "value": "PiLeJe",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:lepivits:81af3a3a",
+      "objective": "comparaisons standards avec « Lepivits »",
+      "dimension": "competitor",
+      "value": "Lepivits",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:trenker:81af3a3a",
+      "objective": "comparaisons standards avec « Trenker »",
+      "dimension": "competitor",
+      "value": "Trenker",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:pharma nord:81af3a3a",
+      "objective": "comparaisons standards avec « Pharma Nord »",
+      "dimension": "competitor",
+      "value": "Pharma Nord",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:pure encapsulations:81af3a3a",
+      "objective": "comparaisons standards avec « Pure Encapsulations »",
+      "dimension": "competitor",
+      "value": "Pure Encapsulations",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:forté pharma:81af3a3a",
+      "objective": "comparaisons standards avec « Forté Pharma »",
+      "dimension": "competitor",
+      "value": "Forté Pharma",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:biover:81af3a3a",
+      "objective": "comparaisons standards avec « Biover »",
+      "dimension": "competitor",
+      "value": "Biover",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "competitor:physalis:81af3a3a",
+      "objective": "comparaisons standards avec « Physalis »",
+      "dimension": "competitor",
+      "value": "Physalis",
+      "count": 3,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "family:brand:81af3a3a",
+      "objective": "questions de marque (avis, dosage, gamme)",
+      "dimension": "family",
+      "value": "brand",
+      "count": 8,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "81af3a3aaefe",
+      "produced": 0,
+      "error": ""
+    }
+  ],
+  "priorities": {
+    "target": 200,
+    "selected": 94,
+    "counts": {
+      "non_brand_kickoff": 90,
+      "brand": 4
+    },
+    "deficits": {
+      "non_brand_kickoff": 80,
+      "comparaison_standard": 15,
+      "brand": 11
+    },
+    "rounding": "30 = round(0.15×200) ; parts marque/comparaison selon l'offre réelle, jamais imposées égales",
+    "compliant": false
+  },
+  "priority_items": [
+    {
+      "question_id": "48e74ed1-e1f5-40bc-b846-4b9e1db0aa11",
+      "text": "si je souhaite privilégier une approche naturelle et la phytothérapie,",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Immunité et défenses naturelles",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Immunité et défenses naturelles »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "b7bf6c98-dd4b-43f0-901d-89e1894c2e87",
+      "text": "comment gérer la fatigue liée au stress et au travail ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "b767913b-a73d-4923-92e9-4420d58eaccd",
+      "text": "comment gérer la fatigue liée au stress et au travail ?. my location is",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a4ec439b-cebf-44dd-bda8-7c5966a0665f",
+      "text": "quelles marques alimentaires sont certifiées b corp en belgique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires fabriqués en Belgique",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires fabriqués en Belgique »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6949e2de-b326-4632-9deb-74110c9149e5",
+      "text": "où acheter des compléments alimentaires bio pour améliorer ma santé en 2025",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "f4092101-237a-41c7-a270-8380f04cd778",
+      "text": "quelle est la meilleure levure de riz rouge pour le cholestérol",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Circulation sanguine et cholestérol",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Circulation sanguine et cholestérol »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "2c461e17-4acf-42da-a53e-e2a2abfde99a",
+      "text": "quelles marques de compléments alimentaires sont certifiées b corp ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "f98b9654-4be0-4fdb-9c82-d8e1c24455ba",
+      "text": "comment gérer le stress et la fatigue mentale au quotidien ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a6f46aef-1d10-45dc-99a3-4a498304e36a",
+      "text": "quels magasins proposent des compléments alimentaires pour le stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "367cf00f-676b-4cb6-9b57-c87036b59567",
+      "text": "quel complément tout-en-un pour la fatigue, le sommeil et le confort",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "98587ff3-6b4d-4284-bf3e-c27161c65441",
+      "text": "est-ce normal de perdre beaucoup de cheveux après l’accouchement et quels",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "cheveux et ongles",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « cheveux et ongles »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "73fa5dcf-6e15-43fc-803f-82cd5c808b2f",
+      "text": "quels laboratoires de compléments alimentaires ont une approche basée sur",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d8e7d39f-24f0-48e1-a1f7-bb4b515947b7",
+      "text": "comment augmenter la concentration en réduisant la fatigue ?. my location",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "0bd10cf2-3c90-4937-bac6-91f95a0c722c",
+      "text": "où acheter des compléments alimentaires de qualité pas chers ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Qualité et biodisponibilité des compléments alimentaires",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Qualité et biodisponibilité des compléments alimentaires »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "be3c9f0f-bd1a-4da4-baa0-83ac178832e0",
+      "text": "où acheter des vitamines pour la fatigue en belgique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "60ceca54-8389-471f-adc0-a89fd87cd3d8",
+      "text": "sérum ou compléments ? fais-moi un choix selon mon cas.,0,1,0%,7",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "94dd244a-6af2-4d14-96ec-25fc63d99ed2",
+      "text": "quel produit utiliser pour la perte de cheveux post-accouchement ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "cheveux et ongles",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « cheveux et ongles »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "e1666ccf-ab30-4fd9-8272-5074b92a995d",
+      "text": "Quels sont les bienfaits de l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "e8e2d712-d1b9-41c5-8cef-c6a2de4a2739",
+      "text": "Pourquoi donne-t-on de l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "63dc56a9-1e0a-4f5d-98b7-91ca1ee9801f",
+      "text": "Pourquoi prendre de l'acide folique avec le fer ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6baace46-f4bb-46bb-b5ca-abe509d2aff0",
+      "text": "Quand prendre de l'acide folique enceinte ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "2feffa1d-10d3-480e-9172-ac22993cf7d5",
+      "text": "Quand doit-on arrêter l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3be5e11d-dcce-45c9-ab51-060cc2009ef1",
+      "text": "D'où vient l'acide hyaluronique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "1682e552-5fe0-414a-967f-cb9911c3ff9e",
+      "text": "Où puis-je trouver des gélules d'acide hyaluronique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "f63987d8-2aa8-423b-b68e-2e445fa38bce",
+      "text": "Où puis-je acheter du curcuma ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Curcuma et confort articulaire",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Curcuma et confort articulaire »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "f82f47fd-9aef-4947-885d-6fc5690f9d8a",
+      "text": "Quelle maladie fait baisser la vitamine B9 ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "859a9b8f-cc71-404a-9610-f3c8d8500fba",
+      "text": "Quel acide aminé pour maigrir ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "8bfa4f4c-5fa2-432f-815c-dc9209eaa249",
+      "text": "Quel est le somnifère naturel le plus efficace ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6c662a7e-b280-4fc2-9ee3-7cba1a41ee41",
+      "text": "Quel est le meilleur produit naturel pour mieux dormir ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "86a723d8-2e92-44b0-ae5a-e5900c733881",
+      "text": "Quel aliment contient tous les acides aminés essentiels ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "36795b57-d985-473e-a9be-d6f5f31073db",
+      "text": "Où se trouvent les acides gras saturés ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3fc6669a-fa47-41a8-89f8-850d322c58b2",
+      "text": "Quelle est la définition des acides gras ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "4765a328-c34d-44f3-8ee5-7f85eb3ae7bc",
+      "text": "Quel est le lien entre le reflux gastrique et le stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3b88ea81-4c88-4e22-8185-d95abeb2e7ca",
+      "text": "Quel est le légume le plus riche en vitamine C ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "49237566-3fba-4f6e-99ed-a96e4b7e37ab",
+      "text": "Quel légume contient du magnésium ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "99aed898-8123-49ab-8aaf-06086b193877",
+      "text": "Quel est l'anti-stress le plus efficace ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "2df7e06b-f6b5-4fb7-b2dd-d8c438e20ea7",
+      "text": "Comment calmer le stress rapidement ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "c850a2e5-3d3d-4391-a85a-9afcfba1c948",
+      "text": "Quelle est la méthode 3 3 3 pour le stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "5a67ac89-700b-4d6f-aef9-7215bb300ba5",
+      "text": "Quels sont les médicaments contre le stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "1aab9eda-f613-436e-8ec6-b227615e4084",
+      "text": "Quel est l'antioxydant naturel le plus puissant ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "9ce83897-063f-4c88-93a8-06ad3f43b8d2",
+      "text": "Quel appareil puis-je utiliser à domicile pour tester mon apnée du sommeil ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "59e61e15-1b86-459a-84a7-f943295769a9",
+      "text": "Quels sont les symptômes de l'apnée du sommeil chez un bébé ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "e8cd7d70-fd52-403a-aa79-9fff8ebd76d5",
+      "text": "Quelle vitamine pour la thyroïde ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d92600ab-dd8f-4920-a55e-16669fa0f38a",
+      "text": "Quels sont les noms des articulations du corps humain ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Articulations et mobilité",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Articulations et mobilité »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "403a9967-1153-4e93-b242-4005518d8ae0",
+      "text": "Puis-je prendre de l'ashwagandha tous les jours ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "c9402bdc-e700-44d7-a174-18c6a102d4c3",
+      "text": "C'est quoi l'ashwagandha en arabe ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "b8dfcb6a-cf8c-4516-b2c5-970c3b363bd1",
+      "text": "Où acheter de l'ashwagandha de qualité ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d4645abe-923c-4261-a164-2b4f8f4c4fdf",
+      "text": "Quels sont les effets secondaires possibles de l'ashwagandha ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "60f426ce-b300-4213-bf6d-8cb2e60961c2",
+      "text": "Quel est le lien entre le magnésium et l'ashwagandha ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d0d87ec3-c00e-4a73-8522-5f0a8d86d5ea",
+      "text": "L'ashwagandha a-t-elle un effet sur la testostérone ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "dce13aa7-4938-451e-b163-d0fbf6817b11",
+      "text": "Quels sont les avis sur l'ashwagandha et le cortisol ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "ff682f04-6aa3-4852-ad64-5827b92d4a32",
+      "text": "Quel est le plus puissant anti-stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a6653ba8-60bc-42cc-9aaa-efc1d589f823",
+      "text": "Quelle vitamine pour une neuropathie ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "9567c3a3-5436-45f0-9776-c9fd06240aa2",
+      "text": "Quels sont les signes d'un manque de vitamine B ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "982e6f1e-f1d5-4469-80c9-ba198b6c5536",
+      "text": "Est-ce que d'autres utilisateurs ont rencontré des problèmes similaires avec l'ouverture de la boîte du B complex de Be-Life ?",
+      "category": "brand",
+      "kickoff_theme": "",
+      "provenance": "transformed",
+      "qualification_justification": "question de marque « Be Life » (sans thème kickoff)",
+      "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "e83a0299-1939-4b77-ad94-313580695d57",
+      "text": "Pourquoi la boîte du B complex de Be-Life est-elle si difficile à ouvrir ?",
+      "category": "brand",
+      "kickoff_theme": "",
+      "provenance": "transformed",
+      "qualification_justification": "question de marque « Be Life » (sans thème kickoff)",
+      "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6a196ed9-f53f-4cff-a0f5-ebd8f9bcdcbb",
+      "text": "Où mettre une plante de curcuma ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3a6a4c36-b689-415e-be26-4d42fdd4959b",
+      "text": "Pourquoi la conception de l'emballage du B complex de Be-Life pose-t-elle des difficultés ?",
+      "category": "brand",
+      "kickoff_theme": "",
+      "provenance": "transformed",
+      "qualification_justification": "question de marque « Be Life » (sans thème kickoff)",
+      "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a0938427-b59a-419b-b909-f47c4a12725b",
+      "text": "quel complément alimentaire pour le stress et l'équilibre émotionnel ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "8a3b40e4-de22-4992-bf20-f496564d79e1",
+      "text": "quel est le meilleur complément pour la gestion du stress en 2025 ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "8a873ba7-3cca-417f-912f-252ee877b188",
+      "text": "quelles marques de compléments alimentaires sont les plus fiables ?,0,4,0%,67",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "44e02c03-2f1a-4f1d-89b3-268a8659ac40",
+      "text": "quelles sont les gammes de compléments les plus populaires en belgique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires fabriqués en Belgique",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires fabriqués en Belgique »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "470f6dae-68a6-463f-8208-40956e442573",
+      "text": "Est-ce que le curcuma est bon pour le reflux gastrique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Curcuma et confort articulaire",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Curcuma et confort articulaire »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "cdc89b1b-2fc1-4cf6-91d0-e926bfc72e04",
+      "text": "Quelle est la liste des protéines essentiels pour le corps humain ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "bcc90013-073d-4c14-984d-018c6cfdcb02",
+      "text": "quelle routine choisir pour limiter les signes visibles de fatigue ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "741adadb-2ab8-44df-a3ff-829f778e3098",
+      "text": "Quels sont les signes d'un manque d'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "eb749daa-7f11-4a6e-bdfc-885410fa8088",
+      "text": "Quel est le rôle de l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3dade73a-1a84-47d3-aec7-cc678d0fc405",
+      "text": "Est-ce que la banane contient de l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "de6470ee-3928-482f-bbf8-a96ec6b9ebb1",
+      "text": "Quel est le rôle des acides aminés dans l'organisme ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "10da728c-ad03-4f69-abd1-462f387524d3",
+      "text": "Quelle est la formule chimique d'un acide aminé ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "928e2a0b-1373-4cdc-b294-54ac40173668",
+      "text": "Quelle est la relation entre une carence en cuivre et les cheveux ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "cheveux et ongles",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « cheveux et ongles »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "b738ef6a-7268-4720-b7af-3f3d9655ec23",
+      "text": "Pourquoi une femme enceinte prend de l'acide folique ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3c79d320-0388-430c-a564-49cc248be967",
+      "text": "Quand prendre la vitamine C acérola ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a5c385dd-93ec-4202-8646-660cfc073eb8",
+      "text": "Quelle quantité maximum de vitamine C par jour ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "53a4f9ec-34f1-4497-8e0b-f44b98ccd4fe",
+      "text": "Puis-je prendre du magnésium enceinte ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "20d36a2b-e067-4369-b56e-599619c61393",
+      "text": "Quel est le remède naturel pour dormir rapidement ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6d20fb5d-42ba-49a6-abc0-4295c2650648",
+      "text": "Quel régime alimentaire pour l'hypertension ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6326650a-f949-40eb-ab0f-8673efb6c3dd",
+      "text": "Quel est le lien entre la vitamine B12 et les articulations ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6e5df553-b695-4291-9eeb-e1053971b660",
+      "text": "Quel est l'aliment numéro 1 pour les articulations ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Articulations et mobilité",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Articulations et mobilité »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "db599d56-0cb9-486f-8e52-444dcefcf97c",
+      "text": "Quels sont les bienfaits de l'ashwagandha ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "3d76e8d3-bfe9-485e-9842-a3b546223cf2",
+      "text": "Quel est le médicament le plus efficace contre le stress ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "8a4ca0ca-6ace-4225-8247-c4f841208adf",
+      "text": "Quel est le plus puissant antioxydant naturel ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "2fe63a41-3f83-4fb7-adce-7b09f48ad0d0",
+      "text": "Quelles sont les 5 plantes les plus antioxydantes au monde ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d43ec2ea-43d3-4c3a-bd27-1d90c90c949a",
+      "text": "Est-ce que l'ashwagandha fait maigrir ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "a14ba6d3-2d0b-4492-9ddc-770b269252db",
+      "text": "Comment détecter une bactérie intestinale ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Digestion et santé intestinale",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Digestion et santé intestinale »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "d0101288-4111-4d4c-8943-7bd40c316bb6",
+      "text": "Est-il possible de guérir de l'apnée du sommeil ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "693fe8ad-0cf8-4dba-b0e3-fc704fdf84ad",
+      "text": "Quels sont les effets de l'ashwagandha sur le corps ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "07cdac01-d204-4043-991b-43764cf1c233",
+      "text": "Quelle est la meilleure ashwagandha ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "495de8f8-04d0-4529-9e13-61fb052e8c1d",
+      "text": "Quels sont les bienfaits de l'ashwagandha bio ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "ee03dd2e-aefa-40f6-80f1-477a6c73d1e1",
+      "text": "Quel complément alimentaire est recommandé pour soulager les douleurs musculaires ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "8ae58611-48f0-4f09-8c5a-84d55f100d49",
+      "text": "Quelles plantes sont efficaces pour lutter contre le stress naturellement ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "06b49cd0-f23b-4bf1-b354-a885b4ea9bce",
+      "text": "Quelle est la meilleure forme de vitamine B6 ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "88b7a779-57fa-42a4-9a4c-f73ab613636e",
+      "text": "Quels sont les effets de l'ashwagandha sur la musculation ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6966c0ef-d1cd-43df-ae48-54b488246ddb",
+      "text": "Avez-vous des conseils pour ouvrir facilement la boîte du B complex de Be-Life ?",
+      "category": "brand",
+      "kickoff_theme": "",
+      "provenance": "transformed",
+      "qualification_justification": "question de marque « Be Life » (sans thème kickoff)",
+      "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
+    }
+  ],
+  "deferred_count": 186
+}
