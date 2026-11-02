@@ -1037,9 +1037,9 @@ class CollectionWorker:
             return {"examples": 0, "reconstructed": 0}
         # Same admission contract as the corpus export and the target selector:
         # non-empty answer, no provider error, Bright Data execution only.
-        observations = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response&prompt_id=in.({','.join(prompts_by_id)})")
+        observations = self.db.request("GET", "observations", f"select=id,prompt_id,engine,provider,answer,raw_response->>error,raw_response->>executed_text&prompt_id=in.({','.join(prompts_by_id)})")
         observations = [row for row in observations if row.get("provider") in ELIGIBLE_PROVIDERS
-            and str(row.get("answer") or "").strip() and not (row.get("raw_response") or {}).get("error")]
+            and str(row.get("answer") or "").strip() and not row.get("error")]
         observation_ref = {row["id"]: row for row in observations}
         fan_out_rows = self.db.request("GET", "fan_outs", f"select=observation_id,query,source&observation_id=in.({','.join(observation_ref)})") if observations else []
         # Examples are segmented by engine: ChatGPT traces never mix with
@@ -1051,7 +1051,7 @@ class CollectionWorker:
                 # The example prompt is the exact text executed for that run:
                 # an edited version produces its own couples, never merged
                 # with the previous version's traces.
-                executed_text = str((observation.get("raw_response") or {}).get("executed_text") or prompts_by_id[observation["prompt_id"]]["text"])
+                executed_text = str(observation.get("executed_text") or prompts_by_id[observation["prompt_id"]]["text"])
                 key = (observation["prompt_id"], executed_text, str(observation.get("engine") or ""))
                 fan_outs_by_key.setdefault(key, []).append(row["query"])
         examples = [ReconstructionExample(executed_text, fan_outs, prompt_id, engine)
