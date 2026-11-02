@@ -81,6 +81,9 @@ def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequ
     if competitor_hit:
         return {"category": "comparaison_standard", "kickoff_theme": theme or "",
                 "justification": f"mentionne le concurrent « {competitor_hit} »"}
+    if not kickoff_themes:
+        return {"category": "non_brand_kickoff", "kickoff_theme": "",
+                "justification": "aucun thème kickoff déclaré — admis par défaut"}
     return {"category": "hors_périmètre", "kickoff_theme": "",
             "justification": "ni marque, ni comparaison de marque, ni thème kickoff"}
 
@@ -107,15 +110,18 @@ def select_with_quotas(candidates, sample_size: int, sample_fn, brand_share: flo
     }
     deficits = {}
     selected = []
-    # D'abord le cœur kickoff, puis le quota marque/comparaison ; les restes
-    # non utilisés d'un quota peuvent aider l'autre catégorie admissible —
-    # jamais le hors périmètre.
-    for group_name in ("non_brand_kickoff", "brand_plus_comparaison"):
-        want = quotas[group_name]
-        pool = groups[group_name]
-        take = sample_fn(pool, min(want, len(pool)), max_per_cluster)
+    # D'abord le cœur kickoff, puis le quota marque/comparaison — les deux
+    # familles doivent être représentées : marque et comparaison se partagent
+    # le quota à parts égales, les manques sont reportés par famille.
+    kickoff_take = sample_fn(groups["non_brand_kickoff"], min(quotas["non_brand_kickoff"], len(groups["non_brand_kickoff"])), max_per_cluster)
+    selected.extend(kickoff_take)
+    deficits["non_brand_kickoff"] = max(0, quotas["non_brand_kickoff"] - len(kickoff_take))
+    family_quota = max(1, quotas["brand_plus_comparaison"] // 2)
+    for family in ("brand", "comparaison_standard"):
+        pool = [c for c in groups["brand_plus_comparaison"] if c.metadata.get("qualification", {}).get("category") == family]
+        take = sample_fn(pool, min(family_quota, len(pool)), max_per_cluster)
         selected.extend(take)
-        deficits[group_name] = max(0, want - len(take))
+        deficits[family] = max(0, family_quota - len(take))
     # Le solde kickoff non pourvu peut être repris par marque/comparaison et
     # réciproquement — jamais par du hors périmètre.
     remaining = sample_size - len(selected)

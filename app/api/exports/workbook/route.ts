@@ -506,6 +506,7 @@ export async function GET(request: Request) {
       { champ: "Prompts finaux exécutés (01)", valeur: executedFinalRows.length },
       { champ: "Propositions approuvées non exécutées (01b)", valeur: propositionRows.length },
       { champ: "Prompts finaux approuvés (total)", valeur: approvedCount },
+      { champ: "Répartition portefeuille final", valeur: (() => { const report = (frozen?.output as Row | undefined)?.category_report as Row | undefined; return report ? `marque+comparaison ${report.branded_share}% · kickoff ${report.kickoff_share}% (${report.ecart})` : "non finalisé ou catégories non qualifiées"; })() },
       { champ: "Exécutions", valeur: observations.length },
       { champ: "Limites", valeur: "traces non exposées par certains providers ; stabilité non mesurée sous 2 runs ; Perplexity exclu" },
       { champ: "Résumé financier", valeur: `engagé ${(confirmed + pending).toFixed(4)} eur (confirmé ${confirmed.toFixed(4)} + provision ${pending.toFixed(4)}) · conversion: ${EUR_RATE_SOURCE}` },

@@ -31,6 +31,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
   const [fanoutFallback, setFanoutFallback] = useState(true);
   const [brandName, setBrandName] = useState("");
   const [projectBudget, setProjectBudget] = useState<number | null>(null);
+  const [spentEur, setSpentEur] = useState<number | null>(null);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -50,7 +51,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
       });
     fetch(`/api/budget?projectId=${encodeURIComponent(projectId)}`)
       .then((response) => response.ok ? response.json() : null)
-      .then((data) => { if (data?.configuredTotal != null) setProjectBudget(Number(data.configuredTotal)); })
+      .then((data) => { if (data?.configuredTotal != null) { setProjectBudget(Number(data.configuredTotal)); setSpentEur(Number(data.confirmedEur ?? 0)); } })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -212,7 +213,8 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
             )}
             <p><strong>Passage principal :</strong> {Math.min(executionSampleSize, geoClusters ? geoClusters * candidatesPerCluster : executionSampleSize).toLocaleString("fr-FR")} prompts admissibles × {engines.length} moteur{engines.length > 1 ? "s" : ""} × {repetitions} passage{repetitions > 1 ? "s" : ""} = {Math.min(executionSampleSize, geoClusters ? geoClusters * candidatesPerCluster : executionSampleSize) * engines.length * repetitions} appels.</p>
             <p><strong>Appels auxiliaires :</strong> {fanoutFallback ? `jusqu'à ~${Math.min(executionSampleSize, geoClusters ? geoClusters * candidatesPerCluster : executionSampleSize)} appels OpenAI web search si le provider ne rapporte pas de traces (~0,03 $/appel, réservés dans le plafond)` : "désactivés — les traces manquantes resteront « non rapportées »."}</p>
-            <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond job :</strong> {maxBudgetEur.toFixed(2)} €{projectBudget != null ? <> · <strong>Plafond projet :</strong> {projectBudget.toFixed(2)} €</> : ""}</p>
+            <p><strong>Coût estimé :</strong> {estimatedCost.toFixed(2)} € · <strong>Plafond job :</strong> {maxBudgetEur.toFixed(2)} €{projectBudget != null ? <> · <strong>Plafond projet :</strong> {projectBudget.toFixed(2)} €{spentEur != null ? <> · <strong>déjà engagé :</strong> {spentEur.toFixed(2)} € (reste {(projectBudget - spentEur).toFixed(2)} €)</> : ""}</> : ""}</p>
+            <p><small>La réservation couvre le passage principal ET les appels auxiliaires autorisés. Les montants inconnus (exécutions Cloud Run, appels non rapprochés) sont signalés dans le centre Budget, jamais présentés comme certains.</small></p>
             <p><label className="check-option"><input type="checkbox" checked={fanoutFallback} onChange={(event) => setFanoutFallback(event.target.checked)} /> Autoriser les appels auxiliaires OpenAI pour récupérer les traces de recherche manquantes</label></p>
             <p><strong>{realism.label}</strong> — {realism.text}</p>
             <p><small>Durée indicative : environ {minMinutes} à {maxMinutes} minutes (~10 s par exécution). Le provider est configuré côté worker (variable DATASET_PROVIDER) ; l’estimation du simulateur de collecte ne couvre pas ces exécutions. {estimatedCost > maxBudgetEur ? "Le plafond peut limiter la fin du job." : ""}</small></p>

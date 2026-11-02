@@ -51,7 +51,17 @@ class QualificationTests(unittest.TestCase):
         self.assertEqual(len(selected), 10)
         self.assertFalse(any(c.metadata["qualification"]["category"] == "hors_périmètre" for c in selected))
         self.assertEqual(deficits["non_brand_kickoff"], 7)
-        self.assertEqual(deficits["brand_plus_comparaison"], 3)
+        self.assertEqual(deficits["brand"], 1)
+        self.assertEqual(deficits["comparaison_standard"], 1)
+
+    def test_both_brand_families_are_represented(self):
+        candidates = [candidate(f"brand {i}", "brand") for i in range(2)]
+        candidates += [candidate(f"vs {i}", "comparaison_standard") for i in range(2)]
+        candidates += [candidate(f"k {i}", "non_brand_kickoff") for i in range(20)]
+        selected, _ = select_with_quotas(candidates, 20, lambda pool, size, mpc: pool[:size])
+        cats = {c.metadata["qualification"]["category"] for c in selected}
+        self.assertIn("brand", cats)
+        self.assertIn("comparaison_standard", cats)
 
     def test_no_double_counting_between_categories(self):
         candidates = [candidate(f"b{i}", "brand") for i in range(3)] + [candidate(f"k{i}", "non_brand_kickoff") for i in range(10)]
