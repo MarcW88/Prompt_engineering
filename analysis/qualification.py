@@ -84,8 +84,22 @@ def match_kickoff_theme(text: str, themes: Sequence[str]) -> Optional[str]:
 
 _INTERROGATIVE_RE = re.compile(r"\?|\b(quel(?:le|s)?|comment|pourquoi|combien|est-ce|où|quand|lequel|laquelle)\b", re.IGNORECASE)
 
+# Artefacts de scraping : fragments anglais techniques, restes de métriques
+# (« ,0,4,0% », « my location is ») et formulations visiblement tronquées.
+_ARTIFACT_RE = re.compile(
+    r"my location|location is\b|,\s*\d|\d,\d+%|\b(is|are|the|and|for)\s*$",
+    re.IGNORECASE)
+
+
+def _is_corrupted(text: str) -> bool:
+    stripped = text.strip()
+    return bool(_ARTIFACT_RE.search(stripped)) or stripped.endswith(",") or stripped.endswith(" et")
+
 
 def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequence[str], kickoff_themes: Sequence[str]) -> Dict[str, str]:
+    if _is_corrupted(text):
+        return {"category": "hors_périmètre", "kickoff_theme": "",
+                "justification": "formulation corrompue ou tronquée (artefact de collecte)"}
     normalized = _norm(text)
     brand_hit = _mentions_brand(normalized, brand_variants)
     competitor_hit = _mentions_brand(normalized, competitors)

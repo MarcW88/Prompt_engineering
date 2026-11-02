@@ -1,12 +1,12 @@
 {
-  "input_version": "1ce355151968",
-  "questions_total": 517,
+  "input_version": "2e996a7e557c",
+  "questions_total": 579,
   "coverage": [
     {
       "dimension": "theme",
       "value": "Compléments alimentaires naturels",
-      "observed": 14,
-      "proposed": 26,
+      "observed": 12,
+      "proposed": 33,
       "covered": true
     },
     {
@@ -20,14 +20,14 @@
       "dimension": "theme",
       "value": "Magnésium et bisglycinate de magnésium",
       "observed": 3,
-      "proposed": 23,
+      "proposed": 27,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Vitamine D et vitamine D3",
       "observed": 10,
-      "proposed": 36,
+      "proposed": 45,
       "covered": true
     },
     {
@@ -41,14 +41,14 @@
       "dimension": "theme",
       "value": "Oméga-3 et acides gras essentiels",
       "observed": 18,
-      "proposed": 1,
+      "proposed": 10,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Probiotiques et microbiotiques",
       "observed": 0,
-      "proposed": 22,
+      "proposed": 25,
       "covered": true
     },
     {
@@ -62,14 +62,14 @@
       "dimension": "theme",
       "value": "Stress et gestion du stress",
       "observed": 9,
-      "proposed": 8,
+      "proposed": 9,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Sommeil et endormissement",
       "observed": 3,
-      "proposed": 7,
+      "proposed": 10,
       "covered": true
     },
     {
@@ -82,50 +82,50 @@
     {
       "dimension": "theme",
       "value": "Immunité et défenses naturelles",
-      "observed": 1,
-      "proposed": 4,
+      "observed": 0,
+      "proposed": 8,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Fatigue",
-      "observed": 6,
-      "proposed": 4,
+      "observed": 4,
+      "proposed": 5,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "énergie et vitalité",
       "observed": 0,
-      "proposed": 5,
+      "proposed": 8,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Articulations et mobilité",
       "observed": 2,
-      "proposed": 6,
+      "proposed": 9,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Curcuma et confort articulaire",
       "observed": 2,
-      "proposed": 9,
+      "proposed": 12,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Sport et récupération musculaire",
       "observed": 0,
-      "proposed": 5,
+      "proposed": 7,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Circulation sanguine et cholestérol",
       "observed": 1,
-      "proposed": 5,
+      "proposed": 6,
       "covered": true
     },
     {
@@ -139,14 +139,14 @@
       "dimension": "theme",
       "value": "cheveux et ongles",
       "observed": 3,
-      "proposed": 5,
+      "proposed": 6,
       "covered": true
     },
     {
       "dimension": "theme",
       "value": "Bien-être féminin et équilibre hormonal",
       "observed": 0,
-      "proposed": 2,
+      "proposed": 3,
       "covered": true
     },
     {
@@ -167,7 +167,7 @@
       "dimension": "theme",
       "value": "Compléments alimentaires sans additifs",
       "observed": 0,
-      "proposed": 10,
+      "proposed": 11,
       "covered": true
     },
     {
@@ -182,6 +182,20 @@
       "value": "Qualité et biodisponibilité des compléments alimentaires",
       "observed": 1,
       "proposed": 8,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Longévité (gamme Age Protect, lancement fin 2026/début 2027)",
+      "observed": 0,
+      "proposed": 2,
+      "covered": true
+    },
+    {
+      "dimension": "theme",
+      "value": "Sommeil et endormissement (produit Sleep Balance)",
+      "observed": 0,
+      "proposed": 10,
       "covered": true
     },
     {
@@ -257,14 +271,14 @@
     {
       "dimension": "family",
       "value": "brand",
-      "observed": 37,
+      "observed": 55,
       "proposed": 0,
       "covered": true
     },
     {
       "dimension": "family",
       "value": "comparaison_standard",
-      "observed": 36,
+      "observed": 45,
       "proposed": 0,
       "covered": true
     }
@@ -284,7 +298,7 @@
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     },
@@ -293,11 +307,11 @@
       "objective": "couverture du thème kickoff « Bien-être féminin et équilibre hormonal »",
       "dimension": "theme",
       "value": "Bien-être féminin et équilibre hormonal",
-      "count": 8,
+      "count": 7,
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     },
@@ -310,7 +324,7 @@
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     },
@@ -323,7 +337,20 @@
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
+      "produced": 0,
+      "error": ""
+    },
+    {
+      "batch_id": "theme:longévité (gamme age protect, ",
+      "objective": "couverture du thème kickoff « Longévité (gamme Age Protect, lancement fin 2026/début 2027) »",
+      "dimension": "theme",
+      "value": "Longévité (gamme Age Protect, lancement fin 2026/début 2027)",
+      "count": 8,
+      "status": "pending",
+      "attempts": 0,
+      "model": "",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     },
@@ -336,7 +363,7 @@
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     },
@@ -349,20 +376,18 @@
       "status": "pending",
       "attempts": 0,
       "model": "",
-      "input_version": "1ce355151968",
+      "input_version": "2e996a7e557c",
       "produced": 0,
       "error": ""
     }
   ],
-  "executed_batches": [],
-  "proposed_inserted": 0,
   "priorities": {
     "target": 200,
     "selected": 200,
     "counts": {
+      "comparaison_standard": 15,
       "non_brand_kickoff": 170,
-      "brand": 15,
-      "comparaison_standard": 15
+      "brand": 15
     },
     "deficits": {
       "non_brand_kickoff": 0,
@@ -374,26 +399,17 @@
   },
   "priority_items": [
     {
-      "question_id": "48e74ed1-e1f5-40bc-b846-4b9e1db0aa11",
-      "text": "si je souhaite privilégier une approche naturelle et la phytothérapie,",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Immunité et défenses naturelles",
+      "question_id": "f4092101-237a-41c7-a270-8380f04cd778",
+      "text": "quelle est la meilleure levure de riz rouge pour le cholestérol",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Circulation sanguine et cholestérol",
       "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Immunité et défenses naturelles »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+      "qualification_justification": "comparaison générique du périmètre « Circulation sanguine et cholestérol »",
+      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
       "question_id": "b7bf6c98-dd4b-43f0-901d-89e1894c2e87",
       "text": "comment gérer la fatigue liée au stress et au travail ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Fatigue",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Fatigue »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "b767913b-a73d-4923-92e9-4420d58eaccd",
-      "text": "comment gérer la fatigue liée au stress et au travail ?. my location is",
       "category": "non_brand_kickoff",
       "kickoff_theme": "Fatigue",
       "provenance": "observed",
@@ -416,15 +432,6 @@
       "kickoff_theme": "Compléments alimentaires naturels",
       "provenance": "observed",
       "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "f4092101-237a-41c7-a270-8380f04cd778",
-      "text": "quelle est la meilleure levure de riz rouge pour le cholestérol",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Circulation sanguine et cholestérol",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Circulation sanguine et cholestérol »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
@@ -491,15 +498,6 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
-      "question_id": "d8e7d39f-24f0-48e1-a1f7-bb4b515947b7",
-      "text": "comment augmenter la concentration en réduisant la fatigue ?. my location",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Fatigue",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Fatigue »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
       "question_id": "4d598d6f-7f99-4270-b8cd-61978ddb27dc",
       "text": "comment le stress peut-il affecter l'apparence de ma peau ?",
       "category": "non_brand_kickoff",
@@ -524,15 +522,6 @@
       "kickoff_theme": "Vitamine D et vitamine D3",
       "provenance": "observed",
       "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "60ceca54-8389-471f-adc0-a89fd87cd3d8",
-      "text": "sérum ou compléments ? fais-moi un choix selon mon cas.,0,1,0%,7",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Compléments alimentaires naturels",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
@@ -644,15 +633,6 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
-      "question_id": "6c662a7e-b280-4fc2-9ee3-7cba1a41ee41",
-      "text": "Quel est le meilleur produit naturel pour mieux dormir ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Compléments alimentaires naturels",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
       "question_id": "86a723d8-2e92-44b0-ae5a-e5900c733881",
       "text": "Quel aliment contient tous les acides aminés essentiels ?",
       "category": "non_brand_kickoff",
@@ -750,6 +730,15 @@
       "provenance": "observed",
       "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "6c662a7e-b280-4fc2-9ee3-7cba1a41ee41",
+      "text": "Quel est le meilleur produit naturel pour mieux dormir ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "observed",
+      "qualification_justification": "comparaison générique du périmètre « Compléments alimentaires naturels »",
+      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
       "question_id": "9ce83897-063f-4c88-93a8-06ad3f43b8d2",
@@ -905,6 +894,15 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
+      "question_id": "8a3b40e4-de22-4992-bf20-f496564d79e1",
+      "text": "quel est le meilleur complément pour la gestion du stress en 2025 ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "observed",
+      "qualification_justification": "comparaison générique du périmètre « Stress et gestion du stress »",
+      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "6a196ed9-f53f-4cff-a0f5-ebd8f9bcdcbb",
       "text": "Où mettre une plante de curcuma ?",
       "category": "non_brand_kickoff",
@@ -923,26 +921,17 @@
       "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
     },
     {
+      "question_id": "bcc90013-073d-4c14-984d-018c6cfdcb02",
+      "text": "quelle routine choisir pour limiter les signes visibles de fatigue ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Fatigue",
+      "provenance": "observed",
+      "qualification_justification": "comparaison générique du périmètre « Fatigue »",
+      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "a0938427-b59a-419b-b909-f47c4a12725b",
       "text": "quel complément alimentaire pour le stress et l'équilibre émotionnel ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Compléments alimentaires naturels",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "8a3b40e4-de22-4992-bf20-f496564d79e1",
-      "text": "quel est le meilleur complément pour la gestion du stress en 2025 ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Stress et gestion du stress",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "8a873ba7-3cca-417f-912f-252ee877b188",
-      "text": "quelles marques de compléments alimentaires sont les plus fiables ?,0,4,0%,67",
       "category": "non_brand_kickoff",
       "kickoff_theme": "Compléments alimentaires naturels",
       "provenance": "observed",
@@ -1001,15 +990,6 @@
       "kickoff_theme": "Digestion et santé intestinale",
       "provenance": "proposed",
       "qualification_justification": "correspond au thème kickoff « Digestion et santé intestinale »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "bcc90013-073d-4c14-984d-018c6cfdcb02",
-      "text": "quelle routine choisir pour limiter les signes visibles de fatigue ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Fatigue",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Fatigue »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
@@ -1382,6 +1362,15 @@
       "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
+      "question_id": "519c9acb-d852-4dfb-8c75-2e4a56d03fea",
+      "text": "Sleep Balance plantes ingrédients sommeil avant de dormir",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement (produit Sleep Balance) »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "928e2a0b-1373-4cdc-b294-54ac40173668",
       "text": "Quelle est la relation entre une carence en cuivre et les cheveux ?",
       "category": "non_brand_kickoff",
@@ -1562,6 +1551,24 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
+      "question_id": "ae771ddd-f0e6-4cd5-9d70-7be7de34c50f",
+      "text": "Clémence Lejoly podcast sommeil aspects expertise",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "9e527321-db1f-48ab-b5df-ef3e11ee1bd8",
+      "text": "\"SLEEP BALANCE\" formule sommeil réparateur",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement (produit Sleep Balance) »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "3c79d320-0388-430c-a564-49cc248be967",
       "text": "Quand prendre la vitamine C acérola ?",
       "category": "non_brand_kickoff",
@@ -1715,6 +1722,15 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
+      "question_id": "69b546e9-e723-4c99-8c15-a5aa5ba8262c",
+      "text": "\"SLEEP BALANCE\" complément sommeil",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement (produit Sleep Balance) »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "2fe63a41-3f83-4fb7-adce-7b09f48ad0d0",
       "text": "Quelles sont les 5 plantes les plus antioxydantes au monde ?",
       "category": "non_brand_kickoff",
@@ -1740,15 +1756,6 @@
       "provenance": "observed",
       "qualification_justification": "correspond au thème kickoff « Digestion et santé intestinale »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "62749125-2f4a-4762-b4be-dfb8dcc6a4de",
-      "text": "comment choisir un complexe de vitamines b de qualité ?",
-      "category": "comparaison_standard",
-      "kickoff_theme": "Vitamine D et vitamine D3",
-      "provenance": "proposed",
-      "qualification_justification": "comparaison générique du périmètre « Vitamine D et vitamine D3 »",
-      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
       "question_id": "2b452e2e-7604-4afd-ad8e-cd91c4702bc8",
@@ -1778,6 +1785,15 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
+      "question_id": "fc7ff7fb-faaa-455d-a65c-307cf2096047",
+      "text": "symptômes apnée du sommeil bébé source médicale",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "6f6349c9-6950-407e-b3d1-f51c399d9319",
       "text": "où puis-je trouver des informations sur les effets du complexe de vitamines b sur la fatigue ?",
       "category": "non_brand_kickoff",
@@ -1796,21 +1812,30 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
-      "question_id": "fa905c37-e1a7-41d2-817a-60846b01f78a",
-      "text": "comment choisir un complément de probiotiques adapté à mes besoins ?",
-      "category": "comparaison_standard",
-      "kickoff_theme": "Probiotiques et microbiotiques",
+      "question_id": "77deac69-e503-443b-aeed-31a69a9e4198",
+      "text": "apnea du sommeil causes traitements guérison site ameli.fr",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Sommeil et endormissement",
       "provenance": "proposed",
-      "qualification_justification": "comparaison générique du périmètre « Probiotiques et microbiotiques »",
-      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
+      "qualification_justification": "correspond au thème kickoff « Sommeil et endormissement »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
-      "question_id": "07cdac01-d204-4043-991b-43764cf1c233",
-      "text": "Quelle est la meilleure ashwagandha ?",
+      "question_id": "0d35da90-0a29-4fd9-a465-c10683067a71",
+      "text": "acides gras saturés où se trouvent alimentation sources fiables",
       "category": "non_brand_kickoff",
-      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "425d75a5-a95b-4805-86c1-41a65fb289e1",
+      "text": "magnésium ashwagandha interaction evidence official health source",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
@@ -1850,15 +1875,6 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
-      "question_id": "06b49cd0-f23b-4bf1-b354-a885b4ea9bce",
-      "text": "Quelle est la meilleure forme de vitamine B6 ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Vitamine D et vitamine D3",
-      "provenance": "observed",
-      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
-      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
       "question_id": "a145edf9-0e71-44c3-93ac-39db7f4dbb32",
       "text": "quelles différences existe-t-il entre les probiotiques et les prébiotiques ?",
       "category": "non_brand_kickoff",
@@ -1875,15 +1891,6 @@
       "provenance": "proposed",
       "qualification_justification": "correspond au thème kickoff « Probiotiques et microbiotiques »",
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "97232711-b957-4c64-bdf3-171856163ba4",
-      "text": "quels sont les meilleurs aliments riches en probiotiques ?",
-      "category": "comparaison_standard",
-      "kickoff_theme": "Probiotiques et microbiotiques",
-      "provenance": "proposed",
-      "qualification_justification": "comparaison générique du périmètre « Probiotiques et microbiotiques »",
-      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
       "question_id": "1c7225d1-2754-4715-8444-d51f6f259a7a",
@@ -1938,15 +1945,6 @@
       "provenance": "proposed",
       "qualification_justification": "mentionne la marque « Be Life » sur le thème « Probiotiques et microbiotiques »",
       "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
-    },
-    {
-      "question_id": "546b555f-8ee4-4c10-90ed-5582fea8bc1b",
-      "text": "quels sont les meilleurs probiotiques pour améliorer la santé intestinale ?",
-      "category": "comparaison_standard",
-      "kickoff_theme": "Digestion et santé intestinale",
-      "provenance": "proposed",
-      "qualification_justification": "comparaison générique du périmètre « Digestion et santé intestinale »",
-      "selection_reason": "dans le quota « comparaison_standard » — diversité des thèmes préservée"
     },
     {
       "question_id": "ee502704-4fa6-46a3-8ee8-32240d88c023",
@@ -2129,6 +2127,24 @@
       "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
+      "question_id": "910990db-6234-4a60-b851-542beac14972",
+      "text": "comment les acides gras essentiels influencent-ils la santé du cœur et la circulation sanguine ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "e056c86c-130f-4579-9435-78388a43bc73",
+      "text": "est-ce que des plantes adaptogènes peuvent aider à améliorer la circulation sanguine ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
+    },
+    {
       "question_id": "390a3a7c-a170-486b-8cc3-930e9962c297",
       "text": "comment be life se positionne-t-elle sur le marché des compléments pour la circulation sanguine ?",
       "category": "brand",
@@ -2136,6 +2152,15 @@
       "provenance": "proposed",
       "qualification_justification": "mentionne la marque « Be Life » sur le thème « Circulation sanguine et cholestérol »",
       "selection_reason": "dans le quota « brand » — diversité des thèmes préservée"
+    },
+    {
+      "question_id": "ed172898-10bd-4b4c-9737-87dd12da2a9e",
+      "text": "quels compléments alimentaires sont les plus efficaces pour améliorer la santé de la peau ?",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Peau",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Peau »",
+      "selection_reason": "dans le quota « non_brand_kickoff » — diversité des thèmes préservée"
     },
     {
       "question_id": "be88a416-e083-4709-928d-8b90062ebe75",
@@ -2175,6 +2200,24 @@
     }
   ],
   "deferred_items": [
+    {
+      "question_id": "b767913b-a73d-4923-92e9-4420d58eaccd",
+      "text": "comment gérer la fatigue liée au stress et au travail ?. my location is",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
+      "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "48e74ed1-e1f5-40bc-b846-4b9e1db0aa11",
+      "text": "si je souhaite privilégier une approche naturelle et la phytothérapie,",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
+      "defer_reason": "hors périmètre"
+    },
     {
       "question_id": "14f7bda2-e8c8-4c0f-a8c5-529b37a0b653",
       "text": "quel en-cas protéiné peut satisfaire une envie de sucré ?",
@@ -2311,6 +2354,15 @@
       "defer_reason": "hors périmètre"
     },
     {
+      "question_id": "60ceca54-8389-471f-adc0-a89fd87cd3d8",
+      "text": "sérum ou compléments ? fais-moi un choix selon mon cas.,0,1,0%,7",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
+      "defer_reason": "hors périmètre"
+    },
+    {
       "question_id": "569c3d9b-acf6-40bf-8a8f-e96cf33bb6ef",
       "text": "comment puis-je savoir ce qui impacte mes niveaux de glycémie ?",
       "category": "hors_périmètre",
@@ -2340,15 +2392,6 @@
     {
       "question_id": "7adf5c61-f3b6-4d46-93c3-cf232405bd39",
       "text": "je reste enfermé chez moi et je ne sors pas",
-      "category": "hors_périmètre",
-      "kickoff_theme": "",
-      "provenance": "observed",
-      "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
-      "defer_reason": "hors périmètre"
-    },
-    {
-      "question_id": "af164685-42bc-417d-9ccd-e787867bf9f8",
-      "text": "quel traitement anti-chute post-partum est le plus efficace : shampoing,",
       "category": "hors_périmètre",
       "kickoff_theme": "",
       "provenance": "observed",
@@ -2452,6 +2495,15 @@
       "kickoff_theme": "",
       "provenance": "observed",
       "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
+      "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "af164685-42bc-417d-9ccd-e787867bf9f8",
+      "text": "quel traitement anti-chute post-partum est le plus efficace : shampoing,",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
       "defer_reason": "hors périmètre"
     },
     {
@@ -3229,15 +3281,6 @@
       "defer_reason": "hors périmètre"
     },
     {
-      "question_id": "3ae21f7a-55bc-47a9-96b8-cad5f95d04ae",
-      "text": "produits ou soins adopter pour limiter la chute au quotidien ?,0,2,0%,4.5",
-      "category": "hors_périmètre",
-      "kickoff_theme": "",
-      "provenance": "observed",
-      "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
-      "defer_reason": "hors périmètre"
-    },
-    {
       "question_id": "3211953e-743c-4486-8789-d613a742ebb0",
       "text": "entre credir et chance, pour stages accompagnement burnout, qui propose la",
       "category": "hors_périmètre",
@@ -3271,6 +3314,24 @@
       "kickoff_theme": "",
       "provenance": "observed",
       "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
+      "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "8a873ba7-3cca-417f-912f-252ee877b188",
+      "text": "quelles marques de compléments alimentaires sont les plus fiables ?,0,4,0%,67",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
+      "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "3ae21f7a-55bc-47a9-96b8-cad5f95d04ae",
+      "text": "produits ou soins adopter pour limiter la chute au quotidien ?,0,2,0%,4.5",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
       "defer_reason": "hors périmètre"
     },
     {
@@ -3346,21 +3407,21 @@
       "defer_reason": "hors périmètre"
     },
     {
-      "question_id": "28ee3335-d31f-40e9-b903-5a72c6d2d828",
-      "text": "entre credir et vaincre le burn out, pour stages accompagnement burnout,",
-      "category": "hors_périmètre",
-      "kickoff_theme": "",
-      "provenance": "observed",
-      "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
-      "defer_reason": "hors périmètre"
-    },
-    {
       "question_id": "52c610ce-f1eb-4cfb-93ff-0eceb2a4991e",
       "text": "Quelles sont les questions les plus fréquentes que les gens se posent sur le sommeil ?",
       "category": "hors_périmètre",
       "kickoff_theme": "",
       "provenance": "transformed",
       "qualification_justification": "contenu corporate — contexte métier, pas demande acheteur",
+      "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "28ee3335-d31f-40e9-b903-5a72c6d2d828",
+      "text": "entre credir et vaincre le burn out, pour stages accompagnement burnout,",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
       "defer_reason": "hors périmètre"
     },
     {
@@ -3697,6 +3758,15 @@
       "defer_reason": "hors périmètre"
     },
     {
+      "question_id": "62749125-2f4a-4762-b4be-dfb8dcc6a4de",
+      "text": "comment choisir un complexe de vitamines b de qualité ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
       "question_id": "555faf9e-2d6f-4b97-8e8a-960950ec0c95",
       "text": "Quels aliments calment le système nerveux ?",
       "category": "hors_périmètre",
@@ -3742,6 +3812,15 @@
       "defer_reason": "hors périmètre"
     },
     {
+      "question_id": "fa905c37-e1a7-41d2-817a-60846b01f78a",
+      "text": "comment choisir un complément de probiotiques adapté à mes besoins ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Probiotiques et microbiotiques",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Probiotiques et microbiotiques »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
       "question_id": "8138cc5c-7584-4015-b5e9-9780c8244d7d",
       "text": "Est-ce que d'autres utilisateurs ont rencontré des problèmes similaires avec l'ouverture de cette boîte ?",
       "category": "hors_périmètre",
@@ -3749,6 +3828,15 @@
       "provenance": "transformed",
       "qualification_justification": "ni marque, ni comparaison de marque, ni thème kickoff",
       "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "07cdac01-d204-4043-991b-43764cf1c233",
+      "text": "Quelle est la meilleure ashwagandha ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
+      "provenance": "observed",
+      "qualification_justification": "comparaison générique du périmètre « Ashwagandha et plantes adaptogènes »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
     },
     {
       "question_id": "7cf074c8-de81-4867-b188-d406b1f7f51a",
@@ -3796,6 +3884,15 @@
       "defer_reason": "hors périmètre"
     },
     {
+      "question_id": "06b49cd0-f23b-4bf1-b354-a885b4ea9bce",
+      "text": "Quelle est la meilleure forme de vitamine B6 ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "observed",
+      "qualification_justification": "comparaison générique du périmètre « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
       "question_id": "d64e7045-31af-4227-93c2-ed8e87b5ea1b",
       "text": "Quelles sont les stratégies de Be-Life pour maintenir une croissance solide dans un marché concurrentiel ?",
       "category": "hors_périmètre",
@@ -3821,6 +3918,15 @@
       "provenance": "transformed",
       "qualification_justification": "contenu corporate — contexte métier, pas demande acheteur",
       "defer_reason": "hors périmètre"
+    },
+    {
+      "question_id": "97232711-b957-4c64-bdf3-171856163ba4",
+      "text": "quels sont les meilleurs aliments riches en probiotiques ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Probiotiques et microbiotiques",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Probiotiques et microbiotiques »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
     },
     {
       "question_id": "b8b144a9-7970-4f31-b46d-151776bcffe8",
@@ -3868,6 +3974,15 @@
       "defer_reason": "hors périmètre"
     },
     {
+      "question_id": "546b555f-8ee4-4c10-90ed-5582fea8bc1b",
+      "text": "quels sont les meilleurs probiotiques pour améliorer la santé intestinale ?",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Digestion et santé intestinale",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Digestion et santé intestinale »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
       "question_id": "46c7817f-ab6e-4e80-bf97-d6786b9bac0e",
       "text": "comment choisir un complément de curcuma de qualité pour le confort articulaire ?",
       "category": "comparaison_standard",
@@ -3913,24 +4028,6 @@
       "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
     },
     {
-      "question_id": "910990db-6234-4a60-b851-542beac14972",
-      "text": "comment les acides gras essentiels influencent-ils la santé du cœur et la circulation sanguine ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Oméga-3 et acides gras essentiels",
-      "provenance": "proposed",
-      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
-      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
-    },
-    {
-      "question_id": "e056c86c-130f-4579-9435-78388a43bc73",
-      "text": "est-ce que des plantes adaptogènes peuvent aider à améliorer la circulation sanguine ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Ashwagandha et plantes adaptogènes",
-      "provenance": "proposed",
-      "qualification_justification": "correspond au thème kickoff « Ashwagandha et plantes adaptogènes »",
-      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
-    },
-    {
       "question_id": "fd49d9c0-c05d-450b-9b43-6f2644c53a2c",
       "text": "quels sont les meilleurs suppléments pour maintenir un taux de cholestérol sain ?",
       "category": "comparaison_standard",
@@ -3938,15 +4035,6 @@
       "provenance": "proposed",
       "qualification_justification": "comparaison générique du périmètre « Circulation sanguine et cholestérol »",
       "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
-    },
-    {
-      "question_id": "ed172898-10bd-4b4c-9737-87dd12da2a9e",
-      "text": "quels compléments alimentaires sont les plus efficaces pour améliorer la santé de la peau ?",
-      "category": "non_brand_kickoff",
-      "kickoff_theme": "Peau",
-      "provenance": "proposed",
-      "qualification_justification": "correspond au thème kickoff « Peau »",
-      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
     },
     {
       "question_id": "c93bef4b-c90d-4f49-beae-bc69b269859f",
@@ -4027,6 +4115,15 @@
       "kickoff_theme": "cheveux et ongles",
       "provenance": "proposed",
       "qualification_justification": "correspond au thème kickoff « cheveux et ongles »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "19d45a6c-1863-4840-a086-cf92caff879e",
+      "text": "vitamine B fatigue site officiel santé",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
       "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
     },
     {
@@ -4361,6 +4458,15 @@
       "provenance": "proposed",
       "qualification_justification": "correspond au thème kickoff « Compléments alimentaires sans additifs »",
       "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "d7eef6ec-54ec-4d1a-8cd5-dac2ebea0480",
+      "text": "meilleur aliment pour les articulations oméga-3 anti-inflammatory official health source",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Articulations et mobilité",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Articulations et mobilité »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
     },
     {
       "question_id": "c6988bc0-963a-4711-83ff-7f5b6af27e7c",
@@ -4975,6 +5081,15 @@
       "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
     },
     {
+      "question_id": "d8e7d39f-24f0-48e1-a1f7-bb4b515947b7",
+      "text": "comment augmenter la concentration en réduisant la fatigue ?. my location",
+      "category": "hors_périmètre",
+      "kickoff_theme": "",
+      "provenance": "observed",
+      "qualification_justification": "formulation corrompue ou tronquée (artefact de collecte)",
+      "defer_reason": "hors périmètre"
+    },
+    {
       "question_id": "cda5720b-8c18-4606-972f-64e987721b30",
       "text": "quels sont les avis des utilisateurs sur le produit sleep balance de be life ?",
       "category": "brand",
@@ -5027,7 +5142,475 @@
       "provenance": "proposed",
       "qualification_justification": "mentionne la marque « Be Life » sur le thème « Qualité et biodisponibilité des compléments alimentaires »",
       "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "6c20f5d9-be3d-4fbe-8ec7-5618559b8843",
+      "text": "magasins compléments alimentaires stress France pharmacie parapharmacie magasin bio",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "946c3eee-afec-4ee1-9c44-209b3b39b243",
+      "text": "acide hyaluronique origine synthèse naturelle hyaluronane sources biologiques",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Immunité et défenses naturelles",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Immunité et défenses naturelles »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "b563b6d4-c426-4f3e-9493-7063bd91b378",
+      "text": "acides aminés perte de poids evidence amino acids weight loss official sources",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "4657903d-6340-4565-b5ca-9c26ec6b509e",
+      "text": "acide folique grossesse quand le prendre recommandations santé publique",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "b7e542c2-f5dd-412b-9a85-7a3293fb3ebb",
+      "text": "site:ameli.fr acide folique grossesse quand arrêter",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "d47b62c7-8d20-4e8c-ae6d-bddd5086b023",
+      "text": "site:has-sante.fr acide folique grossesse durée supplémentation",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "c890046a-fb15-42a6-b52a-28bea8755547",
+      "text": "définition acides gras chimie",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "f2ecdd3f-a937-471c-8724-c653d172d4c9",
+      "text": "vitamine B12 articulations lien carence douleurs articulaires source médicale",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "746b98cd-eea2-4c02-8b81-d407e093b1c0",
+      "text": "où acheter du curcuma épicerie pharmacie magasin bio France",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Curcuma et confort articulaire",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Curcuma et confort articulaire »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "02234bc6-86b6-43d5-a6ca-be5d7c4917f0",
+      "text": "vitamine C acérola quand la prendre conseil officiel",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "9e626556-c2f7-4b4e-840a-27b7b58fe906",
+      "text": "vitamine C acérola prise matin ou soir conseil",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "2d52a459-4b16-41a3-8273-dce9e6a3884b",
+      "text": "sérum or compléments skincare hair supplements guidance official source",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "78606025-484a-43f1-bc1c-25bb50f89349",
+      "text": "rôle des acides aminés dans l'organisme source médicale fiable",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "2321c59e-c9fc-4e4f-81ec-b04b6b1237b7",
+      "text": "acide folique fer association raison officielle santé",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "a015e910-9644-4819-9ce4-cd6c6c3a6217",
+      "text": "où acheter des gélules d'acide hyaluronique pharmacie parapharmacie France",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Oméga-3 et acides gras essentiels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Oméga-3 et acides gras essentiels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "13866519-57f7-4755-ac88-864d1f8de9ad",
+      "text": "meilleurs sites français compléments alimentaires bio 2025",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Compléments alimentaires naturels »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "cd64b21d-b4c0-4908-ac5e-ea8f07d6fbe3",
+      "text": "compléments alimentaires bio achat France 2025 magasin pharmacie parapharmacie",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Compléments alimentaires naturels »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "53a7fafc-ede8-4751-ba84-29b89b048266",
+      "text": "curcuma douleurs articulaires revue systématique curcumine inflammation official medical source",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Curcuma et confort articulaire",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Curcuma et confort articulaire »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "38c5c466-b459-4607-b47f-04ad34c39838",
+      "text": "aliments naturels fatigue vitalité conseils santé fiable",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Fatigue",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Fatigue »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "3cc8b059-179f-4a62-90dc-668f51e5aa27",
+      "text": "probiotiques énergie vitalité bienfaits étude source officielle",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "énergie et vitalité",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « énergie et vitalité »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "448546b1-a6c9-4971-ae9c-74d6683edf24",
+      "text": "ANSES omega-3 apports recommandés vitamines alimentation équilibrée",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "2f690b85-82fa-4ab3-96c4-22f8caa50f3a",
+      "text": "OMS alimentation équilibrée vitamines oméga-3",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "133216c4-ed36-4d6d-804d-a74e5b599fd4",
+      "text": "probiotiques aliments quotidiens conseils santé officiel",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Probiotiques et microbiotiques",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Probiotiques et microbiotiques »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "0e28ef68-f014-4172-b1c2-4f9b8b1e571f",
+      "text": "curcuma douleurs articulaires revue systématique curcumine arthrose sources officielles",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Curcuma et confort articulaire",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Curcuma et confort articulaire »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "42c4f2ff-bf59-4f3e-88d7-7d09b73c1860",
+      "text": "symptômes carence en magnésium traitement sources médicales",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "1c0c455c-048b-457c-a165-2dcc4b906947",
+      "text": "sources alimentaires riches en magnésium NIH magnesium food sources",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "d95c9715-3806-4a34-a22d-2abe54860df7",
+      "text": "probiotiques prébiotiques définition différences source fiable santé",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Probiotiques et microbiotiques",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Probiotiques et microbiotiques »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "0d9ab173-b081-4924-a2a8-3ee6d8fc69c7",
+      "text": "symptômes déséquilibre microbiote probiotiques aide sources fiables",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Probiotiques et microbiotiques",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Probiotiques et microbiotiques »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "e14e468b-66aa-4f37-8631-208807b8c8fb",
+      "text": "conseils fatigue stress travail gestion santé mentale sommeil site:who.int OR site:nhs.uk OR site:mayoclinic.org",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Stress et gestion du stress",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Stress et gestion du stress »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "3dc719ce-eb5a-403d-86f4-b64174c0ce06",
+      "text": "vitamine B complexe fatigue information médicale fiable",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "7ce2fbad-bc06-44ea-b317-609a742b22cc",
+      "text": "vitamine B12 aliments végétaliens enrichis sources fiables vegetarian nutrition B12 official",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "bf5933ca-99cc-4286-b6c0-b0148e68db18",
+      "text": "choisir complément santé des articulations sans additifs critères ingrédients evidence glucosamine chondroïtine collagène official",
+      "category": "comparaison_standard",
+      "kickoff_theme": "Compléments alimentaires sans additifs",
+      "provenance": "proposed",
+      "qualification_justification": "comparaison générique du périmètre « Compléments alimentaires sans additifs »",
+      "defer_reason": "quota « comparaison_standard » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "11cbac67-48e7-453f-a7de-bab6686f7385",
+      "text": "site:belife.be immunité défenses naturelles Be-Life produits immunité",
+      "category": "brand",
+      "kickoff_theme": "Immunité et défenses naturelles",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Immunité et défenses naturelles »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "b2ea6de5-7fa0-446d-9dd3-a4ca99b39175",
+      "text": "Be-Life immunité défenses naturelles produit site:belife.be",
+      "category": "brand",
+      "kickoff_theme": "Immunité et défenses naturelles",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Immunité et défenses naturelles »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "d552e979-0fdc-46d7-948c-d1be795d7952",
+      "text": "site:belife.be Be-Life immunité",
+      "category": "brand",
+      "kickoff_theme": "Immunité et défenses naturelles",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Immunité et défenses naturelles »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "cd82f6a3-71c2-4a91-bf7d-759df6266893",
+      "text": "avis utilisateurs ashwagandha 5000 bio be life énergie vitalité",
+      "category": "brand",
+      "kickoff_theme": "énergie et vitalité",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « énergie et vitalité »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "e3981a97-1290-49ab-bf5a-8487d51741bd",
+      "text": "ashwagandha 5000 bio be life avis énergie vitalité",
+      "category": "brand",
+      "kickoff_theme": "énergie et vitalité",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « énergie et vitalité »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "b0de1fc4-9852-4f6e-b348-b44df2efd904",
+      "text": "Be Life récupération musculaire après l'effort produits site officiel Be Life",
+      "category": "brand",
+      "kickoff_theme": "Sport et récupération musculaire",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Sport et récupération musculaire »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "ca34ad32-946b-43fc-86db-a23cc8b681c4",
+      "text": "site:belife.com Be Life sport récupération musculaire produit",
+      "category": "brand",
+      "kickoff_theme": "Sport et récupération musculaire",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Sport et récupération musculaire »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "70435336-f672-44f3-9508-2c97a30119fa",
+      "text": "Be Life compléments articulations concurrents marché glucosamine chondroïtine collagène MSM France",
+      "category": "brand",
+      "kickoff_theme": "Articulations et mobilité",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Articulations et mobilité »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "11f18151-b96b-4527-a56e-3ffb21a6a324",
+      "text": "Be Life articulation compléments site officiel ingrédients",
+      "category": "brand",
+      "kickoff_theme": "Articulations et mobilité",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Articulations et mobilité »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "fcceeaa6-9d9a-47d4-b4c8-ea50948e6d86",
+      "text": "Be Life Sleep Balance complément sommeil composition officiel",
+      "category": "brand",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Sommeil et endormissement (produit Sleep Balance) »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "78aff133-f69f-4df3-ba33-0483023cd365",
+      "text": "Be Life Sleep Balance ingrédients",
+      "category": "brand",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Sommeil et endormissement (produit Sleep Balance) »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "a3540968-266f-43da-a7f7-d7c549d04c28",
+      "text": "Be Life Sleep Balance complément sommeil",
+      "category": "brand",
+      "kickoff_theme": "Sommeil et endormissement (produit Sleep Balance)",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Sommeil et endormissement (produit Sleep Balance) »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "2e3a6041-9aac-44f5-a1c7-e6fb34bfbd45",
+      "text": "Be Life produits santé cheveux ongles site officiel",
+      "category": "brand",
+      "kickoff_theme": "cheveux et ongles",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « cheveux et ongles »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "db5e214d-21ec-434a-a1bb-4b73a086076c",
+      "text": "be life solutions bien-être hormonal femmes site officiel",
+      "category": "brand",
+      "kickoff_theme": "Bien-être féminin et équilibre hormonal",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Bien-être féminin et équilibre hormonal »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "3befb8f1-47c1-4118-8e19-e5588cdfca6c",
+      "text": "Be Life complément circulation sanguine marque avis gamme ingrédients site officiel",
+      "category": "brand",
+      "kickoff_theme": "Circulation sanguine et cholestérol",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Circulation sanguine et cholestérol »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "77cc841f-af66-4e95-b29f-a05c71dc334e",
+      "text": "Be Life circulation sanguine complément alimentaire site officiel",
+      "category": "brand",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Compléments alimentaires naturels »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "86413eba-9b52-4a90-aa48-3d9e52b75f89",
+      "text": "Be Life compléments santé du foie positionnement marché site officiel",
+      "category": "brand",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Compléments alimentaires naturels »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "a0faad81-9e63-424f-9bc9-f7d4edd821e8",
+      "text": "Be Life foie complément alimentaire avis composition official",
+      "category": "brand",
+      "kickoff_theme": "Compléments alimentaires naturels",
+      "provenance": "proposed",
+      "qualification_justification": "mentionne la marque « Be Life » sur le thème « Compléments alimentaires naturels »",
+      "defer_reason": "quota « brand » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "f730c9bb-c3f8-4b67-baaf-d421cf6b822d",
+      "text": "légumes riches en magnésium source nutritionnelle",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Magnésium et bisglycinate de magnésium",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Magnésium et bisglycinate de magnésium »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
+    },
+    {
+      "question_id": "8128a53e-e6db-4771-a802-7414bb11a4df",
+      "text": "alimentation mobilité articulaire oméga-3 vitamine C collagène sources fiables",
+      "category": "non_brand_kickoff",
+      "kickoff_theme": "Vitamine D et vitamine D3",
+      "provenance": "proposed",
+      "qualification_justification": "correspond au thème kickoff « Vitamine D et vitamine D3 »",
+      "defer_reason": "quota « non_brand_kickoff » atteint ou doublon de texte"
     }
   ],
-  "deferred_count": 317
+  "deferred_count": 379
 }

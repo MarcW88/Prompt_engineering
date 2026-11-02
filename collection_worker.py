@@ -1051,7 +1051,7 @@ class CollectionWorker:
                 # The example prompt is the exact text executed for that run:
                 # an edited version produces its own couples, never merged
                 # with the previous version's traces.
-                executed_text = str(observation.get("executed_text") or prompts_by_id[observation["prompt_id"]]["text"])
+                executed_text = str(observation.get("executed_text") or (observation.get("raw_response") or {}).get("executed_text") or prompts_by_id[observation["prompt_id"]]["text"])
                 key = (observation["prompt_id"], executed_text, str(observation.get("engine") or ""))
                 fan_outs_by_key.setdefault(key, []).append(row["query"])
         examples = [ReconstructionExample(executed_text, fan_outs, prompt_id, engine)
