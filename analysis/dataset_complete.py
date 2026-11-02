@@ -55,17 +55,25 @@ def input_version(source_config: dict, questions: Sequence[dict]) -> str:
     return hashlib.sha1(payload.encode()).hexdigest()[:12]
 
 
+def _provenance(q: dict) -> str:
+    return (q.get("metadata") or {}).get("provenance_label") or q.get("provenance") or "observed"
+
+
 def compute_coverage(questions: Sequence[dict], source_config: dict) -> List[CoverageCell]:
     """Matrice de couverture sur les dimensions réellement présentes au
     kickoff : thèmes, concurrents, famille marque. Une dimension absente du
     kickoff n'est pas inventée."""
     cells: List[CoverageCell] = []
     qualified = [(q, (q.get("metadata") or {}).get("qualification") or {}) for q in questions]
-    for theme in source_config.get("themes", []):
+    all_themes = list(source_config.get("themes", []))
+    for priority in source_config.get("priority_themes", []):
+        if priority not in all_themes:
+            all_themes.append(priority)
+    for theme in all_themes:
         hits = [q for q, qual in qualified if qual.get("kickoff_theme") == theme and qual.get("category") in ("non_brand_kickoff", "brand", "comparaison_standard")]
         cells.append(CoverageCell("theme", theme,
-                                  observed=sum(1 for q in hits if q.get("provenance") != "proposed"),
-                                  proposed=sum(1 for q in hits if q.get("provenance") == "proposed"),
+                                  observed=sum(1 for q in hits if _provenance(q) != "proposed"),
+                                  proposed=sum(1 for q in hits if _provenance(q) == "proposed"),
                                   covered=bool(hits)))
     comp_names = source_config.get("competitors", [])
     for competitor in comp_names:
@@ -102,7 +110,7 @@ def plan_batches(coverage: Sequence[CoverageCell], source_config: dict, version:
 
 
 def _batch_id(cell: CoverageCell, version: str) -> str:
-    return f"{cell.dimension}:{dedupe_key(cell.value)[:30]}:{version[:8]}"
+    return f"{cell.dimension}:{dedupe_key(cell.value)[:30]}"
 
 
 def completed_batch_ids(questions: Sequence[dict]) -> set:
@@ -168,10 +176,11 @@ def proposed_rows(project_id: str, items: Sequence[Dict], source_config: dict, l
         qual = qualify_question(item["prompt"], brand_variants, competitors, themes)
         batch = batch_map.get(item.get("batch_id", ""))
         rows.append({
-            "project_id": project_id, "text": item["prompt"], "provenance": "proposed",
+            "project_id": project_id, "text": item["prompt"], "provenance": "synthetic",
             "language": language, "confidence": 0.6,
             "metadata": {
                 "intent": "buyer",
+                "provenance_label": "proposed",
                 "batch_id": item.get("batch_id"),
                 "batch_objective": item.get("batch_objective"),
                 "formulation_id": f"prop:{item['batch_id']}:{i}",
@@ -209,7 +218,7 @@ def select_priorities(questions: Sequence[dict], source_config: dict, target: in
         meta["qualification"] = qual
         meta["question_id"] = q.get("id", "")
         meta["cluster_id"] = meta.get("intent_id") or q.get("id", "")
-        meta["provenance_label"] = q.get("provenance") or "observed"
+        meta["provenance_label"] = _provenance(q)
         candidates.append(PromptCandidate(text=q.get("text") or "", provenance=PromptProvenance.OBSERVED,
                                           source_reference=str(q.get("id", "")), metadata=meta))
     selected, deficits = select_with_quotas(candidates, target, stratified_sample, max_per_cluster=999)
@@ -241,8 +250,10 @@ def select_priorities(questions: Sequence[dict], source_config: dict, target: in
 
 def build_kickoff_context(source_config: dict) -> str:
     parts = []
-    for key, label in (("themes", "thèmes"), ("competitors", "concurrents"),
-                       ("brand_variants", "variantes de marque"), ("domain", "domaine")):
+    for key, label in (("themes", "thèmes"), ("priority_themes", "thèmes prioritaires"),
+                       ("products", "produits"), ("competitors", "concurrents"),
+                       ("brand_variants", "variantes de marque"), ("domain", "domaine"),
+                       ("kickoff_notes", "notes")):
         values = source_config.get(key) or []
         if values:
             parts.append(f"{label}: {', '.join(values) if isinstance(values, list) else values}")

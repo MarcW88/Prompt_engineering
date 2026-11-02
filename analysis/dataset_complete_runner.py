@@ -69,11 +69,20 @@ def main():
     parser.add_argument("project_id")
     parser.add_argument("--execute-llm", action="store_true", help="appels payants — réservé à autorisation explicite")
     parser.add_argument("--report", default="")
+    parser.add_argument("--enrich", default="", help="JSON d'enrichissement kickoff (thèmes prioritaires, produits, partenaires)")
     args = parser.parse_args()
 
     env = {k: v for line in open(".env").read().splitlines() if "=" in line for k, v in [line.split("=", 1)]}
     base, headers = _rest(env)
     questions, source_config, project = load_context(base, headers, args.project_id)
+    if args.enrich:
+        with open(args.enrich) as fh:
+            enrich = json.load(fh)
+        excluded = set(enrich.get("exclude_competitor_candidates", []))
+        source_config["competitors"] = [c for c in source_config.get("competitors", []) if c not in excluded]
+        source_config["priority_themes"] = enrich.get("priority_themes", [])
+        source_config["products"] = enrich.get("products", [])
+        source_config["kickoff_notes"] = enrich.get("notes", "")
     version = input_version(source_config, questions)
     report = build_report(questions, source_config, version)
 
@@ -86,7 +95,8 @@ def main():
         todo = [b for b in batches if b.batch_id not in completed]
         llm = _llm_with_prompts(env, source_config, project, questions)
         produced = run_batches(todo, llm, [q["text"] for q in questions], completed)
-        rows = proposed_rows(args.project_id, produced, source_config, project.get("language") or "fr", {b.batch_id: b for b in todo})
+        qualified_config = {**source_config, "themes": [*source_config.get("themes", []), *[t for t in source_config.get("priority_themes", []) if t not in source_config.get("themes", [])]]}
+        rows = proposed_rows(args.project_id, produced, qualified_config, project.get("language") or "fr", {b.batch_id: b for b in todo})
         if rows:
             requests.post(f"{base}/questions", json=rows, headers={**headers, "Prefer": "return=minimal"}).raise_for_status()
         cost_rows = [{"project_id": args.project_id, "provider": "openai", "service_category": "dataset_preparation",
@@ -104,7 +114,8 @@ def main():
 
     # Sélection des priorités sur le corpus consolidé — même fonction de quotas
     # que le lancement ; le rapport est persisté pour l'export et l'audit.
-    priorities = select_priorities(questions, source_config, 200)
+    qualified_config = {**source_config, "themes": [*source_config.get("themes", []), *[t for t in source_config.get("priority_themes", []) if t not in source_config.get("themes", [])]]}
+    priorities = select_priorities(questions, qualified_config, 200)
     report["priorities"] = {k: v for k, v in priorities.items() if k not in ("priorities", "deferred")}
     report["priority_items"] = priorities["priorities"]
     report["deferred_items"] = priorities["deferred"]

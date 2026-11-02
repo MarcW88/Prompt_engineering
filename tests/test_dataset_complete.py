@@ -88,7 +88,8 @@ class BatchExecutionTests(unittest.TestCase):
     def test_proposed_rows_keep_provenance_and_ids(self):
         items = [{"prompt": "be-life vs nutergia : lequel choisir ?", "tags": ["vs"], "batch_id": "b1", "batch_objective": "comp"}]
         rows = proposed_rows("p", items, CONFIG, "fr", {"b1": Batch("b1", "comp", "competitor", "Nutergia", 3, model="gpt-4o-mini")})
-        self.assertEqual(rows[0]["provenance"], "proposed")
+        self.assertEqual(rows[0]["provenance"], "synthetic")
+        self.assertEqual(rows[0]["metadata"]["provenance_label"], "proposed")
         self.assertEqual(rows[0]["metadata"]["qualification"]["category"], "comparaison_standard")
         self.assertTrue(rows[0]["metadata"]["formulation_id"].startswith("prop:"))
 

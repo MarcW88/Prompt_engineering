@@ -762,11 +762,14 @@ class CollectionWorker:
         if cost["estimated_cost_eur"] > float(dataset.get("max_budget_eur", 0)):
             raise RuntimeError(f"Estimated cost {cost['estimated_cost_eur']:.2f} EUR exceeds budget")
         self._report(job, 8, f"{len(candidates)} candidats · {len(selected)} sélectionnés · {cost['executions']} exécutions prévues")
+        allowed_prompt_provenance = {"observed", "reverse_engineered", "synthetic"}
         prompt_payload = [{
             "project_id": project_id, "cluster_id": candidate.source_reference, "text": candidate.text,
-            "provenance": candidate.provenance.value, "confidence": candidate.confidence,
+            "provenance": candidate.provenance.value if candidate.provenance.value in allowed_prompt_provenance else "synthetic",
+            "confidence": candidate.confidence,
             "status": "testing" if candidate.id in selected_ids else "draft",
-            "expected_fan_outs": candidate.expected_fan_outs, "metadata": candidate.metadata,
+            "expected_fan_outs": candidate.expected_fan_outs,
+            "metadata": {**(candidate.metadata or {}), "provenance_label": (candidate.metadata or {}).get("provenance_label") or candidate.provenance.value},
         } for candidate in candidates]
         if prompt_payload:
             self.db.request("POST", "prompts", "on_conflict=project_id,text", prompt_payload, "resolution=ignore-duplicates,return=minimal")

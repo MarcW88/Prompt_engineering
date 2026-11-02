@@ -1,0 +1,14 @@
+{
+  "document": "Kick-off Be-Life.docx (2026-11-02)",
+  "priority_themes": [
+    "Longévité (gamme Age Protect, lancement fin 2026/début 2027)",
+    "Ashwagandha et plantes adaptogènes",
+    "Magnésium et bisglycinate de magnésium",
+    "Immunité et défenses naturelles",
+    "Sommeil et endormissement (produit Sleep Balance)"
+  ],
+  "products": ["Age Protect", "Ashwagandha 5000 BIO", "Magnesium Quatro 900", "Sleep Balance", "Natur-D", "B complex"],
+  "partners": ["PharmaLine", "New Pharma"],
+  "notes": "Pas de vente directe (e-shop abandonné) — les revendeurs sont des partenaires, pas des concurrents. TikTok non alimenté. Nouveau site prévu 2027.",
+  "exclude_competitor_candidates": ["PharmaLine", "New Pharma"]
+}
