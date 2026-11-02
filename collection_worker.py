@@ -279,7 +279,7 @@ class CollectionWorker:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
         # Fallback OpenAI : nouvelle exécution indépendante — observation séparée,
         # jamais fusionnée dans les traces du run parent.
-        if getattr(self, "fanout_fallback_enabled", os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0") and not observation.fan_outs and observation.answer and not parent_observation_id:
+        if getattr(self, "fanout_fallback_enabled", os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0") and os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0" and not observation.fan_outs and observation.answer and not parent_observation_id:
             reexecution_id = self._persist_reexecution(prompt, observation_id, observation, job=job)
             if reexecution_id:
                 observation.metadata["reexecution_observation_id"] = reexecution_id
@@ -782,9 +782,10 @@ class CollectionWorker:
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         self._report(job, 10, "Démarrage des exécutions moteur")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
-        # Auxiliary fan-out re-executions can be disabled per dataset; they are
-        # billed OpenAI calls, never part of the main screening pass.
-        self.fanout_fallback_enabled = bool(build_config.get("fanout_fallback", getattr(self, "fanout_fallback_enabled", True)))
+        # L'environnement prime : OPENAI_FANOUT_FALLBACK=0 coupe les appels
+        # auxiliaires même si le dataset demande le fallback.
+        env_allowed = os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0"
+        self.fanout_fallback_enabled = env_allowed and bool(build_config.get("fanout_fallback", True))
         if provider_name == "dataforseo":
             provider = DataForSEOProvider()
         elif provider_name == "openai":

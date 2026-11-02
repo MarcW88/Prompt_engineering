@@ -18,7 +18,9 @@ export async function POST(request: Request) {
   const maxBudgetEur = Math.max(0, Number(body.maxBudgetEur ?? 20));
   // Auxiliary OpenAI fan-out calls (~1 per execution without provider traces)
   // are billed separately — they must be part of the reserved budget too.
-  const auxCostEur = body.fanoutFallback === false ? 0 : executionSampleSize * Number(process.env.AUXILIARY_CALL_COST_EUR ?? 0.03);
+  // Auxiliary calls fire once per untraced execution: same multiplier as the
+  // main pass (sample × engines × repetitions), not just the sample size.
+  const auxCostEur = body.fanoutFallback === false ? 0 : executionSampleSize * repetitions * engines.length * Number(process.env.AUXILIARY_CALL_COST_EUR ?? 0.03);
   const estimatedCostEur = Math.round((executionSampleSize * repetitions * engines.length * costPerExecutionEur + auxCostEur) * 100) / 100;
   if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €. Augmentez le plafond ou réduisez les moteurs/l'échantillon.` }, { status: 422 });
   try {

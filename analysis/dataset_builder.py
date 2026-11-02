@@ -104,17 +104,6 @@ class DatasetBuilder:
             cluster_candidates = self.build_cluster(cluster, config)
             if cluster_candidates:
                 candidates.extend(cluster_candidates)
-        # If the brand filter removed every cluster, fall back to all clusters
-        # to avoid a silent empty dataset.
-        if not candidates and config.brand_name:
-            for cluster in clusters:
-                candidates.extend(self.build_cluster(cluster, DatasetBuildConfig(
-                    mode=config.mode, intent_similarity_threshold=config.intent_similarity_threshold,
-                    personas=config.personas, stages=config.stages,
-                    specificity_levels=config.specificity_levels,
-                    candidates_per_cluster=config.candidates_per_cluster,
-                    brand_name="",
-                )))
         return candidates
 
     def build_cluster(self, cluster: ClusterInput, config: DatasetBuildConfig) -> List[PromptCandidate]:
@@ -126,8 +115,6 @@ class DatasetBuilder:
         # Faithful mode: source formulations stay untouched (a short query stays
         # a short query), variants are grouped under one representative intent.
         items = [item for item in _question_items(cluster) if item.text.strip()]
-        if not self._is_relevant_for_brand(cluster.representative_question, config.brand_name or ""):
-            return []
         expected = self._expected_sub_intents(cluster)
         intents = group_intents(items, config.intent_similarity_threshold)
         candidates = []
@@ -185,8 +172,6 @@ class DatasetBuilder:
         seen = set()
         base_question = cluster.representative_question
         for persona, stage, specificity in combinations:
-            if not self._is_relevant_for_brand(base_question, config.brand_name or ""):
-                continue
             prompt = self._render(base_question, persona, stage, specificity, cluster.language, expected)
             normalized = " ".join(prompt.casefold().split())
             if normalized in seen:
@@ -225,14 +210,6 @@ class DatasetBuilder:
                 seen.add(normalized)
                 result.append(value.strip())
         return result[:8]
-
-    @staticmethod
-    def _is_relevant_for_brand(question: str, brand_name: str) -> bool:
-        if not brand_name:
-            return True
-        normalized = " ".join(question.casefold().split())
-        brand_parts = [part for part in brand_name.casefold().split() if len(part) >= 2]
-        return any(part in normalized for part in brand_parts)
 
     @staticmethod
     def _render(question: str, persona: str, stage: str, specificity: int, language: str, sub_intents: Sequence[str]) -> str:

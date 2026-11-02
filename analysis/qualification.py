@@ -82,8 +82,8 @@ def qualify_question(text: str, brand_variants: Sequence[str], competitors: Sequ
         return {"category": "comparaison_standard", "kickoff_theme": theme or "",
                 "justification": f"mentionne le concurrent « {competitor_hit} »"}
     if not kickoff_themes:
-        return {"category": "non_brand_kickoff", "kickoff_theme": "",
-                "justification": "aucun thème kickoff déclaré — admis par défaut"}
+        return {"category": "hors_périmètre", "kickoff_theme": "",
+                "justification": "aucun thème kickoff déclaré — impossible de qualifier la pertinence"}
     return {"category": "hors_périmètre", "kickoff_theme": "",
             "justification": "ni marque, ni comparaison de marque, ni thème kickoff"}
 
@@ -95,9 +95,14 @@ def portfolio_quotas(target_size: int, brand_share: float = 0.15) -> Dict[str, i
 
 
 def select_with_quotas(candidates, sample_size: int, sample_fn, brand_share: float = 0.15, max_per_cluster: int = 5):
-    """Sélection stratifiée par catégorie, sans double comptage ni remplissage
-    silencieux : chaque catégorie puise dans ses propres candidats, les manques
-    sont reportés, pas compensés par du hors sujet.
+    """Sélection stratifiée par catégorie — stricte.
+
+    - jamais plus de ``sample_size`` candidats, quel que soit l'arrondi des
+      sous-quotas ;
+    - pas de réallocation : une place non pourvue par une catégorie n'est pas
+      comblée par une autre, le manque est reporté dans ``deficits`` ;
+    - hors_périmètre et non qualifié ne sont jamais sélectionnés ;
+    - les deux familles (brand, comparaison) se partagent le quota 15 %.
 
     ``sample_fn(group, size)`` applique la sélection stratifiée existante sur
     un sous-ensemble. Retourne (sélection, déficits par catégorie).
@@ -106,27 +111,25 @@ def select_with_quotas(candidates, sample_size: int, sample_fn, brand_share: flo
     groups = {
         "brand_plus_comparaison": [c for c in candidates if c.metadata.get("qualification", {}).get("category") in ("brand", "comparaison_standard")],
         "non_brand_kickoff": [c for c in candidates if c.metadata.get("qualification", {}).get("category") == "non_brand_kickoff"],
-        "hors_périmètre": [c for c in candidates if c.metadata.get("qualification", {}).get("category") == "hors_périmètre"],
     }
     deficits = {}
     selected = []
-    # D'abord le cœur kickoff, puis le quota marque/comparaison — les deux
-    # familles doivent être représentées : marque et comparaison se partagent
-    # le quota à parts égales, les manques sont reportés par famille.
-    kickoff_take = sample_fn(groups["non_brand_kickoff"], min(quotas["non_brand_kickoff"], len(groups["non_brand_kickoff"])), max_per_cluster)
+    # Cœur kickoff d'abord : borné par son quota ET par la cible restante.
+    kickoff_want = min(quotas["non_brand_kickoff"], sample_size - len(selected))
+    kickoff_take = sample_fn(groups["non_brand_kickoff"], min(kickoff_want, len(groups["non_brand_kickoff"])), max_per_cluster)
     selected.extend(kickoff_take)
     deficits["non_brand_kickoff"] = max(0, quotas["non_brand_kickoff"] - len(kickoff_take))
-    family_quota = max(1, quotas["brand_plus_comparaison"] // 2)
-    for family in ("brand", "comparaison_standard"):
+    # Quota marque+comparaison borné par la cible restante. Chaque famille
+    # prend d'abord sa moitié ; si l'une n'a pas assez de candidats, son solde
+    # revient à l'autre famille — le quota 15 % lui-même n'est jamais dépassé.
+    branded_want = min(quotas["brand_plus_comparaison"], sample_size - len(selected))
+    half = branded_want - branded_want // 2
+    unused = 0
+    for family in ("comparaison_standard", "brand"):
         pool = [c for c in groups["brand_plus_comparaison"] if c.metadata.get("qualification", {}).get("category") == family]
-        take = sample_fn(pool, min(family_quota, len(pool)), max_per_cluster)
+        want = min(half + unused, branded_want - sum(1 for c in selected if c.metadata.get("qualification", {}).get("category") in ("brand", "comparaison_standard")), len(pool), sample_size - len(selected))
+        take = sample_fn(pool, max(0, want), max_per_cluster)
         selected.extend(take)
-        deficits[family] = max(0, family_quota - len(take))
-    # Le solde kickoff non pourvu peut être repris par marque/comparaison et
-    # réciproquement — jamais par du hors périmètre.
-    remaining = sample_size - len(selected)
-    if remaining > 0:
-        leftover = [c for name in ("non_brand_kickoff", "brand_plus_comparaison") for c in groups[name] if c not in selected]
-        extra = sample_fn(leftover, min(remaining, len(leftover)), max_per_cluster)
-        selected.extend(extra)
-    return selected, deficits
+        deficits[family] = max(0, half - len(take))
+        unused += max(0, half - len(take))
+    return selected[:sample_size], deficits

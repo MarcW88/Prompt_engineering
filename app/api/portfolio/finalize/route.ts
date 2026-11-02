@@ -92,7 +92,14 @@ export async function POST(request: Request) {
           branded_share: Math.round(branded / total * 1000) / 10,
           kickoff_share: Math.round((counts["non_brand_kickoff"] ?? 0) / total * 1000) / 10,
           target: "15 % marque+comparaison · 85 % kickoff non-brand",
-          ecart: branded / total > 0.15 ? "sur-représentation marque" : (counts["brand"] === 0 && counts["comparaison_standard"] === 0 ? "famille marque/comparaison absente" : "conforme"),
+          ecart: (() => {
+            const issues: string[] = [];
+            if (!counts["brand"]) issues.push("famille brand absente");
+            if (!counts["comparaison_standard"]) issues.push("famille comparaison_standard absente");
+            if (branded / total > 0.2) issues.push(`sur-représentation marque (${Math.round(branded / total * 100)}% > 20%)`);
+            if (branded / total < 0.05 && (counts["brand"] || counts["comparaison_standard"])) issues.push("marque/comparaison quasi absente du portefeuille final");
+            return issues.length ? issues.join(" · ") : "conforme";
+          })(),
         };
       })(),
     };

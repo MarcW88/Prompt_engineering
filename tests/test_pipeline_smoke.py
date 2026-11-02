@@ -17,6 +17,9 @@ class MemoryRest:
         self.tables['projects'] = [{'id': 'p', 'name': 'Client B', 'country': 'BE', 'language': 'fr'}]
         self.tables['seeds'] = [{'id': 'seed', 'project_id': 'p', 'value': 'chaussures randonnée', 'seed_type': 'keyword', 'priority': 90, 'language': 'fr', 'market': 'BE', 'enabled': True}]
         self.tables['datasets'] = [{'id': 'd', 'project_id': 'p', 'target_size': 3, 'execution_sample_size': 2, 'repetitions': 1, 'engines': ['chatgpt'], 'max_budget_eur': 1, 'cost_per_execution_eur': 0.01, 'build_config': {'quality_threshold': 0.1, 'candidates_per_cluster': 3}}]
+        # Un kickoff réel déclare ses thèmes : sans eux, la qualification ne
+        # peut pas admettre de questions non-brand (régression audit).
+        self.tables['jobs'] = [{'id': 'c1', 'project_id': 'p', 'kind': 'collect_sources', 'input': {'source_config': {'themes': ['chaussures de randonnée', 'confort de marche'], 'brand_variants': ['Client B'], 'competitors': []}}}]
 
     def request(self, method, table, query='', body=None, prefer='return=representation'):
         rows = list(self.tables[table])
