@@ -18,3 +18,7 @@ Le setup transmet au simulateur son estimation de collecte et les noms des sourc
 Limites : les tarifs ne sont pas synchronisés avec les comptes fournisseurs ; la rétention n’est pas calibrée ; le nombre de prompts distincts et la couverture des seeds ne sont pas garantis. L’estimation doit être rapprochée du journal et les tarifs actualisés avant engagement. La recommandation historique de collecte reste accessible avec un libellé explicitement indicatif ; elle n’est pas utilisée par ce nouveau calcul.
 
 Vérification : `node --test tests/campaign_estimate.test.mjs tests/fanout_parser.test.mjs`, `npx tsc --noEmit`, `npm run lint`, `npm run build`. Les tests couvrent plusieurs volumes, les moteurs/répétitions, les rejets, les inconnus, les marges/engagements et la reconstruction avec baseline sans double comptage.
+
+## Scénario complet par défaut
+
+Les quatre surfaces proposées sont sélectionnées à l’ouverture. Le mode prudent applique le plus grand prix renseigné aux surfaces chiffrées ; une valeur inconnue reste inconnue. Les tarifs saisis et effectifs sont tous deux exportés. Retirer une surface recalcule immédiatement les quantités et le coût. Le tarif commun initial de 0,02 EUR est explicitement une hypothèse, également sur OpenAI, pas un plafond fournisseur. Perplexity reste exclu compte tenu du précédent défaut provider. Le catalogue exprime les surfaces proposées, pas une vérification live de leurs clés, datasets ou fonctionnement. Aucun paramètre de lancement ni budget n’est modifié.
