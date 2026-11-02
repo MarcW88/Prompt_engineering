@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Database, FileUp, Play, Target, Upload, X } from "lucide-react";
 import readExcelFile from "read-excel-file";
+import { CampaignCostPlanner } from "./campaign-cost-planner";
 import { parseSeedText, type SeedType } from "@/lib/data/seeds";
 import { recommendBudget, estimateCollectionCostEur, recommendConfigForTargetPrompts } from "@/lib/data/budget";
 
@@ -40,6 +41,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
   const [queryBudget, setQueryBudget] = useState(10);
   const [minimumSourceSignals, setMinimumSourceSignals] = useState(5);
   const [targetPrompts, setTargetPrompts] = useState(100);
+  const [showCostPlanner, setShowCostPlanner] = useState(false);
   const [fullOptiUnlocked, setFullOptiUnlocked] = useState(false);
   const [socialPostLimit, setSocialPostLimit] = useState(10);
   const [socialCommentLimit, setSocialCommentLimit] = useState(0);
@@ -213,6 +215,8 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
     }
   }
 
+  if (showCostPlanner) return <CampaignCostPlanner onClose={() => setShowCostPlanner(false)} initialTarget={targetPrompts} initialBudget={displayBudgetTotalEur} initialCollection={estimatedCollectionCostEur} sources={sources} />;
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <form className="modal seed-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (step < 4) nextStep(); else void submit(); }}>
@@ -238,22 +242,23 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <div className="form-row"><label>Type<select value={seedType} onChange={(event) => setSeedType(event.target.value as SeedType)}><option value="keyword">Mot-clé</option><option value="theme">Thème</option><option value="brand">Marque</option><option value="competitor">Concurrent</option><option value="product">Produit</option><option value="problem">Problème</option></select></label><label>Priorité<input type="number" min="0" max="100" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label></div>
           <div className="gsc-box"><label>Regex Search Console<input value={gscPattern} onChange={(event) => setGscPattern(event.target.value)} /></label><label className="upload-zone"><Upload size={19} /><span>Importer un export CSV Google Search Console</span><input type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importGsc(file); }} /></label>{gscStatus && <p className="import-status">{gscStatus}</p>}</div>
           <div className="dataset-estimate good"><p><strong>{tierLabels[collectionRecommendation.tier]}</strong> · {collectionRecommendation.score}/100 de complexité estimée.</p><p>Objectif conseillé : obtenir {collectionRecommendation.corpusTarget[0].toLocaleString("fr-FR")} à {collectionRecommendation.corpusTarget[1].toLocaleString("fr-FR")} signaux pertinents au final. Le coût dépend des sources et cibles choisies à l’étape suivante.</p><div className="form-row compact"><label>Plafond global indicatif (€)<input type="number" min="1" max="30" step="1" value={displayBudgetTotalEur} onChange={(event) => { setCustomBudgetTotalEur(Number(event.target.value)); setBudgetMode("manual"); }} /><small>Recommandation automatique : {collectionRecommendation.totalEur.toFixed(2)} €. Ce plafond couvre tout le workflow, pas seulement la collecte. <button type="button" className="text-button" onClick={() => { setCustomBudgetTotalEur(null); setBudgetMode("automatic"); }}>Réinitialiser</button></small></label></div><p><label className="check-option"><input type="checkbox" checked={sampleMode} onChange={(event) => setSampleMode(event.target.checked)} /> Mode échantillon : répartir le budget de requêtes entre toutes les sources sélectionnées. Un minimum de signaux par source sera garanti à l’étape suivante.</label></p></div>
-          <div className="builder-guide"><Target size={17} /><strong>Besoin de N prompts finaux ?</strong></div>
-          <div className="form-row compact"><label>Nombre de prompts cibles<input type="number" min="10" max={fullOptiUnlocked ? 5000 : 1000} step="5" value={targetPrompts} onChange={(event) => setTargetPrompts(Number(event.target.value))} /><small>L’estimateur calcule la collecte nécessaire pour aboutir à ce nombre de prompts validés.</small></label><label className="check-option"><input type="checkbox" checked={sampleMode} onChange={(event) => setSampleMode(event.target.checked)} /> Mode échantillon (coût réparti entre les sources)</label><button type="button" className="text-button" onClick={() => {
+          <div className="builder-guide"><Target size={17} /><strong>Prévoir le coût du portefeuille final</strong></div>
+          <button type="button" className="secondary" onClick={() => setShowCostPlanner(true)}>Estimer l’analyse complète : collecte, moteurs et validation</button>
+          <div className="form-row compact"><label>Nombre de prompts cibles<input type="number" min="10" max={fullOptiUnlocked ? 5000 : 1000} step="5" value={targetPrompts} onChange={(event) => setTargetPrompts(Number(event.target.value))} /><small>Objectif indicatif. Le simulateur détaillé calcule les opérations prévues ; aucun volume final n’est garanti.</small></label><label className="check-option"><input type="checkbox" checked={sampleMode} onChange={(event) => setSampleMode(event.target.checked)} /> Mode échantillon (coût réparti entre les sources)</label><button type="button" className="text-button" onClick={() => {
             const recommendation = recommendConfigForTargetPrompts(targetPrompts, sampleMode, fullOptiUnlocked);
             setSources(recommendation.sources);
             setQueryBudget(recommendation.queryBudget);
             setMinimumSourceSignals(recommendation.minimumSourceSignals);
             setCustomBudgetTotalEur(recommendation.totalBudgetEur);
             setBudgetMode("manual");
-          }}>Appliquer la config recommandée</button></div>
+          }}>Appliquer uniquement l’estimation de collecte</button></div>
           <p><label className="check-option"><input type="checkbox" checked={fullOptiUnlocked} onChange={(event) => setFullOptiUnlocked(event.target.checked)} /> <strong>Débloquer le mode audit étendu</strong> : supprime le plafond de 30 € et augmente la part sociale jusqu’à 50 %. À utiliser quand tu maîtrises les coûts.</label></p>
           {(() => {
             const recommendation = recommendConfigForTargetPrompts(targetPrompts, sampleMode, fullOptiUnlocked);
             const exceedsCap = recommendation.collectionCostEur > recommendation.totalBudgetEur;
             const socialTargetsCount = lines(facebookUrls).length + lines(instagramUrls).length + lines(linkedinUrls).length + lines(xUrls).length;
             const tooManySocialTargets = socialTargetsCount > recommendation.maxSocialTargets;
-            return <div className={`dataset-estimate ${exceedsCap || tooManySocialTargets ? "warn" : "good"}`}><p className="estimate-title">Configuration recommandée</p><p><strong>{recommendation.estimatedSignals.toLocaleString("fr-FR")}</strong> signaux estimés · <strong>{recommendation.estimatedClusters.toLocaleString("fr-FR")}</strong> clusters · budget requêtes <strong>{recommendation.queryBudget}</strong></p><p><strong>Coût collecte estimé :</strong> {recommendation.collectionCostEur.toFixed(2)} € · <strong>Plafond global indicatif :</strong> {recommendation.totalBudgetEur.toFixed(2)} €</p><p><small>Sources recommandées : {recommendation.sources.map((source) => sourceLabels[source as keyof typeof sourceLabels] ?? source).join(", ")}</small></p><p><small>Part sociale plafonnée à ~{recommendation.socialSharePercent}% · cibles sociales max ~{recommendation.maxSocialTargets}</small></p><p><small>{sampleMode ? "Mode échantillon : le budget est réparti entre les sources. Idéal pour tester." : "Mode audit complet : chaque source reçoit le budget affiché. Coût plus élevé mais couverture maximale."}</small></p>{exceedsCap && <p className="warning"><AlertTriangle size={14} /> L’estimation de collecte dépasse le plafond global affiché. Augmente le plafond ou réduis le nombre de prompts cibles.</p>}{tooManySocialTargets && <p className="warning"><AlertTriangle size={14} /> Tu as {socialTargetsCount} cibles sociales configurées. Pour rester dans le budget, limite-toi à environ {recommendation.maxSocialTargets} cibles au total (tous réseaux confondus).</p>}</div>;
+            return <div className={`dataset-estimate ${exceedsCap || tooManySocialTargets ? "warn" : "good"}`}><p className="estimate-title">Hypothèse indicative de collecte</p><p><strong>{recommendation.estimatedSignals.toLocaleString("fr-FR")}</strong> signaux estimés · <strong>{recommendation.estimatedClusters.toLocaleString("fr-FR")}</strong> clusters · budget requêtes <strong>{recommendation.queryBudget}</strong></p><p><strong>Coût collecte estimé :</strong> {recommendation.collectionCostEur.toFixed(2)} € · <strong>Plafond global indicatif :</strong> {recommendation.totalBudgetEur.toFixed(2)} €</p><p><small>Sources recommandées : {recommendation.sources.map((source) => sourceLabels[source as keyof typeof sourceLabels] ?? source).join(", ")}</small></p><p><small>Part sociale plafonnée à ~{recommendation.socialSharePercent}% · cibles sociales max ~{recommendation.maxSocialTargets}</small></p><p><small>{sampleMode ? "Mode échantillon : le budget est réparti entre les sources. Idéal pour tester." : "Mode audit complet : chaque source reçoit le budget affiché. Coût plus élevé mais couverture maximale."}</small></p>{exceedsCap && <p className="warning"><AlertTriangle size={14} /> L’estimation de collecte dépasse le plafond global affiché. Augmente le plafond ou réduis le nombre de prompts cibles.</p>}{tooManySocialTargets && <p className="warning"><AlertTriangle size={14} /> Tu as {socialTargetsCount} cibles sociales configurées. Pour rester dans le budget, limite-toi à environ {recommendation.maxSocialTargets} cibles au total (tous réseaux confondus).</p>}</div>;
           })()}
         </>}
 
