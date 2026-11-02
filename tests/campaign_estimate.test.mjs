@@ -56,3 +56,23 @@ test('invalid or duplicate surfaces and unsafe rates are rejected', () => {
   assert.throws(() => estimateCampaign(plan({ collectionEur: -1 })));
   assert.throws(() => estimateCampaign(plan({ engines: [{ name: 'a', eurPerRun: 0 }, { name: 'a', eurPerRun: 0 }] })));
 });
+
+
+test('full scenario starts with all four distinct surfaces; removal reduces cost', () => {
+  const engines = exports.fullSurfaceScenario();
+  assert.equal(engines.length, 4);
+  assert.equal(new Set(engines.map(e => e.name)).size, 4);
+  const parameters = { collectionEur: 11.52, acceptancePercent: 50, runsPerFinal: 3, contingencyPercent: 20 };
+  const full = estimateCampaign(plan({ ...parameters, engines }));
+  assert.equal(full.plannedExecutions, 3200);
+  assert.equal(full.forecastEur, 90.624);
+  assert.equal(estimateCampaign(plan({ ...parameters, engines: engines.slice(0, 1) })).forecastEur, 33.024);
+});
+test('conservative scenario uses highest entered price and preserves unknown and invalid prices', () => {
+  const original = [{name:'a', eurPerRun:.02}, {name:'b', eurPerRun:.05}, {name:'c', eurPerRun:null}];
+  const result = exports.conservativeEngines(original);
+  assert.deepEqual(result.map(e => e.eurPerRun), [.05,.05,null]);
+  assert.equal(original[0].eurPerRun,.02);
+  assert.throws(() => exports.conservativeEngines([{name:"bad",eurPerRun:-1}]));
+  assert.equal(estimateCampaign(plan({engines:result})).complete,false);
+});

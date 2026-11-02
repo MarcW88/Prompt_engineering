@@ -81,3 +81,14 @@ export function estimateCampaign(plan: CampaignPlan) {
   };
 }
 
+
+/** Supported planning surfaces; operational availability must be checked before execution. */
+export const CAMPAIGN_SURFACES = ["ChatGPT / Bright Data", "OpenAI web search", "Gemini / Bright Data", "Google AI Mode / Bright Data"];
+export function fullSurfaceScenario(): PlannedEngine[] {
+  return CAMPAIGN_SURFACES.map((name) => ({ name, eurPerRun: 0.02 }));
+}
+/** Upper configured rate, never an upper bound on the provider bill. Unknown stays unknown. */
+export function conservativeEngines(engines: PlannedEngine[]): PlannedEngine[] {
+  const maximum = Math.max(0, ...engines.map((engine) => money(engine.eurPerRun) ?? 0));
+  return engines.map((engine) => ({ ...engine, eurPerRun: engine.eurPerRun === null ? null : Math.max(engine.eurPerRun, maximum) }));
+}

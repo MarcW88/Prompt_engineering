@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
-import { estimateCampaign, type CampaignPlan } from "@/lib/data/campaign-estimate";
+import { estimateCampaign, conservativeEngines, fullSurfaceScenario, CAMPAIGN_SURFACES, type CampaignPlan } from "@/lib/data/campaign-estimate";
 
 type Props = {
   onClose: () => void;
@@ -18,10 +18,11 @@ export function CampaignCostPlanner({ onClose, initialTarget = 200, initialBudge
   const dialog = useRef<HTMLElement>(null);
   const [plan, setPlan] = useState<CampaignPlan>(() => ({
     targetPrompts: initialTarget, acceptancePercent: 50, runsPerFinal: 3, reconstructedPrompts: 0,
-    candidatesPerTarget: 3, engines: [{ name: "ChatGPT / Bright Data", eurPerRun: 0.02 }],
+    candidatesPerTarget: 3, engines: fullSurfaceScenario(),
     collectionEur: initialCollection ?? null, preparationEur: null, cloudEur: null, iclEurPerTarget: null,
     alreadyCommittedEur: null, budgetEur: initialBudget, contingencyPercent: 20,
   }));
+  const [conservative, setConservative] = useState(true);
   const [promptKind, setPromptKind] = useState("mixte");
   const [model, setModel] = useState("");
   useEffect(() => {
@@ -38,9 +39,10 @@ export function CampaignCostPlanner({ onClose, initialTarget = 200, initialBudge
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("keydown", keydown); previous?.focus(); };
   }, [onClose]);
+  let effectivePlan = plan;
   let estimate: ReturnType<typeof estimateCampaign> | null = null;
   let error = "";
-  try { estimate = estimateCampaign(plan); } catch (reason) { error = reason instanceof Error ? reason.message : "Paramètres invalides."; }
+  try { effectivePlan = { ...plan, engines: conservative ? conservativeEngines(plan.engines) : plan.engines }; estimate = estimateCampaign(effectivePlan); } catch (reason) { error = reason instanceof Error ? reason.message : "Paramètres invalides."; }
   function number(key: keyof CampaignPlan, value: string) {
     setPlan((current) => ({ ...current, [key]: value === "" ? NaN : Number(value) }));
   }
@@ -49,7 +51,7 @@ export function CampaignCostPlanner({ onClose, initialTarget = 200, initialBudge
   }
   function download() {
     if (!estimate) return;
-    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), kind: "prévision non contractuelle", promptKind, model, sources, parameters: plan, estimate, rates: "Valeurs saisies / hypothèses configurées. Le défaut 0,02 €/run vient du Dataset Builder, pas d’une facture fournisseur." }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), kind: "prévision non contractuelle", promptKind, model, sources, parameters: effectivePlan, enteredParameters: plan, conservative, estimate, rates: "Valeurs saisies / hypothèses configurées. Le défaut 0,02 €/run vient du Dataset Builder, pas d’une facture fournisseur." }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "prevision-campagne.json"; anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -72,14 +74,17 @@ export function CampaignCostPlanner({ onClose, initialTarget = 200, initialBudge
         <label>Infrastructure attribuable (€)<input type="number" min="0" step="0.01" placeholder="Inconnu" value={plan.cloudEur ?? ""} onChange={(event) => amount("cloudEur", event.target.value)} /></label>
       </div>
       <h3>Surfaces et prix unitaires</h3>
+      <p><strong>{plan.engines.length} surfaces incluses sur {CAMPAIGN_SURFACES.length} proposées.</strong> Toutes sont incluses au départ ; retire celles dont tu n’as pas besoin. Leur disponibilité opérationnelle dépend des clés et datasets configurés. Perplexity est exclu : dataset précédemment défaillant, à revérifier avant réactivation.</p>
+      <label><input type="checkbox" checked={conservative} onChange={(event) => setConservative(event.target.checked)} /> Scénario prudent : appliquer à chaque surface chiffrée le prix unitaire renseigné le plus élevé</label>
+      <p>Le défaut commun de 0,02 € est une hypothèse de simulation, y compris pour OpenAI Web Search : ce n’est ni un tarif vérifié ni un maximum fournisseur. Une surface sans prix reste à chiffrer. Décoche pour utiliser les prix propres à chaque surface.</p>
       <label>Modèle / référence de tarification<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Ex. tarif de mon dataset / estimation tokens + web search" /></label>
       {plan.engines.map((engine, index) => <div className="form-row planner-engine" key={index}>
-        <label>Surface<select value={engine.name} onChange={(event) => setPlan((current) => ({ ...current, engines: current.engines.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))}>{["ChatGPT / Bright Data", "OpenAI web search", "Gemini / Bright Data", "Google AI Mode / Bright Data"].map((name) => <option key={name}>{name}</option>)}</select></label>
+        <label>Surface<select value={engine.name} onChange={(event) => setPlan((current) => ({ ...current, engines: current.engines.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))}>{CAMPAIGN_SURFACES.map((name) => <option disabled={name !== engine.name && plan.engines.some((item) => item.name === name)} key={name}>{name}</option>)}</select></label>
         <label>Estimation par exécution (€)<input type="number" min="0" step="0.001" placeholder="Inconnu" value={engine.eurPerRun ?? ""} onChange={(event) => setPlan((current) => ({ ...current, engines: current.engines.map((item, i) => i === index ? { ...item, eurPerRun: event.target.value === "" ? null : Number(event.target.value) } : item) }))} /></label>
         <button type="button" className="secondary" disabled={plan.engines.length === 1} aria-label={`Retirer ${engine.name}`} onClick={() => setPlan((current) => ({ ...current, engines: current.engines.filter((_, i) => i !== index) }))}>Retirer</button>
       </div>)}
-      <button type="button" className="secondary" disabled={plan.engines.length >= 4} onClick={() => setPlan((current) => ({ ...current, engines: [...current.engines, { name: ["ChatGPT / Bright Data", "OpenAI web search", "Gemini / Bright Data", "Google AI Mode / Bright Data"].find((name) => !current.engines.some((e) => e.name === name))!, eurPerRun: null }] }))}>Ajouter un moteur</button>
-      <p className="cost-disclaimer">0,02 €/exécution est l’hypothèse initiale du Dataset Builder, pas un tarif fournisseur vérifié. Un champ vide signifie « inconnu » ; saisir 0 signifie que tu assumes explicitement un coût nul. Les coûts payés restent consultables dans « Coûts réels ».</p>
+      <button type="button" className="secondary" disabled={plan.engines.length >= CAMPAIGN_SURFACES.length} onClick={() => setPlan((current) => ({ ...current, engines: [...current.engines, { name: CAMPAIGN_SURFACES.find((name) => !current.engines.some((e) => e.name === name))!, eurPerRun: 0.02 }] }))}>Rétablir un moteur</button>
+      <p className="cost-disclaimer">0,02 €/exécution est une hypothèse commune de planification, pas un tarif fournisseur vérifié. Un champ vide signifie « inconnu » ; saisir 0 signifie que tu assumes explicitement un coût nul. Les coûts payés restent consultables dans « Coûts réels ».</p>
       <details><summary>Hypothèses de sélection et reconstruction</summary>
         <div className="form-row">
           <label>Candidats finalement retenus (%)<input type="number" min="1" max="100" value={Number.isFinite(plan.acceptancePercent) ? plan.acceptancePercent : ""} onChange={(event) => number("acceptancePercent", event.target.value)} /><small>50 % est une hypothèse modifiable, non calibrée. Les candidats rejetés coûtent aussi un premier passage.</small></label>
@@ -99,6 +104,7 @@ export function CampaignCostPlanner({ onClose, initialTarget = 200, initialBudge
       {estimate && <>
         <div className={`dataset-estimate ${estimate.complete ? "good" : "warn"}`} aria-live="polite">
           <p><strong>{estimate.complete ? "Prévision renseignée" : "Prévision partielle"} : {eur(estimate.forecastEur)}</strong> {estimate.complete ? "pour le travail à venir, marge incluse." : "de postes chiffrés, marge incluse ; ce montant n’est pas un total complet."}</p>
+          <p>{plan.engines.length} surfaces sélectionnées · {conservative ? "prix unitaire le plus élevé parmi ceux renseignés" : "prix propres à chaque surface"}.</p>
           <p>{estimate.plannedExecutions.toLocaleString("fr-FR")} exécutions prévues · {estimate.discoveryCandidates} candidats issus des sources · {estimate.reconstructionCandidates} candidats reconstruits.</p>
           {estimate.unknownLines.length > 0 && <p>À chiffrer : {estimate.unknownLines.join(" ; ")}.</p>}
           <p>Total projet prévisionnel : <strong>{estimate.totalProjectEur === null ? "incomplet — coûts ou engagement à renseigner" : eur(estimate.totalProjectEur)}</strong>.</p>
