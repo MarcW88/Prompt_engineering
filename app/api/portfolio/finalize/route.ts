@@ -72,8 +72,29 @@ export async function POST(request: Request) {
           executed_runs: executed.runs,
           surfaces_tested: [...executed.surfaces],
           executed_state: executed.runs ? "exécutée" : "approuvée non exécutée",
+          qualification: meta.qualification ?? null,
         };
       }),
+      // Proportions vérifiées sur le portefeuille FINAL figé, pas seulement
+      // les candidats : les écarts sont exposés, jamais compensés après coup.
+      category_report: (() => {
+        const counts: Record<string, number> = {};
+        for (const row of approved) {
+          const meta = (promptById.get(String(row.prompt_id))?.metadata ?? {}) as Row;
+          const cat = String((meta.qualification as Row | undefined)?.category ?? "non qualifiée");
+          counts[cat] = (counts[cat] ?? 0) + 1;
+        }
+        const total = approved.length || 1;
+        const branded = (counts["brand"] ?? 0) + (counts["comparaison_standard"] ?? 0);
+        return {
+          total: approved.length,
+          counts,
+          branded_share: Math.round(branded / total * 1000) / 10,
+          kickoff_share: Math.round((counts["non_brand_kickoff"] ?? 0) / total * 1000) / 10,
+          target: "15 % marque+comparaison · 85 % kickoff non-brand",
+          ecart: branded / total > 0.15 ? "sur-représentation marque" : (counts["brand"] === 0 && counts["comparaison_standard"] === 0 ? "famille marque/comparaison absente" : "conforme"),
+        };
+      })(),
     };
     const rows = await supabaseRest<Row[]>("jobs", {
       method: "POST",

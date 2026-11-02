@@ -240,6 +240,10 @@ export async function GET(request: Request) {
             stability: stabilityShown ?? "non mesurée",
             executed_state: runs.length ? "exécutée" : "approuvée non exécutée",
             reconstruction_target: String(meta.target_observation_id ?? ""),
+            category: String((meta.qualification as Row | undefined)?.category ?? "non qualifiée"),
+            kickoff_theme: String((meta.qualification as Row | undefined)?.kickoff_theme ?? ""),
+            qualification_justification: String((meta.qualification as Row | undefined)?.justification ?? ""),
+            formulation_provenance: String(prompt.provenance ?? ""),
           });
         }
       }
@@ -502,6 +506,7 @@ export async function GET(request: Request) {
       { champ: "Prompts finaux exécutés (01)", valeur: executedFinalRows.length },
       { champ: "Propositions approuvées non exécutées (01b)", valeur: propositionRows.length },
       { champ: "Prompts finaux approuvés (total)", valeur: approvedCount },
+      { champ: "Répartition portefeuille final", valeur: (() => { const report = (frozen?.output as Row | undefined)?.category_report as Row | undefined; return report ? `marque+comparaison ${report.branded_share}% · kickoff ${report.kickoff_share}% (${report.ecart})` : "non finalisé ou catégories non qualifiées"; })() },
       { champ: "Exécutions", valeur: observations.length },
       { champ: "Limites", valeur: "traces non exposées par certains providers ; stabilité non mesurée sous 2 runs ; Perplexity exclu" },
       { champ: "Résumé financier", valeur: `engagé ${(confirmed + pending).toFixed(4)} eur (confirmé ${confirmed.toFixed(4)} + provision ${pending.toFixed(4)}) · conversion: ${EUR_RATE_SOURCE}` },
@@ -542,7 +547,7 @@ export async function GET(request: Request) {
       const examples = exampleByPrompt.get(String(prompt.id)) ?? [];
       if (!examples.length) {
         if (versionId) continue;
-        candidateRows.push({ prompt_id: prompt.id, example_id: "", version_text: prompt.text, parent_version: "", reference_formulation: String(meta.variant_of ?? ""), generation_method: String(meta.method ?? prompt.provenance ?? ""), params: "", quality: "", stability: "", reproduction: "", decision: prompt.status, review_history: "" });
+        candidateRows.push({ prompt_id: prompt.id, example_id: "", version_text: prompt.text, parent_version: "", reference_formulation: String(meta.variant_of ?? ""), generation_method: String(meta.method ?? prompt.provenance ?? ""), params: "", quality: "", stability: "", reproduction: "", decision: prompt.status, review_history: "", category: String((meta.qualification as Row | undefined)?.category ?? "non qualifiée"), kickoff_theme: String((meta.qualification as Row | undefined)?.kickoff_theme ?? ""), qualification_justification: String((meta.qualification as Row | undefined)?.justification ?? ""), formulation_provenance: String(prompt.provenance ?? "") });
       }
       for (const example of examples) {
         if (versionId && !frozenPromptIds.has(String(example.id))) continue;
@@ -557,6 +562,10 @@ export async function GET(request: Request) {
           quality: frozenVersion?.quality_score ?? example.quality_score ?? "", stability: frozenVersion?.stability ?? example.stability_score ?? "", reproduction: frozenVersion?.reproduction_score ?? example.reproduction_score ?? "",
           decision: versionId ? `figé / approuvé` : `${example.status ?? ""} / ${example.manual_review_status ?? "pending"}`,
           review_history: example.review_note ?? "",
+          category: String((meta.qualification as Row | undefined)?.category ?? "non qualifiée"),
+          kickoff_theme: String((meta.qualification as Row | undefined)?.kickoff_theme ?? ""),
+          qualification_justification: String((meta.qualification as Row | undefined)?.justification ?? ""),
+          formulation_provenance: String(prompt.provenance ?? ""),
         });
       }
     }
@@ -578,12 +587,12 @@ export async function GET(request: Request) {
     // ---- Assemble sheets ---------------------------------------------------------------
     const sheets: SheetSpec[] = [
       { name: "00_Synthese", columns: [{ header: "champ", key: "champ", width: 34 }, { header: "valeur", key: "valeur", width: 90 }], rows: syntheseRows, wrapColumns: ["valeur"] },
-      { name: "01_Prompts_finaux", columns: ["prompt_version_id", "prompt_id", "version", "final_text", "intent_id", "cluster_label", "constraints_persona", "origin", "base_questions", "base_question_ids", "choice_reason", "rejected_alternatives", "approval", "surfaces_tested", "executed_runs", "trace_status", "stability", "executed_state", "reconstruction_target"].map((key) => ({ header: key, key, width: key.includes("text") || key.includes("questions") ? 60 : 22 })), rows: executedFinalRows, wrapColumns: ["final_text", "base_questions"] },
-      { name: "01b_Propositions", columns: ["prompt_version_id", "prompt_id", "final_text", "intent_id", "cluster_label", "origin", "approval", "executed_state", "note"].map((key) => ({ header: key, key, width: key === "final_text" ? 60 : 24 })), rows: propositionRows.map((row) => ({ ...row, note: "approuvée mais jamais exécutée — non présentée comme testée" })), wrapColumns: ["final_text", "note"] },
+      { name: "01_Prompts_finaux", columns: ["prompt_version_id", "prompt_id", "version", "final_text", "intent_id", "cluster_label", "constraints_persona", "origin", "base_questions", "base_question_ids", "choice_reason", "rejected_alternatives", "approval", "surfaces_tested", "executed_runs", "trace_status", "stability", "executed_state", "reconstruction_target"].map((key) => ({ header: key, key, width: key.includes("text") || key.includes("questions") ? 60 : 22 })).concat(["category", "kickoff_theme", "qualification_justification", "formulation_provenance"].map((key) => ({ header: key, key, width: 26 }))), rows: executedFinalRows, wrapColumns: ["final_text", "base_questions"] },
+      { name: "01b_Propositions", columns: ["prompt_version_id", "prompt_id", "final_text", "intent_id", "cluster_label", "origin", "approval", "executed_state", "category", "kickoff_theme", "formulation_provenance", "note"].map((key) => ({ header: key, key, width: key === "final_text" ? 60 : 24 })), rows: propositionRows.map((row) => ({ ...row, note: "approuvée mais jamais exécutée — non présentée comme testée" })), wrapColumns: ["final_text", "note"] },
       { name: "02_Parcours_complet", columns: ["final_version", "campaign_id", "seed_id", "seed_value", "signal_id", "part", "source_excerpt", "source_url", "platform", "question_id", "initial_question", "transformed_question", "cluster_id", "intent_id", "candidate_prompt_id", "candidate_text", "reconstruction", "final_text", "step_status"].map((key) => ({ header: key, key, width: ["source_excerpt", "initial_question", "candidate_text", "final_text", "source_url"].includes(key) ? 50 : 20 })), rows: pathRows, wrapColumns: ["source_excerpt", "initial_question", "candidate_text", "final_text"] },
       { name: "03_Sources_questions", columns: ["kind", "id", "part", "text", "url", "platform", "collected_at", "provenance", "question_id", "direct_or_context", "filters"].map((key) => ({ header: key, key, width: key === "text" || key === "url" ? 55 : 16 })), rows: sourceRows, wrapColumns: ["text"] },
       { name: "04_Intentions_decisions", columns: ["dataset_id", "intent_id", "representative_text", "variants", "constraints", "decision", "decision_reason", "in_final_set"].map((key) => ({ header: key, key, width: key === "representative_text" ? 55 : 24 })), rows: inventoryRows, wrapColumns: ["representative_text", "decision_reason"] },
-      { name: "05_Candidats_versions", columns: ["prompt_id", "example_id", "version_text", "parent_version", "reference_formulation", "generation_method", "params", "quality", "stability", "reproduction", "decision", "review_history"].map((key) => ({ header: key, key, width: ["version_text", "review_history"].includes(key) ? 55 : 24 })), rows: candidateRows, wrapColumns: ["version_text"] },
+      { name: "05_Candidats_versions", columns: ["prompt_id", "example_id", "version_text", "parent_version", "reference_formulation", "generation_method", "params", "quality", "stability", "reproduction", "decision", "review_history", "category", "kickoff_theme", "qualification_justification", "formulation_provenance"].map((key) => ({ header: key, key, width: ["version_text", "review_history"].includes(key) ? 55 : 24 })), rows: candidateRows, wrapColumns: ["version_text"] },
       { name: "06_Executions", columns: ["observation_id", "part", "executed_text", "prompt_id", "provider_api", "surface_engine", "model", "market_language", "observed_at", "result_or_error", "truncated_note", "parent_observation", "relation", "web_search_triggered", "fanout_reason", "payload_ref"].map((key) => ({ header: key, key, width: ["executed_text", "result_or_error", "payload_ref"].includes(key) ? 60 : 20 })), rows: executionRows, wrapColumns: ["executed_text", "result_or_error"] },
       { name: "07_Fanouts_citations", columns: ["id", "type", "run_observation_id", "query_or_url", "title_excerpt", "position", "source", "observed_or_estimated", "parent_relation", "parent_observation_id"].map((key) => ({ header: key, key, width: ["query_or_url", "title_excerpt"].includes(key) ? 55 : 22 })), rows: [...fanRows, ...citationRows], wrapColumns: ["query_or_url", "title_excerpt"] },
       { name: "08_Reconstruction", columns: ["candidate_prompt_id", "hypothesis_text", "target_observation", "target_surface", "example_observations", "validation_runs", "reproduction", "stability", "decision"].map((key) => ({ header: key, key, width: ["hypothesis_text", "example_observations", "decision"].includes(key) ? 50 : 24 })), rows: reconRows, wrapColumns: ["hypothesis_text"] },

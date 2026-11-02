@@ -23,6 +23,7 @@ from analysis.dataset_funnel import estimate_cost, intent_first_order, score_can
 from analysis.models import AnalysisObservation, AnalysisRequest, PromptCandidate, PromptProvenance
 from analysis.providers import BrightDataProvider, DataForSEOProvider, OpenAILLMProvider, OpenAIWebSearchExtractor, OxylabsProvider
 from analysis.question_pipeline import OpenAIProcessor, cluster_questions, signals_to_questions
+from analysis.qualification import qualify_question, select_with_quotas
 from analysis.signatures import build_signature, signature_similarity
 from analysis.icl_reconstruction import ICLPromptReconstructor
 from analysis.reconstruction import ReconstructionExample
@@ -729,9 +730,21 @@ class CollectionWorker:
         candidates = intent_first_order(built)[:pool_size]
         if not candidates:
             raise RuntimeError("Aucun candidat généré. Vérifiez le nom du projet / marque ou les clusters.")
+        # Qualification : catégorie, thème kickoff, justification — sur les
+        # candidats réels, depuis la config kickoff de la dernière collecte.
+        collect_jobs = self.db.request("GET", "jobs", f"select=input&project_id=eq.{project_id}&kind=eq.collect_sources&order=created_at.desc&limit=1")
+        source_config = (collect_jobs[0].get("input", {}) or {}).get("source_config", {}) if collect_jobs else {}
+        brand_variants = [build_config.get("brand_name") or project.get("name", ""), *source_config.get("brand_variants", [])]
+        competitors = source_config.get("competitors", [])
+        kickoff_themes = source_config.get("themes", [])
+        for candidate in candidates:
+            candidate.metadata["qualification"] = qualify_question(candidate.text, brand_variants, competitors, kickoff_themes)
+        covered_themes = {c.metadata["qualification"].get("kickoff_theme") for c in candidates}
+        covered_themes.discard("")
+        themes_uncovered = [theme for theme in kickoff_themes if theme not in covered_themes]
         sample_size = int(dataset.get("execution_sample_size", len(candidates)))
         max_per_cluster = int(build_config.get("max_per_cluster", 5))
-        selected = stratified_sample(candidates, sample_size, max_per_cluster)
+        selected, category_deficits = select_with_quotas(candidates, sample_size, stratified_sample, max_per_cluster=max_per_cluster)
         selected_ids = {candidate.id for candidate in selected}
         if not selected_ids:
             raise RuntimeError("Aucun candidat sélectionné pour l'exécution. Vérifiez la taille de l'échantillon.")
@@ -787,6 +800,7 @@ class CollectionWorker:
         tasks = []
         stored_observations = {}
         duplicate_texts_skipped = 0
+        observations_reused = 0
         seen_texts = set()
         all_prompts = [candidate.text for candidate in candidates]
         for candidate in selected:
@@ -800,6 +814,7 @@ class CollectionWorker:
             if not prompt or not example:
                 continue
             existing = self._stored_observations(prompt["id"], engines)
+            observations_reused += len(existing)
             stored_observations[example["id"]] = existing
             if int(example.get("completed_runs") or 0) >= repetitions or min(sum(item.engine == engine for item in existing) for engine in engines) >= repetitions:
                 if example.get("status") in ("accepted", "rejected"):
@@ -904,6 +919,11 @@ class CollectionWorker:
             "clusters_available": len(clusters),
             "auxiliary_openai_calls": openai_search_calls,
             "duplicate_texts_skipped": duplicate_texts_skipped,
+            "category_counts": {name: sum(1 for c in candidates if c.metadata.get("qualification", {}).get("category") in (names if isinstance(names, tuple) else (names,))) for name, names in {"brand": "brand", "comparaison_standard": "comparaison_standard", "non_brand_kickoff": "non_brand_kickoff", "hors_périmètre": "hors_périmètre"}.items()},
+            "category_selected": {name: sum(1 for c in selected if c.metadata.get("qualification", {}).get("category") == name) for name in ("brand", "comparaison_standard", "non_brand_kickoff", "hors_périmètre")},
+            "category_deficits": category_deficits,
+            "themes_uncovered": themes_uncovered,
+            "observations_reused": observations_reused,
             "fanout_fallback": getattr(self, "fanout_fallback_enabled", True),
             "worker_version": os.getenv("WORKER_VERSION") or os.getenv("GIT_SHA") or "unknown",
             "intents_identified": intent_inventory,
