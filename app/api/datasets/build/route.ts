@@ -16,13 +16,16 @@ export async function POST(request: Request) {
   if (!engines.length) return NextResponse.json({ error: "Sélectionnez au moins un moteur." }, { status: 400 });
   const costPerExecutionEur = Math.max(0, Number(body.costPerExecutionEur ?? 0));
   const maxBudgetEur = Math.max(0, Number(body.maxBudgetEur ?? 20));
-  const estimatedCostEur = Math.round(executionSampleSize * repetitions * engines.length * costPerExecutionEur * 100) / 100;
+  // Auxiliary OpenAI fan-out calls (~1 per execution without provider traces)
+  // are billed separately — they must be part of the reserved budget too.
+  const auxCostEur = body.fanoutFallback === false ? 0 : executionSampleSize * Number(process.env.AUXILIARY_CALL_COST_EUR ?? 0.03);
+  const estimatedCostEur = Math.round((executionSampleSize * repetitions * engines.length * costPerExecutionEur + auxCostEur) * 100) / 100;
   if (estimatedCostEur > maxBudgetEur) return NextResponse.json({ error: `Coût estimé ${estimatedCostEur.toFixed(2)} € supérieur au budget maximum ${maxBudgetEur.toFixed(2)} €. Augmentez le plafond ou réduisez les moteurs/l'échantillon.` }, { status: 422 });
   try {
     const encoded = encodeURIComponent(body.projectId);
     const clusters = await supabaseRest<Array<{ id: string }>>("clusters", { query: `select=id&project_id=eq.${encoded}&is_geo_relevant=eq.true` });
     if (!clusters.length) return NextResponse.json({ error: "Aucun cluster GEO exploitable. Lancez d'abord le clustering." }, { status: 409 });
-    const datasets = await supabaseRest<Array<{ id: string }>>("datasets", { method: "POST", body: [{ project_id: body.projectId, name: body.name ?? `Dataset ${new Date().toLocaleDateString("fr-BE")}`, target_size: candidatePoolSize, candidate_pool_size: candidatePoolSize, execution_sample_size: executionSampleSize, repetitions, engines, cost_per_execution_eur: costPerExecutionEur, max_budget_eur: maxBudgetEur, estimated_cost_eur: estimatedCostEur, build_config: { candidates_per_cluster: candidatesPerCluster, max_per_cluster: Number(body.maxPerCluster ?? 5), personas: body.personas ?? [], stages: body.stages ?? ["discovery", "comparison"], specificity_levels: body.specificityLevels ?? [0, 1, 2], quality_threshold: Number(body.qualityThreshold ?? 0.65) } }] });
+    const datasets = await supabaseRest<Array<{ id: string }>>("datasets", { method: "POST", body: [{ project_id: body.projectId, name: body.name ?? `Dataset ${new Date().toLocaleDateString("fr-BE")}`, target_size: candidatePoolSize, candidate_pool_size: candidatePoolSize, execution_sample_size: executionSampleSize, repetitions, engines, cost_per_execution_eur: costPerExecutionEur, max_budget_eur: maxBudgetEur, estimated_cost_eur: estimatedCostEur, build_config: { candidates_per_cluster: candidatesPerCluster, max_per_cluster: Number(body.maxPerCluster ?? 5), personas: body.personas ?? [], stages: body.stages ?? ["discovery", "comparison"], specificity_levels: body.specificityLevels ?? [0, 1, 2], quality_threshold: Number(body.qualityThreshold ?? 0.65), mode: body.mode === "matrix" ? "matrix" : "faithful", fanout_fallback: body.fanoutFallback !== false, brand_name: String(body.brandName ?? "") } }] });
     const dataset = datasets[0];
     // Réservation atomique côté base : le solde est vérifié sous verrou au
     // moment de la création du job, ce qui écarte les dépassements concurrents.

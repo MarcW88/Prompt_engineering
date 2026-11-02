@@ -269,3 +269,41 @@ class PipelineSmokeTests(unittest.TestCase):
         for example_texts in contexts:
             self.assertIn('texte édité', example_texts)
             self.assertNotIn('ancien texte', example_texts)
+
+
+class FanoutFallbackFlagTests(unittest.TestCase):
+    def _worker(self, enabled):
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.fanout_extractor = Mock()
+        w.fanout_fallback_enabled = enabled
+        w._record_cost = Mock()
+        return w
+
+    def _observation(self):
+        return AnalysisObservation(
+            'prompt test', 'dataforseo', 'chatgpt',
+            answer='une réponse sans traces', fan_outs=[], raw_response={},
+        )
+
+    def test_disabled_flag_never_triggers_auxiliary_call(self):
+        w = self._worker(False)
+        w._persist_reexecution = Mock(side_effect=AssertionError('auxiliary call fired'))
+        w._persist_observation({'id': 'p1'}, self._observation(), job={'id': 'j'})
+        w._persist_reexecution.assert_not_called()
+        # L'observation principale est tout de même persistée.
+        self.assertEqual(len(w.db.tables['observations']), 1)
+
+    def test_enabled_flag_calls_extractor_once_per_untraced_observation(self):
+        w = self._worker(True)
+        extractor_obs = Mock()
+        extractor_obs.__bool__ = lambda self: True
+        w.fanout_extractor.extract = Mock(return_value={
+            'response_id': 'r1', 'model': 'gpt-x', 'search_calls': 1,
+            'queries': ['q1'], 'usage': {'input_tokens': 1}, 'answer': 'a',
+        })
+        w._persist_observation({'id': 'p1'}, self._observation(), job={'id': 'j'})
+        w.fanout_extractor.extract.assert_called_once()
+        # La réexécution est une observation séparée, liée et marquée.
+        self.assertEqual(len(w.db.tables['observations']), 2)
+        self.assertEqual(w.db.tables['observations'][1]['relation'], 'independent_reexecution')

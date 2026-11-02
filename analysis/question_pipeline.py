@@ -54,8 +54,33 @@ class OpenAIProcessor:
         return result
 
 
-def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Callable[[str, str, str], List[str]], progress_callback: Optional[Callable[[int, int], None]] = None) -> List[QuestionRecord]:
+def _client_tokens(client_domain: str = "", client_names: Sequence[str] = ()) -> List[str]:
+    tokens = []
+    if client_domain:
+        host = client_domain.split("//")[-1].split("/")[0].split(":")[0]
+        tokens.extend(part for part in host.split(".") if len(part) >= 4 and part not in {"www", "www2"})
+    for name in client_names:
+        normalized = normalize_text(name).replace(" ", "")
+        if len(normalized) >= 4:
+            tokens.append(normalized)
+    return list(dict.fromkeys(tokens))
+
+
+def _is_corporate_channel(signal: Dict, tokens: Sequence[str]) -> bool:
+    """Voix de la marque elle-même, pas une demande d'acheteur : contenu émis
+    depuis les propres canaux du client (site, comptes sociaux)."""
+    if not tokens:
+        return False
+    url = str(signal.get("url") or "").casefold()
+    if not url:
+        return False
+    compact = url.replace("-", "").replace("_", "")
+    return any(token.replace("-", "") in compact for token in tokens)
+
+
+def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Callable[[str, str, str], List[str]], progress_callback: Optional[Callable[[int, int], None]] = None, client_domain: str = "", client_names: Sequence[str] = ()) -> List[QuestionRecord]:
     signals = list(signals)
+    client_tokens = _client_tokens(client_domain, client_names)
     questions = []
     seen = set()
     accepted_languages = {language.lower()} if language else set()
@@ -78,7 +103,7 @@ def signals_to_questions(signals: Iterable[Dict], language: str, transformer: Ca
             questions.append(QuestionRecord(
                 signal_id=signal["id"], text=value.strip(), provenance="observed" if observed else "transformed",
                 language=signal_language, confidence=1.0 if observed else 0.7,
-                metadata={"platform": signal.get("platform"), "source_type": source_type, "source_url": signal.get("url"), "detected_language": detected},
+                metadata={"platform": signal.get("platform"), "source_type": source_type, "source_url": signal.get("url"), "detected_language": detected, "intent": "corporate" if _is_corporate_channel(signal, client_tokens) else "buyer"},
             ))
         if progress_callback:
             progress_callback(index, len(signals))
@@ -121,12 +146,22 @@ def cluster_questions(question_rows: Sequence[Dict], embeddings: Sequence[Sequen
         representative = question_rows[representative_index]["text"]
         sources = {question_rows[index].get("metadata", {}).get("platform") for index in indices}
         sources.discard(None)
+        # GEO relevance needs a buyer voice: a cluster counts when it holds at
+        # least one non-corporate question, and either reaches min_cluster_size
+        # or is a singleton whose representative is a real interrogative —
+        # one genuine question asked once is still a valid prompt; corporate
+        # posts are not, however often they recur.
+        buyer_members = [i for i in indices if question_rows[i].get("metadata", {}).get("intent") != "corporate"]
+        is_geo_relevant = bool(buyer_members) and (
+            len(buyer_members) >= min_cluster_size
+            or _is_question(question_rows[representative_index]["text"])
+        )
         clusters.append({
             "label": "_".join(normalize_text(representative).split()[:5]),
             "representative_question": representative,
             "question_count": len(indices),
             "source_count": len(sources),
-            "is_geo_relevant": len(indices) >= min_cluster_size,
+            "is_geo_relevant": is_geo_relevant,
             "fingerprint": _fingerprint(question_rows, indices),
             "members": [{"question_id": question_rows[index]["id"], "similarity": round(_dot(normalized_embeddings[index], centroid), 4)} for index in indices],
         })

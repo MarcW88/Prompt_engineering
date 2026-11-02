@@ -60,7 +60,7 @@ export function Dashboard() {
   const [workspaceModal, setWorkspaceModal] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [records, setRecords] = useState<PromptRecord[]>([]);
-  const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, prompts: 0, datasets: 0, observations: 0, validations: 0, approved: 0, stability: 0 });
+  const [metrics, setMetrics] = useState({ seeds: 0, signals: 0, questions: 0, clusters: 0, geoClusters: 0, prompts: 0, reconstructed: 0, datasets: 0, observations: 0, validations: 0, approved: 0, stability: 0, executionTarget: 0 });
   const [sources, setSources] = useState<Array<{ id: string; name: string; kind: string; enabled: boolean }>>([]);
   const [jobs, setJobs] = useState<Array<{ kind: string; status: string }>>([]);
   const [configured, setConfigured] = useState(false);
@@ -134,6 +134,9 @@ export function Dashboard() {
   function stepState(kind: string, done: boolean, ready = true) {
     const job = latestJob(kind);
     if (job?.status === "running" || job?.status === "pending") return "En cours";
+    // A finished build that produced fewer observations than the requested
+    // sample is honest "Partiel", never a full "Terminé".
+    if (kind === "build_dataset" && job?.status === "completed" && metrics.executionTarget > metrics.observations) return "Partiel";
     if (done || job?.status === "completed") return "Terminé";
     return ready ? "Prêt" : "À faire";
   }
@@ -141,10 +144,10 @@ export function Dashboard() {
   const workflowSteps = [
     { n: "01", title: "Collecte", text: "Reddit, forums, PAA, Trustpilot et GSC.", value: metrics.signals, label: "signaux", icon: Database, status: stepState("collect_sources", metrics.signals > 0, metrics.seeds > 0), action: () => setSeedModal(true) },
     { n: "02", title: "Questions", text: "Signaux nettoyés et transformés en questions.", value: metrics.questions, label: "questions", icon: CircleHelp, status: stepState("transform_signals", metrics.questions > 0, metrics.signals > 0), action: () => setPipelineModal(true) },
-    { n: "03", title: "Clusters", text: "Intentions regroupées par similarité.", value: metrics.clusters, label: "clusters", icon: Layers3, status: stepState("cluster_questions", metrics.clusters > 0, metrics.questions > 0), action: () => setPipelineModal(true) },
-    { n: "04", title: "Dataset + exécution", text: "Échantillon contrôlé et premières réponses moteurs.", value: metrics.observations, label: "observations", icon: FlaskConical, status: stepState("build_dataset", metrics.observations > 0, metrics.clusters > 0), action: () => setDatasetModal(true) },
+    { n: "03", title: "Clusters", text: "Intentions regroupées par similarité.", value: metrics.clusters, label: `clusters · ${metrics.geoClusters} éligibles`, icon: Layers3, status: stepState("cluster_questions", metrics.clusters > 0, metrics.questions > 0), action: () => setPipelineModal(true) },
+    { n: "04", title: "Dataset + exécution", text: "Échantillon contrôlé et premières réponses moteurs.", value: metrics.observations, label: metrics.executionTarget ? `observations / ${metrics.executionTarget} cibles` : "observations", icon: FlaskConical, status: stepState("build_dataset", metrics.observations > 0, metrics.clusters > 0), action: () => setDatasetModal(true) },
     { n: "05", title: "Validation", text: "Runs répétés, reproduction et stabilité.", value: metrics.validations, label: "validations", icon: ShieldCheck, status: stepState("validate_dataset", metrics.validations > 0, metrics.observations > 0), action: () => setPipelineModal(true) },
-    { n: "06", title: "Reconstruction (expérimental)", text: "Optionnel — prompts reconstruits depuis les traces observées, quand elles existent.", value: metrics.prompts, label: "prompts", icon: Sparkles, status: stepState("reverse_engineer", false, metrics.validations > 0 || metrics.observations > 0), action: () => setPipelineModal(true) },
+    { n: "06", title: "Reconstruction (expérimental)", text: "Optionnel — prompts reconstruits depuis les traces observées, quand elles existent.", value: metrics.reconstructed, label: "reconstructions", icon: Sparkles, status: stepState("reverse_engineer", false, metrics.validations > 0 || metrics.observations > 0), action: () => setPipelineModal(true) },
     { n: "07", title: "Revue humaine", text: "Approbation, modification ou rejet avant export.", value: metrics.approved, label: "approuvés", icon: FileSearch, status: metrics.approved > 0 ? "Terminé" : metrics.datasets > 0 ? "Prêt" : "À faire", action: () => setReviewModal(true) },
     { n: "08", title: "Export Semactic", text: "Export final des prompts acceptés et approuvés.", value: metrics.approved, label: "exportables", icon: Download, status: metrics.approved > 0 ? "Prêt" : "À faire", action: () => setExportsModal(true) },
   ];
@@ -255,7 +258,7 @@ export function Dashboard() {
           <section className="metrics">
             <article><div className="metric-icon violet"><CircleHelp /></div><div><span>Questions collectées</span><strong>{metrics.questions.toLocaleString("fr-FR")}</strong><small>Données persistées</small></div></article>
             <article><div className="metric-icon blue"><Layers3 /></div><div><span>Intentions détectées</span><strong>{metrics.clusters.toLocaleString("fr-FR")}</strong><small>Clusters disponibles</small></div></article>
-            <article><div className="metric-icon amber"><Sparkles /></div><div><span>Prompts reconstruits</span><strong>{metrics.prompts.toLocaleString("fr-FR")}</strong><small>Corpus actif</small></div></article>
+            <article><div className="metric-icon amber"><Sparkles /></div><div><span>Prompts reconstruits</span><strong>{metrics.reconstructed.toLocaleString("fr-FR")}</strong><small>{metrics.prompts.toLocaleString("fr-FR")} candidats au total</small></div></article>
             <article><div className="metric-icon green"><ShieldCheck /></div><div><span>Score de stabilité</span><strong>{metrics.stability}<span>%</span></strong><small>Moyenne des validations</small></div></article>
           </section>
 

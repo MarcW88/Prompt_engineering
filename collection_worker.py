@@ -175,6 +175,10 @@ class CollectionWorker:
         self.worker_id = re.sub(r"[^a-zA-Z0-9_-]", "-", raw_worker_id)[:64]
         self.cloud_execution_id = cloud_execution_id or os.getenv("CLOUD_RUN_EXECUTION") or os.getenv("CLOUD_RUN_TASK_ID") or "local"
         self.fanout_extractor = OpenAIWebSearchExtractor() if os.getenv("OPENAI_API_KEY") else None
+        # Auxiliary fan-out extraction: an OpenAI web-search re-execution is
+        # fired per observation whose provider reported no searches. Désactiver
+        # via OPENAI_FANOUT_FALLBACK=0 ou build_config.fanout_fallback=false.
+        self.fanout_fallback_enabled = os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0"
 
     def _execute_analysis(self, provider, request: AnalysisRequest):
         observation = provider.execute(request)
@@ -274,7 +278,7 @@ class CollectionWorker:
             self.db.request("POST", "citations", body=[{"observation_id": observation_id, "position": citation.position or index + 1, "url": citation.url, "title": citation.title, "excerpt": citation.text} for index, citation in enumerate(observation.citations)])
         # Fallback OpenAI : nouvelle exécution indépendante — observation séparée,
         # jamais fusionnée dans les traces du run parent.
-        if not observation.fan_outs and observation.answer and not parent_observation_id:
+        if getattr(self, "fanout_fallback_enabled", os.getenv("OPENAI_FANOUT_FALLBACK", "1") != "0") and not observation.fan_outs and observation.answer and not parent_observation_id:
             reexecution_id = self._persist_reexecution(prompt, observation_id, observation, job=job)
             if reexecution_id:
                 observation.metadata["reexecution_observation_id"] = reexecution_id
@@ -613,7 +617,7 @@ class CollectionWorker:
     def _transform_signals(self, job: Dict) -> Dict:
         project_id = job["project_id"]
         self._report(job, 3, "Chargement des signaux")
-        project = self.db.request("GET", "projects", f"select=language&id=eq.{project_id}&limit=1")[0]
+        project = self.db.request("GET", "projects", f"select=language,name,website&id=eq.{project_id}&limit=1")[0]
         signals = self.db.request("GET", "signals", f"select=*&project_id=eq.{project_id}&order=collected_at.asc")
         existing = self.db.request("GET", "questions", f"select=signal_id&project_id=eq.{project_id}&signal_id=not.is.null")
         processed_ids = {row["signal_id"] for row in existing}
@@ -631,6 +635,8 @@ class CollectionWorker:
             project.get("language", "fr"),
             transform,
             lambda processed, total: self._report(job, 10 + int(55 * processed / max(total, 1)), f"Transformation des signaux · {processed}/{total}"),
+            client_domain=project.get("website", ""),
+            client_names=[project.get("name", "")],
         )
         self._report(job, 68, f"Enregistrement de {len(questions)} questions")
         rows = [{
@@ -676,7 +682,7 @@ class CollectionWorker:
                 "cluster_id": cluster_id, "question_id": member["question_id"], "similarity": member["similarity"],
             } for member in cluster["members"]])
             saved_count += 1
-        return {"questions": len(rows), "clusters": saved_count, "geo_relevant": sum(cluster["is_geo_relevant"] for cluster in clusters)}
+        return {"questions": len(rows), "clusters": saved_count, "geo_relevant": sum(cluster["is_geo_relevant"] for cluster in clusters), "corporate_excluded": sum(not cluster["is_geo_relevant"] and cluster["question_count"] >= int(input_config.get("min_cluster_size", 2)) for cluster in clusters), "singletons_admitted": sum(cluster["is_geo_relevant"] and cluster["question_count"] == 1 for cluster in clusters)}
 
     def _build_dataset(self, job: Dict) -> Dict:
         dataset_id = job["input"]["dataset_id"]
@@ -714,7 +720,7 @@ class CollectionWorker:
             personas=build_config.get("personas", []), stages=build_config.get("stages", ["discovery", "comparison"]),
             specificity_levels=build_config.get("specificity_levels", [0, 1, 2]),
             candidates_per_cluster=build_config.get("candidates_per_cluster", 9),
-            brand_name=project.get("name", ""),
+            brand_name=str(build_config.get("brand_name") or project.get("name", "")),
         )))
         # The global pool cap follows the same intent-first rule as every
         # other cap: representatives of every intent first, variants last —
@@ -763,6 +769,9 @@ class CollectionWorker:
         self.db.request("PATCH", "datasets", f"id=eq.{dataset_id}", {"status": "executing", "estimated_cost_eur": cost["estimated_cost_eur"]}, "return=minimal")
         self._report(job, 10, "Démarrage des exécutions moteur")
         provider_name = os.getenv("DATASET_PROVIDER", "brightdata")
+        # Auxiliary fan-out re-executions can be disabled per dataset; they are
+        # billed OpenAI calls, never part of the main screening pass.
+        self.fanout_fallback_enabled = bool(build_config.get("fanout_fallback", getattr(self, "fanout_fallback_enabled", True)))
         if provider_name == "dataforseo":
             provider = DataForSEOProvider()
         elif provider_name == "openai":
@@ -777,8 +786,15 @@ class CollectionWorker:
         accepted = rejected = completed = openai_search_calls = 0
         tasks = []
         stored_observations = {}
+        duplicate_texts_skipped = 0
+        seen_texts = set()
         all_prompts = [candidate.text for candidate in candidates]
         for candidate in selected:
+            normalized = " ".join(candidate.text.casefold().split())
+            if normalized in seen_texts:
+                duplicate_texts_skipped += 1
+                continue
+            seen_texts.add(normalized)
             prompt = prompts_by_text.get(candidate.text)
             example = examples_by_prompt.get(prompt["id"]) if prompt else None
             if not prompt or not example:
@@ -883,6 +899,13 @@ class CollectionWorker:
         })
         intents_selected = sorted({str(c.metadata.get("intent_id")) for c in selected if c.metadata.get("intent_id")})
         statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0,
+            "execution_provider": provider_name,
+            "execution_target": int(dataset.get("execution_sample_size", len(candidates))),
+            "clusters_available": len(clusters),
+            "auxiliary_openai_calls": openai_search_calls,
+            "duplicate_texts_skipped": duplicate_texts_skipped,
+            "fanout_fallback": getattr(self, "fanout_fallback_enabled", True),
+            "worker_version": os.getenv("WORKER_VERSION") or os.getenv("GIT_SHA") or "unknown",
             "intents_identified": intent_inventory,
             "intents_selected": intents_selected,
             "intents_deferred": [i for i in intent_inventory if i not in intents_selected],
