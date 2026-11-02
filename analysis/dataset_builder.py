@@ -138,6 +138,11 @@ class DatasetBuilder:
         ordered = [item for intent_items in intents for item in intent_items[:1]]
         ordered += [item for intent_items in intents for item in intent_items[1:]]
         intent_index_by_id = {id(item): index for index, intent_items in enumerate(intents, start=1) for item in intent_items}
+        # Inventory BEFORE the per-cluster cap: every admissible intent of this
+        # cluster, even those whose candidates were truncated by
+        # candidates_per_cluster. Coverage denominators read this, not the
+        # intents that happened to survive the cap.
+        cluster_intent_ids = [f"{cluster.id}:intent:{index}" for index in range(1, len(intents) + 1)]
         representative_text = {index: intent_items[0].text.strip() for index, intent_items in enumerate(intents, start=1)}
         first_of_intent = {id(intent_items[0]) for intent_items in intents if intent_items}
         for item in ordered:
@@ -161,6 +166,7 @@ class DatasetBuilder:
                     "intent_id": f"{cluster.id}:intent:{intent_index}",
                     "is_representative": is_representative,
                     "variant_of": None if is_representative else representative_text[intent_index],
+                    "cluster_intent_ids": cluster_intent_ids,
                     "original_provenance": item.provenance,
                     "language": cluster.language,
                     "cluster_question_count": cluster.question_count or len(cluster.questions) + 1,

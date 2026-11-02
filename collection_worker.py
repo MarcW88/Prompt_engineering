@@ -876,7 +876,11 @@ class CollectionWorker:
         # must be the admissible intents identified, not only the intents that
         # survived selection. Deferred intents and exclusion reasons stay
         # visible for the justification table.
-        intent_inventory = sorted({str(c.metadata.get("intent_id")) for c in built if c.metadata.get("intent_id")})
+        intent_inventory = sorted({
+            intent_id
+            for c in built
+            for intent_id in (list(c.metadata.get("cluster_intent_ids") or []) or ([c.metadata.get("intent_id")] if c.metadata.get("intent_id") else []))
+        })
         intents_selected = sorted({str(c.metadata.get("intent_id")) for c in selected if c.metadata.get("intent_id")})
         statistics = {"candidates": len(candidates), "sampled": len(selected), "accepted": accepted, "rejected": rejected, "executions": completed, "concurrency": concurrency, "estimated_cost_eur": cost["estimated_cost_eur"], "confirmed_brightdata_cost_usd": bright_delta, "acceptance_rate": round(accepted / len(selected), 4) if selected else 0,
             "intents_identified": intent_inventory,

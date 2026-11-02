@@ -276,7 +276,9 @@ export async function GET(request: Request) {
           if (versionId && !frozenPromptIds.has(String(example.id))) continue;
           const frozenVersion = versionId ? (frozenVersionById.get(String(example.id)) ?? frozenByPromptId.get(String(prompt.id))) : undefined;
           pathRows.push({
-            final_version: example.manual_review_status === "approved" ? String(example.id) : "",
+            final_version: versionId
+              ? String(frozenVersion?.prompt_version_id ?? example.id)
+              : example.manual_review_status === "approved" ? String(example.id) : "",
             campaign_id: projectId,
             seed_id: seed?.id ?? "",
             seed_value: seed?.value ?? "",
@@ -293,7 +295,9 @@ export async function GET(request: Request) {
             candidate_text: prompt.text,
             reconstruction: prompt.provenance === "reverse_engineered" ? `ICL depuis observation ${String(meta.target_observation_id ?? "?")}` : "",
             final_text: String(frozenVersion?.text ?? example.edited_prompt_text ?? prompt.text ?? ""),
-            step_status: `${prompt.status ?? ""}/${example.status ?? "non candidat"}`,
+            step_status: versionId
+              ? `figé/${String(frozenVersion?.selection_status ?? "sélectionné")}`
+              : `${prompt.status ?? ""}/${example.status ?? "non candidat"}`,
           });
         }
       }
@@ -397,20 +401,40 @@ export async function GET(request: Request) {
     // Reconciliation (§16.3): a confirmed event replaces the pending provision
     // it settles (same provider+category, linked by external_reference or the
     // same job/dataset attribution) — it is never an additional charge.
-    const confirmedKeys = new Set(
-      costRows
-        .filter((row) => ["actual", "account_delta"].includes(String(row.cost_status)))
-        .map((row) => `${row.provider}|${row.category}|${row.job_id ?? ""}`),
-    );
-    const confirmedRefs = new Set(
-      costRows
-        .filter((row) => ["actual", "account_delta"].includes(String(row.cost_status)))
-        .map((row) => String(row.external_reference ?? "")).filter(Boolean),
-    );
-    const isReconciledProvision = (row: Row) =>
-      ["usage_only", "pending_reconciliation"].includes(String(row.cost_status)) &&
-      (confirmedKeys.has(`${row.provider}|${row.category}|${row.job_id ?? ""}`) ||
-        confirmedRefs.has(String(row.external_reference ?? "")));
+    // 1:1 pairing: each confirmed event settles at most ONE provision — the one
+    // it references directly, or the oldest matching provision on the same
+    // job/scope. Other consumptions of the same job stay "non rapproché".
+    const confirmedEvents = costRows.filter((row) => ["actual", "account_delta"].includes(String(row.cost_status)));
+    const claimedConfirmed = new Set<string>();
+    const reconciledProvisionIds = new Set<string>();
+    const provisions = costRows.filter((row) => ["usage_only", "pending_reconciliation"].includes(String(row.cost_status)));
+    // Pass 1 — explicit links: shared billing reference or metadata.reconciles.
+    for (const prov of provisions) {
+      const match = confirmedEvents.find((evt) => {
+        if (claimedConfirmed.has(String(evt.id))) return false;
+        const evtRef = String(evt.external_reference ?? "");
+        const provRef = String(prov.external_reference ?? "");
+        const evtMeta = (evt.metadata ?? {}) as Row;
+        return (evtRef && evtRef === provRef) || String(evtMeta.reconciles ?? "") === String(prov.id);
+      });
+      if (match) {
+        claimedConfirmed.add(String(match.id));
+        reconciledProvisionIds.add(String(prov.id));
+      }
+    }
+    // Pass 2 — same scope (provider+category+job), still strictly 1:1.
+    for (const prov of provisions.filter((row) => !reconciledProvisionIds.has(String(row.id)))) {
+      const match = confirmedEvents.find((evt) =>
+        !claimedConfirmed.has(String(evt.id)) &&
+        String(evt.provider) === String(prov.provider) &&
+        String(evt.category) === String(prov.category) &&
+        String(evt.job_id ?? "") === String(prov.job_id ?? ""));
+      if (match) {
+        claimedConfirmed.add(String(match.id));
+        reconciledProvisionIds.add(String(prov.id));
+      }
+    }
+    const isReconciledProvision = (row: Row) => reconciledProvisionIds.has(String(row.id));
     const costDetail = costRows.map((row) => ({
       cost_event_id: row.id,
       provider: row.provider,

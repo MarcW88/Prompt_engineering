@@ -79,6 +79,16 @@ class DatasetBuilderTests(unittest.TestCase):
         self.assertIn("trail expert montagne 3000m", texts)
         self.assertTrue(all(c.metadata["is_representative"] for c in candidates))
 
+    def test_intent_inventory_precedes_per_cluster_cap(self):
+        # Cap=1 tronque la seconde intention distincte, mais l'inventaire
+        # pré-plafond doit quand même la compter.
+        items = ["trail débutant", "nutrition course ultra distance 100km"]
+        cluster = ClusterInput(id="c", label="mix", representative_question=items[0],
+            questions=items[1:], question_count=2, source_count=2)
+        candidates = DatasetBuilder().build([cluster], DatasetBuildConfig(candidates_per_cluster=1, intent_similarity_threshold=0.65))
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].metadata["cluster_intent_ids"], ["c:intent:1", "c:intent:2"])
+
     def test_global_pool_cap_keeps_every_intent(self):
         # Reproduit l'audit : plafond global 2, cluster 1 saturé de paraphrases,
         # cluster 2 avec une intention distincte → les deux représentants
