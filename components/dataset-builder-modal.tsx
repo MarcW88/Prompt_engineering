@@ -27,6 +27,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
   const [datasetId, setDatasetId] = useState("");
   const [existingDatasets, setExistingDatasets] = useState<Array<{ id: string; name: string; status: string; statistics?: Record<string, unknown> }>>([]);
   const [geoClusters, setGeoClusters] = useState(0);
+  const [questionCategories, setQuestionCategories] = useState<Record<string, number>>({});
   const [fanoutFallback, setFanoutFallback] = useState(true);
   const [brandName, setBrandName] = useState("");
   const [projectBudget, setProjectBudget] = useState<number | null>(null);
@@ -41,6 +42,7 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
         const datasets = data.datasets ?? [];
         setExistingDatasets(datasets);
         setGeoClusters(Number(data.geoClusters ?? 0));
+        setQuestionCategories(data.questionCategories ?? {});
         setBrandName((current) => current || String(data.projectName ?? ""));
         if (datasets.length && !datasetId) {
           setDatasetId(datasets[0].id);
@@ -162,6 +164,9 @@ export function DatasetBuilderModal({ projectId, onClose, onJobQueued }: { proje
             <label>Runs de screening<input type="number" min="1" max="1" value={repetitions} onChange={(event) => setRepetitions(Number(event.target.value))} /><small>Premier passage uniquement ; la stabilité complète se mesure ensuite à 3 ou 5 runs.</small></label>
           </div>
           <label>Seuil qualité<input type="number" min="0" max="1" step="0.05" value={qualityThreshold} onChange={(event) => setQualityThreshold(Number(event.target.value))} /><small>0,55 est un bon point de départ. Plus bas accepte plus de prompts ; plus haut est plus strict.</small></label>
+          {Object.keys(questionCategories).length > 0 && (
+            <p className="dataset-estimate"><small><strong>Volumes disponibles par catégorie :</strong> {(["brand", "comparaison_standard", "non_brand_kickoff", "hors_périmètre", "proposées", "non_qualifiée"] as const).filter((key) => questionCategories[key]).map((key) => `${key} : ${questionCategories[key]}`).join(" · ")} — cible portefeuille : ~15 % marque+comparaison, ~85 % kickoff non-brand. Les manques sont signalés, jamais comblés par du hors sujet.</small></p>
+          )}
         </>}
 
         {step === 2 && <>
