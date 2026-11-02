@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import writeExcelFile from "write-excel-file/node";
 import { isSupabaseConfigured, supabaseRest } from "@/lib/data/supabase";
-import { isEligibleObservation, observedFanOutSourceFilter } from "@/lib/data/observations";
+import { isEligibleObservation, observedFanOutSourceFilter, traceKind } from "@/lib/data/observations";
 
 type Row = Record<string, unknown>;
 
-const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved", "corpus"]);
+const stages = new Set(["seeds", "signals", "questions", "clusters", "dataset", "observations", "fanouts", "citations", "validations", "prompts", "approved", "corpus", "portfolio"]);
 
 function csvCell(value: unknown) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -91,6 +91,7 @@ export async function GET(request: Request) {
         fanouts: await countLinkedRows("fan_outs", observationIds, "observation_id"),
         citations: await countLinkedRows("citations", observationIds, "observation_id"),
         validations: await countLinkedRows("validations", promptIds, "prompt_id"),
+        portfolio: promptIds.length,
         corpus: (await fetchInBatches<{ id: string }>("fan_outs", observationIds, "observation_id", `id&${observedFanOutSourceFilter()}`)).length,
       };
       return NextResponse.json({ counts });
@@ -142,6 +143,111 @@ export async function GET(request: Request) {
     const promptIds = prompts.map((row) => String(row.id));
     const promptById = new Map(prompts.map((row) => [String(row.id), row]));
 
+    if (stage === "portfolio") {
+      // §10 business portfolio: one dossier per prompt, grouped by intent,
+      // explaining every selection and exclusion. An edited text is a new,
+      // unexecuted version — its scores stay with the original formulation.
+      const fullPrompts = await supabaseRest<Row[]>("prompts", { query: `select=id,cluster_id,text,provenance,confidence,status,expected_fan_outs,metadata,created_at&project_id=eq.${project}&limit=20000&order=created_at.asc` });
+      const clusterIds = [...new Set(fullPrompts.map((row) => String(row.cluster_id)).filter((id) => id && id !== "null"))];
+      const clusterById = new Map((clusterIds.length ? await supabaseRest<Row[]>("clusters", { query: `select=id,label&project_id=eq.${project}` }) : []).map((row) => [String(row.id), String(row.label ?? "")]));
+      // Evidence lineage: prompt → cluster → questions → signal (URL/platform).
+      const clusterQuestions = clusterIds.length
+        ? await fetchInBatches<Row>("cluster_questions", clusterIds, "cluster_id", "cluster_id,question_id")
+        : [];
+      const questionIds = [...new Set(clusterQuestions.map((row) => String(row.question_id)))];
+      const questions = questionIds.length
+        ? await fetchInBatches<Row>("questions", questionIds, "id", "id,text,provenance,signal_id")
+        : [];
+      const signalIds = [...new Set(questions.map((row) => String(row.signal_id)).filter((id) => id && id !== "null"))];
+      const signals = signalIds.length
+        ? await fetchInBatches<Row>("signals", signalIds, "id", "id,url,platform,source_type")
+        : [];
+      const signalById = new Map(signals.map((row) => [String(row.id), row]));
+      const questionById = new Map(questions.map((row) => [String(row.id), row]));
+      const evidenceByCluster = new Map<string, { question_ids: string[]; signal_urls: string[]; platforms: string[] }>();
+      const questionTextIndex = new Map<string, { question_id: string; signal_url: string | null; platform: string | null }>();
+      const normalize = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+      for (const link of clusterQuestions) {
+        const question = questionById.get(String(link.question_id));
+        const signal = question ? signalById.get(String(question.signal_id)) : null;
+        const entry = evidenceByCluster.get(String(link.cluster_id)) ?? { question_ids: [], signal_urls: [], platforms: [] };
+        entry.question_ids.push(String(link.question_id));
+        if (signal?.url) entry.signal_urls.push(String(signal.url));
+        if (signal?.platform) entry.platforms.push(String(signal.platform));
+        evidenceByCluster.set(String(link.cluster_id), entry);
+        // Direct evidence: the exact question/extract that produced this
+        // formulation, distinguished from mere same-cluster context.
+        if (question?.text) {
+          questionTextIndex.set(`${link.cluster_id}:${normalize(question.text)}`, {
+            question_id: String(link.question_id),
+            signal_url: signal?.url ? String(signal.url) : null,
+            platform: signal?.platform ? String(signal.platform) : null,
+          });
+        }
+      }
+      const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
+      const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status,manual_review_status,review_note,edited_prompt_text,quality_score,stability_score,reproduction_score,completed_runs,target_runs,validation_tier");
+      const exampleByPrompt = new Map<string, Row>();
+      for (const example of examples) {
+        const key = String(example.prompt_id);
+        const current = exampleByPrompt.get(key);
+        if (!current || String(example.status) === "accepted") exampleByPrompt.set(key, example);
+      }
+      const obsCounts = new Map<string, number>();
+      const obsTexts = new Map<string, Set<string>>();
+      for (const row of await fetchInBatches<Row>("observations", promptIds, "prompt_id", "prompt_id,answer,raw_response->>error,raw_response->>executed_text")) {
+        const key = String(row.prompt_id);
+        if ((row.answer ?? "").toString().trim() && !row.error) {
+          obsCounts.set(key, (obsCounts.get(key) ?? 0) + 1);
+          obsTexts.set(key, (obsTexts.get(key) ?? new Set()).add(String(row.executed_text || "")));
+        }
+      }
+      const rows = fullPrompts.map((prompt) => {
+        const meta = (prompt.metadata ?? {}) as Record<string, unknown>;
+        const example = exampleByPrompt.get(String(prompt.id));
+        const edited = example?.edited_prompt_text ? String(example.edited_prompt_text) : "";
+        const evidence = evidenceByCluster.get(String(prompt.cluster_id)) ?? { question_ids: [], signal_urls: [], platforms: [] };
+        // Direct proof = the question(s) whose text matches this formulation
+        // (or its representative for variants); cluster evidence stays
+        // separate so a source is never claimed for a formulation it did
+        // not produce.
+        const metaVariant = String(meta.variant_of ?? "");
+        const directKeys = [prompt.text, metaVariant].filter(Boolean).map((value) => `${prompt.cluster_id}:${normalize(value)}`);
+        const direct = directKeys.map((key) => questionTextIndex.get(key)).filter(Boolean) as { question_id: string; signal_url: string | null; platform: string | null }[];
+        return {
+          id: prompt.id,
+          intent_id: String(meta.intent_id ?? meta.cluster_id ?? ""),
+          cluster_label: clusterById.get(String(prompt.cluster_id)) ?? "",
+          direct_question_ids: JSON.stringify([...new Set(direct.map((item) => item.question_id))]),
+          direct_source_urls: JSON.stringify([...new Set(direct.map((item) => item.signal_url).filter(Boolean))]),
+          cluster_question_ids: JSON.stringify([...new Set(evidence.question_ids)]),
+          cluster_source_urls: JSON.stringify([...new Set(evidence.signal_urls)]),
+          source_platforms: [...new Set(evidence.platforms)].join(" | "),
+          role: meta.is_representative === false ? "variant" : meta.is_representative === true ? "representative" : "candidate",
+          variant_of: String(meta.variant_of ?? ""),
+          text: prompt.text,
+          edited_text: edited || null,
+          // An edited text is only "unexecuted" until a run has actually
+          // executed that exact version — previous-version runs don't count.
+          text_state: edited ? (obsTexts.get(String(prompt.id))?.has(edited) ? "edited_executed" : "unexecuted_version") : String(prompt.status ?? ""),
+          provenance: prompt.provenance,
+          origin: String(meta.method ?? prompt.provenance ?? ""),
+          reconstruction_target_observation: String(meta.target_observation_id ?? ""),
+          cluster_id: prompt.cluster_id,
+          executed_runs: obsCounts.get(String(prompt.id)) ?? 0,
+          quality_score: example?.quality_score ?? null,
+          stability_score: example && Number(example.completed_runs ?? 0) >= Math.max(3, Number(example.target_runs ?? 0)) ? example.stability_score : null,
+          reproduction_score: example?.reproduction_score ?? null,
+          selection_status: example?.status ?? "not_selected",
+          review_status: example?.manual_review_status ?? "pending",
+          review_note: example?.review_note ?? null,
+          confidence: prompt.confidence,
+          created_at: prompt.created_at,
+        };
+      });
+      return download(rows, ["id", "intent_id", "cluster_label", "role", "variant_of", "text", "edited_text", "text_state", "provenance", "origin", "direct_question_ids", "direct_source_urls", "cluster_question_ids", "cluster_source_urls", "source_platforms", "reconstruction_target_observation", "executed_runs", "quality_score", "stability_score", "reproduction_score", "selection_status", "review_status", "review_note", "confidence", "created_at"], stage, format);
+    }
+
     if (stage === "dataset") {
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id,name,status,created_at&project_id=eq.${project}&order=created_at.desc` });
       const datasetIds = datasets.map((row) => String(row.id));
@@ -157,7 +263,7 @@ export async function GET(request: Request) {
       return download(rows, ["id", "dataset_name", "status", "prompt_text", "prompt_provenance", "persona", "journey_stage", "specificity_level", "pre_execution_score", "quality_score", "stability_score", "reproduction_score", "validation_tier", "target_runs", "completed_runs", "manual_review_status", "reviewed_at", "review_note", "selected_for_execution", "created_at"], stage, format);
     }
 
-    const observationRows = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response_error:raw_response->>error,web_search_triggered,observed_at");
+    const observationRows = await fetchInBatches<Row>("observations", promptIds, "prompt_id", "id,prompt_id,provider,engine,model,country,language,answer,raw_response_error:raw_response->>error,executed_text:raw_response->>executed_text,web_search_triggered,observed_at");
     const observations: Row[] = observationRows.map((row) => ({ ...row, raw_response: row.raw_response_error ? { error: row.raw_response_error } : null }));
     observations.sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)));
     const observationIds = observations.map((row) => String(row.id));
@@ -169,9 +275,11 @@ export async function GET(request: Request) {
       // le prompt exact exécuté, et aucune requête synthétique.
       const fanRows = await fetchInBatches<Row>("fan_outs", observationIds, "observation_id", `observation_id,query,source&${observedFanOutSourceFilter()}&order=position.asc`);
       const fanByObservation = new Map<string, string[]>();
+      const sourceByObservation = new Map<string, Set<string>>();
       for (const row of fanRows) {
         const key = String(row.observation_id);
         fanByObservation.set(key, [...(fanByObservation.get(key) ?? []), String(row.query)]);
+        sourceByObservation.set(key, (sourceByObservation.get(key) ?? new Set()).add(String(row.source)));
       }
       const datasets = await supabaseRest<Row[]>("datasets", { query: `select=id&project_id=eq.${project}` });
       const examples = await fetchInBatches<Row>("dataset_examples", datasets.map((row) => String(row.id)), "dataset_id", "prompt_id,status");
@@ -179,14 +287,19 @@ export async function GET(request: Request) {
       // Corpus éligible : prompts acceptés, trace valide (réponse non vide,
       // pas d'erreur provider), provider cohérent. Les observations rejetées ou
       // en erreur restent visibles dans l'export brut "observations".
+      const strictOnly = new URL(request.url).searchParams.get("strict") === "1";
       const rows = observations
         .filter((observation) => (fanByObservation.get(String(observation.id)) ?? []).length > 0)
         .filter(isEligibleObservation)
         .filter((observation) => acceptedPrompts.has(String(observation.prompt_id)))
+        .filter((observation) => !strictOnly || traceKind(sourceByObservation.get(String(observation.id)) ?? [], observation.provider, observation.engine) === "provider_reported")
         .map((observation) => ({
           project_id: projectId,
           prompt_id: observation.prompt_id,
-          prompt: promptById.get(String(observation.prompt_id))?.text ?? "",
+          // The corpus must pair searches with the exact text executed, not
+          // the prompt row's current text — an edited version produces its
+          // own prompt/searches couples.
+          prompt: String(observation.executed_text || promptById.get(String(observation.prompt_id))?.text || ""),
           observation_id: observation.id,
           provider: observation.provider,
           engine: observation.engine,
@@ -195,7 +308,7 @@ export async function GET(request: Request) {
           language: observation.language,
           observed_at: observation.observed_at,
           fan_outs: JSON.stringify(fanByObservation.get(String(observation.id)) ?? []),
-          trace_kind: "provider_reported",
+          trace_kind: traceKind(sourceByObservation.get(String(observation.id)) ?? [], observation.provider, observation.engine),
           status: "accepted",
           raw_response_reference: `observations:${observation.id}`,
         }));

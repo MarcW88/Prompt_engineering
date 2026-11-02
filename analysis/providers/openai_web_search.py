@@ -153,7 +153,13 @@ class OpenAIWebSearchExtractor:
         queries = []
         seen = set()
         search_calls = 0
+        answer_parts = []
         for item in data.get("output", []):
+            if item.get("type") == "message":
+                for part in item.get("content") or []:
+                    if part.get("type") in ("output_text", "text") and part.get("text"):
+                        answer_parts.append(str(part["text"]))
+                continue
             if item.get("type") != "web_search_call":
                 continue
             search_calls += 1
@@ -167,6 +173,7 @@ class OpenAIWebSearchExtractor:
                     queries.append(text)
         return {
             "queries": queries,
+            "answer": "\n".join(answer_parts),
             "model": data.get("model", self.model),
             "response_id": data.get("id"),
             "search_calls": search_calls,

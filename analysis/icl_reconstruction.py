@@ -60,7 +60,14 @@ class ICLPromptReconstructor(PromptReconstructor):
         prompts = self._generate_with_llm(fan_outs, context, language, max_candidates)
         candidates = []
         base_confidence = context[0][0] if context else 0.0
-        for text in prompts[:max_candidates]:
+        signatures = []
+        for text in prompts:
+            signature = build_signature([text])
+            if any(signature_similarity(signature, existing) >= 0.9 for existing in signatures):
+                continue  # dédupliquer avant dépense moteur
+            signatures.append(signature)
+            if len(candidates) >= max_candidates:
+                break
             candidates.append(PromptCandidate(
                 text=text,
                 provenance=PromptProvenance.REVERSE_ENGINEERED,
@@ -134,8 +141,12 @@ class ICLPromptReconstructor(PromptReconstructor):
             "réellement observées, inférer le prompt utilisateur le plus probable.\n\n"
             "Règles :\n"
             "- Les exemples montrent des couples réels (recherches -> prompt).\n"
-            "- Le prompt doit être naturel, écrit à la première personne si le style "
-            "  des exemples le suggère, et couvrir tous les angles des recherches.\n"
+            "- Chaque candidat doit tester une hypothèse différente (question, "
+            "  expression de recherche, demande avec contrainte) — jamais trois "
+            "  paraphrases identiques.\n"
+            "- Les formulations courtes et les expressions de recherche sont "
+            "  acceptées ; n'allonge pas artificiellement et ne copie pas les "
+            "  préambules des exemples.\n"
             f"- Écris uniquement en {lang_name}.\n"
             "- Ne mentionne pas les recherches elles-mêmes dans le prompt.\n"
             '- Réponds uniquement en JSON : {"prompts": ["...", "..."]}.'

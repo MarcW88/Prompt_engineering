@@ -57,7 +57,11 @@ class PipelineSmokeTests(unittest.TestCase):
         w._brightdata_account_cost = Mock(return_value=None)
         job = {'id': 'j', 'project_id': 'p', 'input': {'sources': ['reddit', 'forum', 'serp'], 'query_budget': 3, 'source_config': {'subreddits': ['hiking'], 'forum_urls': ['https://forum.test']}}}
         question = 'Comment choisir des chaussures confortables pour la randonnée ?'
-        fixture_items = [RawItem(source_type=SourceType.FORUM, platform=platform, raw_text=question, title=question, url=f'https://{platform}.test', metadata={'language': 'fr'}) for platform in ('reddit', 'forum')]
+        question_budget = 'Quel budget prévoir pour des chaussures de randonnée ?'
+        fixture_items = [
+            RawItem(source_type=SourceType.FORUM, platform='reddit', raw_text=question, title=question, url='https://reddit.test', metadata={'language': 'fr'}),
+            RawItem(source_type=SourceType.FORUM, platform='forum', raw_text=question_budget, title=question_budget, url='https://forum.test', metadata={'language': 'fr'}),
+        ]
         with patch('collection_worker.ForumScraper.run', return_value=fixture_items), patch('collection_worker.SerpScraper.run', return_value=[RawItem(source_type=SourceType.SERP, platform='paa', url='https://google.test', raw_text=question, title=question, metadata={'language': 'fr'})]):
             w._collect(job)
         self.assertEqual(len(w.db.tables['signals']), 3)
@@ -75,19 +79,94 @@ class PipelineSmokeTests(unittest.TestCase):
         provider.execute.side_effect = observe
         with patch('collection_worker.BrightDataProvider', return_value=provider):
             built = w._build_dataset({**job, 'input': {'dataset_id': 'd'}})
+        # Deux intentions distinctes (confort vs budget) → deux candidats fidèles,
+        # formulations sources conservées sans préambule.
         self.assertEqual(built['executions'], 2)
         self.assertEqual(built['accepted'], 2)
+        texts = [p['text'] for p in w.db.tables['prompts']]
+        self.assertIn(question, texts)
+        self.assertIn(question_budget, texts)
         self.assertTrue(w.db.tables['fan_outs'])
         target_id = w.db.tables['observations'][0]['id']
         # Mock network generation, keep the actual ICL candidate construction and worker validation.
         with patch('collection_worker.BrightDataProvider', return_value=provider), patch.object(ICLPromptReconstructor, '_rank_examples', return_value=[(0.9, __import__('analysis.reconstruction', fromlist=['ReconstructionExample']).ReconstructionExample('training', ['observed']))]), patch.object(ICLPromptReconstructor, '_generate_with_llm', return_value=['Quel modèle de chaussures choisir pour marcher confortablement ?']):
             result = w._reverse_engineer({**job, 'input': {'target_observation_ids': [target_id], 'max_validation_executions': 9, 'validation_runs': 3}})
-        self.assertEqual(result['executions'], 3)
+        self.assertEqual(result['executions'], 4)  # +1 run baseline
         self.assertEqual(result['validated'], 1)
         final = w.db.tables['prompts'][-1]
         self.assertEqual(final['metadata']['target_observation_id'], target_id)
         self.assertEqual(final['expected_fan_outs'], ['chaussures randonnée confort semelle', 'chaussures randonnée comparatif'])
         self.assertNotIn('Decathlon', repr(w.db.tables))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_reexecution_is_a_separate_observation(self):
+        """Le fallback OpenAI produit sa propre observation liée au run parent ;
+        les fan-outs du run Bright Data restent vides (traces non exposées)."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        extractor = Mock()
+        extractor.extract.return_value = {
+            'queries': ['fallback query'], 'answer': 'réponse fallback',
+            'model': 'gpt-5.4-mini', 'response_id': 'resp-1',
+            'search_calls': 1, 'usage': {'input_tokens': 10, 'output_tokens': 5},
+        }
+        w.fanout_extractor = extractor
+        prompt = {'id': 'pr-1'}
+        parent = AnalysisObservation('prompt test', 'brightdata', 'chatgpt', answer='réponse', fan_outs=[])
+        job = {'id': 'j', 'project_id': 'p'}
+        parent_id = w._persist_observation(prompt, parent, job=job)
+        observations = w.db.tables['observations']
+        self.assertEqual(len(observations), 2)
+        child = observations[1]
+        self.assertEqual(child['provider'], 'openai')
+        self.assertEqual(child['engine'], 'openai_web_search')
+        self.assertEqual(child['raw_response']['relation'], 'independent_reexecution')
+        self.assertEqual(child['raw_response']['parent_observation_id'], parent_id)
+        # Les fan-outs vivent sur la réexécution, pas sur le run Bright Data.
+        fan_outs = w.db.tables['fan_outs']
+        self.assertTrue(all(f['observation_id'] == child['id'] for f in fan_outs))
+        self.assertTrue(all(f['metadata']['relation'] == 'independent_reexecution' for f in fan_outs))
+        self.assertEqual(child['answer'], 'réponse fallback')
+        # Le coût de la réexécution est comptabilisé.
+        self.assertTrue(any(c['provider'] == 'openai' and c['category'] == 'fan_out_reexecution' for c in w.db.tables['analysis_costs']))
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_openai_surface_target_executes_via_extractor(self):
+        """Une cible de la surface openai_web_search est réexécutée par
+        l'extracteur OpenAI — jamais par Bright Data."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.db.tables['projects'] = [{'id': 'p', 'language': 'fr', 'country': 'BE'}]
+        w.db.tables['prompts'] = [
+            {'id': 'pr-train', 'project_id': 'p', 'text': 'prompt entrainement', 'cluster_id': 'c'},
+            {'id': 'pr-target', 'project_id': 'p', 'text': 'prompt cible', 'cluster_id': 'c'},
+        ]
+        w.db.tables['dataset_examples'] = [{'prompt_id': 'pr-train', 'status': 'accepted'}]
+        w.db.tables['observations'] = [
+            {'id': 'obs-train', 'prompt_id': 'pr-train', 'engine': 'openai_web_search', 'provider': 'openai', 'answer': 'réponse', 'raw_response': {}},
+            {'id': 'obs-target', 'prompt_id': 'pr-target', 'engine': 'openai_web_search', 'provider': 'openai', 'answer': 'réponse', 'raw_response': {}},
+        ]
+        w.db.tables['fan_outs'] = [
+            {'observation_id': 'obs-train', 'query': 'train query', 'source': 'openai_responses_web_search'},
+            {'observation_id': 'obs-target', 'query': 'target query', 'source': 'openai_responses_web_search'},
+        ]
+        w._report = Mock()
+        w._record_cost = Mock()
+        w.fanout_extractor = Mock()
+        w.fanout_extractor.extract.side_effect = lambda request: {
+            'queries': ['target query'], 'answer': 'réponse', 'model': 'm',
+            'response_id': 'r1', 'search_calls': 1, 'usage': {},
+        }
+        job = {'id': 'j', 'project_id': 'p', 'input': {
+            'target_observation_ids': ['obs-target'],
+            'max_validation_executions': 9, 'validation_runs': 3, 'max_targets': 1,
+        }}
+        with patch.object(ICLPromptReconstructor, '_generate_with_llm', return_value=['candidat']):
+            result = w._reverse_engineer(job)
+        self.assertEqual(result['executions'], 4)  # 3 runs candidat + 1 run baseline même surface
+        self.assertEqual(w.fanout_extractor.extract.call_count, 4)
+        self.assertEqual(result['validated'], 1)
+        self.assertTrue(all(o['engine'] == 'openai_web_search' for o in w.db.tables['observations'][2:]))
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
     def test_adaptive_validation_mixed_candidates(self):
@@ -136,9 +215,57 @@ class PipelineSmokeTests(unittest.TestCase):
              patch.object(ICLPromptReconstructor, '_generate_with_llm', generate):
             result = w._reverse_engineer(job)
         # obs-errored est écartée par le contrat d'admission (answer vide + error).
-        self.assertEqual(result['executions'], 4)  # 1 run perdant + 3 runs gagnant
+        self.assertEqual(result['executions'], 5)  # 1 perdant + 3 gagnant + 1 baseline
         self.assertEqual(result['validated'], 1)
         # Segmentation moteur : pas de trace Gemini dans le contexte d'une cible ChatGPT.
         self.assertTrue(contexts)
         for engines in contexts:
             self.assertNotIn('gemini', engines)
+
+    @patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture'})
+    def test_edited_version_drives_icl_examples(self):
+        """Un run exécuté sur « texte édité » produit un exemple ICL portant
+        le texte édité — jamais l'ancienne formulation de prompts.text."""
+        w = CollectionWorker.__new__(CollectionWorker)
+        w.db = MemoryRest()
+        w.db.tables['projects'] = [{'id': 'p', 'language': 'fr', 'country': 'BE'}]
+        w.db.tables['prompts'] = [
+            {'id': 'pr-train', 'project_id': 'p', 'text': 'ancien texte', 'cluster_id': 'c'},
+            {'id': 'pr-target', 'project_id': 'p', 'text': 'prompt cible', 'cluster_id': 'c'},
+        ]
+        w.db.tables['dataset_examples'] = [{'prompt_id': 'pr-train', 'status': 'accepted'}]
+        w.db.tables['observations'] = [
+            {'id': 'obs-train', 'prompt_id': 'pr-train', 'engine': 'chatgpt', 'provider': 'brightdata',
+             'answer': 'réponse', 'raw_response': {'executed_text': 'texte édité'}},
+            {'id': 'obs-target', 'prompt_id': 'pr-target', 'engine': 'chatgpt', 'provider': 'brightdata',
+             'answer': 'réponse', 'raw_response': {}},
+        ]
+        w.db.tables['fan_outs'] = [
+            {'observation_id': 'obs-train', 'query': 'train query', 'source': 'brightdata'},
+            {'observation_id': 'obs-target', 'query': 'target query', 'source': 'brightdata'},
+        ]
+        w._report = Mock()
+        w._record_cost = Mock()
+        contexts = []
+
+        def generate(self, *args, **kwargs):
+            contexts.append([e.prompt for e in self.examples])
+            return ['candidat gagnant']
+
+        provider = Mock()
+        provider.batch_size = 10
+        provider.execute.side_effect = lambda request: AnalysisObservation(
+            request.prompt, 'brightdata', request.engine,
+            answer='réponse', fan_outs=['target query'], raw_response={},
+        )
+        job = {'id': 'j', 'project_id': 'p', 'input': {
+            'target_observation_ids': ['obs-target'],
+            'max_validation_executions': 9, 'validation_runs': 1, 'max_targets': 1,
+        }}
+        with patch('collection_worker.BrightDataProvider', return_value=provider), \
+             patch.object(ICLPromptReconstructor, '_generate_with_llm', generate):
+            w._reverse_engineer(job)
+        self.assertTrue(contexts)
+        for example_texts in contexts:
+            self.assertIn('texte édité', example_texts)
+            self.assertNotIn('ancien texte', example_texts)

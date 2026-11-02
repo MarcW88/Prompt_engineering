@@ -43,12 +43,29 @@ def score_candidates(candidates: Iterable[PromptCandidate]) -> List[PromptCandid
     return candidates
 
 
+def intent_first_order(candidates: Iterable[PromptCandidate]) -> List[PromptCandidate]:
+    """Representatives of every intent first, variants last — the ordering all
+    caps must respect so a paraphrase never evicts a distinct need."""
+    candidates = list(candidates)
+    representatives = [candidate for candidate in candidates if candidate.metadata.get("is_representative", True)]
+    variants = [candidate for candidate in candidates if not candidate.metadata.get("is_representative", True)]
+    return representatives + variants
+
+
 def stratified_sample(candidates: Iterable[PromptCandidate], sample_size: int, max_per_cluster: int = 5) -> List[PromptCandidate]:
     groups = defaultdict(list)
     for candidate in candidates:
         groups[candidate.source_reference].append(candidate)
     for group in groups.values():
-        group.sort(key=lambda candidate: (-candidate.confidence, candidate.metadata.get("persona", ""), candidate.metadata.get("stage", ""), candidate.metadata.get("specificity_level", 0)))
+        # Representatives of distinct intents first, then variants — the sample
+        # must cover needs, not favour whichever persona sorts first.
+        group.sort(key=lambda candidate: (
+            -int(bool(candidate.metadata.get("is_representative", True))),
+            -candidate.confidence,
+            candidate.metadata.get("persona", ""),
+            candidate.metadata.get("stage", ""),
+            candidate.metadata.get("specificity_level", 0),
+        ))
     selected = []
     used_dimensions = defaultdict(set)
     while len(selected) < sample_size:
@@ -60,10 +77,11 @@ def stratified_sample(candidates: Iterable[PromptCandidate], sample_size: int, m
             if not group:
                 continue
             dimensions = used_dimensions[cluster_id]
-            diverse_index = next((index for index, candidate in enumerate(group) if (candidate.metadata.get("persona"), candidate.metadata.get("stage"), candidate.metadata.get("specificity_level")) not in dimensions), 0)
+            diverse_index = next((index for index, candidate in enumerate(group)
+                if (candidate.metadata.get("intent_id") or (candidate.metadata.get("persona"), candidate.metadata.get("stage"), candidate.metadata.get("specificity_level"))) not in dimensions), 0)
             candidate = group.pop(diverse_index)
             selected.append(candidate)
-            dimensions.add((candidate.metadata.get("persona"), candidate.metadata.get("stage"), candidate.metadata.get("specificity_level")))
+            dimensions.add(candidate.metadata.get("intent_id") or (candidate.metadata.get("persona"), candidate.metadata.get("stage"), candidate.metadata.get("specificity_level")))
             progress = True
             if len(selected) >= sample_size:
                 break

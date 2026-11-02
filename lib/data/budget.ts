@@ -204,10 +204,22 @@ export function recommendBudget(input: BudgetRecommendationInput): BudgetRecomme
   return { tier, score: Math.round(score), totalEur, corpusTarget, reasons, allocations };
 }
 
+// Single conversion source shared by the financial UI and the §16 workbook:
+// original amounts keep their currency; aggregates are converted to EUR with a
+// declared rate before any summation.
+export const USD_EUR_RATE = Number(process.env.COST_USD_EUR_RATE ?? "0.92");
+export function toEurAmount(amount: unknown, currency: unknown): number {
+  const value = Number(amount ?? 0);
+  if (!value) return 0;
+  const cur = String(currency ?? "eur").toLowerCase();
+  if (cur === "eur") return value;
+  if (cur === "usd") return value * USD_EUR_RATE;
+  return 0;
+}
+
 export function confirmedCostEur(rows: Array<{ amount?: unknown; currency?: unknown; cost_status?: unknown }>) {
   return Math.round(rows.reduce((sum, row) => {
     if (!["actual", "account_delta"].includes(String(row.cost_status)) || row.amount == null) return sum;
-    const amount = Number(row.amount) || 0;
-    return sum + (String(row.currency).toLowerCase() === "usd" ? amount * 0.92 : amount);
+    return sum + toEurAmount(row.amount, row.currency);
   }, 0) * 100) / 100;
 }

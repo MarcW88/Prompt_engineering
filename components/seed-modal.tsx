@@ -8,13 +8,13 @@ import { recommendBudget, estimateCollectionCostEur, recommendConfigForTargetPro
 
 const sourceLabels: Record<string, string> = {
   reddit: "Reddit (gratuit)",
-  forum: "Forums",
-  serp: "PAA & suggestions",
-  review: "Trustpilot & avis Google",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  linkedin: "LinkedIn",
-  x: "X / Twitter",
+  forum: "Forums (gratuit)",
+  serp: "PAA & suggestions (gratuit · secours payant DataForSEO)",
+  review: "Trustpilot & avis Google (gratuit)",
+  facebook: "Facebook (payant · Bright Data)",
+  instagram: "Instagram (payant · Bright Data)",
+  linkedin: "LinkedIn (payant · Bright Data)",
+  x: "X / Twitter (payant · Bright Data)",
 };
 
 const defaultGscPattern = "^(?:\\S+\\s+){9,}\\S+$";
@@ -261,7 +261,7 @@ export function SeedModal({ projectId, onClose, onSubmitted }: { projectId: stri
           <div className="builder-guide"><strong>Choisir les sources et leurs limites</strong><p>Sélectionne les plateformes pertinentes. Le budget de requêtes définit le volume d’appels externes. En mode échantillon, il est réparti entre les sources.</p></div>
           <fieldset><legend>Sources à interroger</legend>{Object.entries(sourceLabels).map(([source, label]) => <label className="check-option" key={source}><input type="checkbox" checked={sources.includes(source)} onChange={() => toggleSource(source)} /> {label}</label>)}</fieldset>
           {sources.length > 0 && <label>Budget de requêtes par source<input type="number" min="1" max="200" value={queryBudget} onChange={(event) => setQueryBudget(Number(event.target.value))} /><small>{sampleMode ? "Mode échantillon activé : ce budget sera réparti entre les sources sélectionnées pour toucher un peu de chacune." : "Mode échantillon désactivé : ce budget sera appliqué à chaque source active. Le coût peut vite grimper."} Première passe conseillée : {recommendedQueryBudget}. Estimation actuelle : {plannedRequests.toLocaleString("fr-FR")} planifications payantes maximum. <button type="button" className="text-button" onClick={() => setQueryBudget(recommendedQueryBudget)}>Appliquer {recommendedQueryBudget}</button></small></label>}
-          {sources.length > 0 && <div className={`dataset-estimate ${estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 ? "warn" : "good"}`}><p><strong>Estimation de coût de cette collecte : {estimatedCollectionCostEur.toFixed(2)} €</strong></p><p>Ce montant est indicatif. Les sources sociales coûtent plus cher que SERP/Trustpilot. Le plafond global actuel est de {displayBudgetTotalEur.toFixed(2)} €.</p>{estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 && <p className="warning"><AlertTriangle size={14} /> L’estimation dépasse 50 % du plafond global. Réduis les cibles sociales ou le budget de requêtes.</p>}</div>}
+          {sources.length > 0 && <div className={`dataset-estimate ${estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 ? "warn" : "good"}`}><p><strong>Estimation de coût de cette collecte : {estimatedCollectionCostEur.toFixed(2)} €</strong></p><p>Montant indicatif — le coût réel est enregistré par appel et visible dans le centre Budget. Seuls les réseaux sociaux (Bright Data) et le secours DataForSEO consomment des crédits ; Reddit, forums, PAA et avis sont gratuits. Plafond global actuel : {displayBudgetTotalEur.toFixed(2)} €.</p>{estimatedCollectionCostEur > displayBudgetTotalEur * 0.5 && <p className="warning"><AlertTriangle size={14} /> L’estimation dépasse 50 % du plafond global. Réduis les cibles sociales ou le budget de requêtes.</p>}</div>}
           {sources.length > 0 && <label>Minimum de signaux bruts par source<input type="number" min="1" max="50" value={minimumSourceSignals} onChange={(event) => setMinimumSourceSignals(Number(event.target.value))} /><small>Chaque source active essaiera de produire au moins ce nombre de signaux. Peut augmenter légèrement le coût.</small></label>}
           {socialPlatformsSelected && <div className="form-row compact"><label>Posts max par cible sociale<input type="number" min="1" max="50" value={socialPostLimit} onChange={(event) => setSocialPostLimit(Number(event.target.value))} /></label><label>Commentaires par post<input type="number" min="0" max="20" value={socialCommentLimit} onChange={(event) => setSocialCommentLimit(Number(event.target.value))} /><small>0 recommandé pour protéger le budget.</small></label></div>}
           {sources.includes("reddit") && <label>Subreddits<textarea rows={3} value={subreddits} onChange={(event) => setSubreddits(event.target.value)} placeholder={"communaute1\ncommunaute2"} /><small>Noms sans `r/`.</small></label>}

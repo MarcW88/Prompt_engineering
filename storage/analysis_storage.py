@@ -69,7 +69,7 @@ class AnalysisStorage:
                     observation_id TEXT NOT NULL,
                     fan_out_reproduction_score REAL NOT NULL,
                     citation_overlap_score REAL NOT NULL,
-                    stability_score REAL NOT NULL,
+                    stability_score REAL,
                     details TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY(candidate_id, observation_id),

@@ -16,6 +16,7 @@ const exports = [
   { step: "06", phase: "Après validation", stage: "validations", title: "Validations", text: "Scores de reproduction, stabilité et qualité." },
   { step: "07", phase: "Après reverse engineering", stage: "prompts", title: "Prompts reconstruits", text: "Prompts observés, synthétiques et reconstruits." },
   { step: "08", phase: "Après revue manuelle", stage: "approved", title: "Prompts approuvés", text: "Prompts acceptés et approuvés pour l’export Semactic." },
+  { step: "09", phase: "Portefeuille final", stage: "portfolio", title: "Portefeuille métier", text: "Dossier par prompt groupé par intention : origine, rôle, scores, statut de revue et versions." },
 ];
 
 const emptyReasons: Record<string, string> = {
@@ -27,6 +28,7 @@ const emptyReasons: Record<string, string> = {
   observations: "Le Dataset Builder n’a pas encore produit d’observations. Vérifie que le job s’est terminé sans erreur.",
   fanouts: "Aucune observation avec fan-outs. Attends que les exécutions moteur se terminent.",
   corpus: "Aucun exemple observé : il faut des observations avec fan-outs rapportés par le provider.",
+  portfolio: "Aucun prompt : le portefeuille se remplit après la sélection.",
   citations: "Aucune observation avec citations. Dépend du moteur utilisé.",
   validations: "Valide les prompts acceptés sur 3 runs.",
   prompts: "Lance le reverse engineering après validation.",
@@ -40,6 +42,7 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
   const [datasetId, setDatasetId] = useState("");
   const [tier, setTier] = useState(3);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [versionId, setVersionId] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -77,6 +80,22 @@ export function ExportsModal({ projectId, onClose }: { projectId: string | null;
               </article>
             );
           })}
+        </div>
+        <div className="semactic-export">
+          <div>
+            <span className="eyebrow">RAPPORT COMPLET §16</span>
+            <h3>Classeur Excel — 12 onglets reliés</h3>
+            <p className="export-intro">Synthèse, prompts finaux, filiation complète, sources/questions, décisions par intention, versions, exécutions, fan-outs/citations, reconstruction, coûts détaillés et synthèse, méthodes et limites.</p>
+          </div>
+          <div className="form-row">
+            <a className="primary export-final" href={`/api/exports/workbook?projectId=${encodeURIComponent(projectId ?? "")}${versionId ? `&versionId=${encodeURIComponent(versionId)}` : ""}`}><Download size={16} /> Télécharger le rapport complet (.xlsx)</a>
+            <button type="button" className="secondary" disabled={!projectId} onClick={async () => {
+              const response = await fetch("/api/portfolio/finalize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId }) });
+              const data = await response.json().catch(() => ({}));
+              if (response.ok) setVersionId(String(data.version_id ?? ""));
+              alert(response.ok ? `Portefeuille figé : ${data.version_id} (${data.frozen_versions} versions) — le rapport télécharge maintenant cette version.` : `Finalisation impossible : ${data.error ?? response.status}`);
+            }}>Finaliser le portefeuille (fige une version)</button>
+          </div>
         </div>
         <div className="semactic-export">
           <div>
