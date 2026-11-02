@@ -695,16 +695,20 @@ class CollectionWorker:
         cluster_rows = self.db.request("GET", "clusters", f"select=*&project_id=eq.{project_id}&is_geo_relevant=eq.true&order=question_count.desc")
         if not cluster_rows:
             raise RuntimeError("Aucun cluster GEO exploitable. Lancez d'abord le clustering.")
-        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text,provenance)")
+        links = self.db.request("GET", "cluster_questions", "select=cluster_id,questions(text,provenance,metadata)")
         questions_by_cluster = {}
         provenance_by_text = {}
+        corporate_texts = set()
         cluster_ids = {row["id"] for row in cluster_rows}
         for link in links:
             question = link.get("questions") or {}
             if link["cluster_id"] in cluster_ids and question.get("text"):
                 questions_by_cluster.setdefault(link["cluster_id"], []).append(
                     {"text": question["text"], "provenance": question.get("provenance", "observed")})
-                provenance_by_text[" ".join(question["text"].casefold().split())] = question.get("provenance", "observed")
+                normalized = " ".join(question["text"].casefold().split())
+                provenance_by_text[normalized] = question.get("provenance", "observed")
+                if (question.get("metadata") or {}).get("intent") == "corporate":
+                    corporate_texts.add(normalized)
         language = self.db.request("GET", "projects", f"select=language,country&id=eq.{project_id}&limit=1")[0]
         build_config = dataset.get("build_config", {})
         clusters = [ClusterInput(
@@ -738,7 +742,11 @@ class CollectionWorker:
         competitors = source_config.get("competitors", [])
         kickoff_themes = source_config.get("themes", [])
         for candidate in candidates:
-            candidate.metadata["qualification"] = qualify_question(candidate.text, brand_variants, competitors, kickoff_themes)
+            qualification = qualify_question(candidate.text, brand_variants, competitors, kickoff_themes)
+            if " ".join(candidate.text.casefold().split()) in corporate_texts:
+                qualification = {"category": "hors_périmètre", "kickoff_theme": "",
+                                 "justification": "contenu corporate du client — exclu du portefeuille"}
+            candidate.metadata["qualification"] = qualification
         covered_themes = {c.metadata["qualification"].get("kickoff_theme") for c in candidates}
         covered_themes.discard("")
         themes_uncovered = [theme for theme in kickoff_themes if theme not in covered_themes]

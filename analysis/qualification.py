@@ -144,9 +144,17 @@ def select_with_quotas(candidates, sample_size: int, sample_fn, brand_share: flo
     un sous-ensemble. Retourne (sélection, déficits par catégorie).
     """
     quotas = portfolio_quotas(sample_size, brand_share)
+    seen_texts = set()
+    unique = []
+    for candidate in candidates:
+        key = " ".join(candidate.text.casefold().split())
+        if key in seen_texts:
+            continue
+        seen_texts.add(key)
+        unique.append(candidate)
     groups = {
-        "brand_plus_comparaison": [c for c in candidates if c.metadata.get("qualification", {}).get("category") in ("brand", "comparaison_standard")],
-        "non_brand_kickoff": [c for c in candidates if c.metadata.get("qualification", {}).get("category") == "non_brand_kickoff"],
+        "brand_plus_comparaison": [c for c in unique if c.metadata.get("qualification", {}).get("category") in ("brand", "comparaison_standard")],
+        "non_brand_kickoff": [c for c in unique if c.metadata.get("qualification", {}).get("category") == "non_brand_kickoff"],
     }
     deficits = {}
     selected = []
